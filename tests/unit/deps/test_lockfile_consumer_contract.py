@@ -56,6 +56,7 @@ _LOCKED_DEPENDENCY_VALUES = {
     "declared_license": "MIT",
     "exec_status": "deployed",
     "name": "consume-contract",
+    "extensions": {"x-vendor": {"k": "v"}},
     "_unknown_fields": {"future_consumer_field": {"enabled": True}},
 }
 

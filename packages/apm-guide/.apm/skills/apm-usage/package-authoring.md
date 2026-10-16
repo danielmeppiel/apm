@@ -345,6 +345,28 @@ decoded from metadata also prevent installation by default; `--force`
 overrides only that critical finding, while warning-level findings do not
 prevent installation.
 
+## Manifest fields: `x-[a-z][a-z0-9-]*` extension keys
+
+Top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions (OpenAPM
+`req-ext-001`, `req-ext-003`). APM keeps them on the parsed manifest and
+records a dependency's extensions on that dependency's `apm.lock.yaml` entry
+(`extensions`). Values are not validated. The lockfile field is omitted when
+the dependency declares none. Writers still preserve other unknown top-level
+keys on rewrite.
+
+Any other unknown top-level key is ignored with one warning that names the
+key. The command does not fail solely because that key is unknown; independent
+policy and security failures still apply. Install dry-runs warn once for the
+source manifest, not again for the prospective edit. Warning paths use forward
+slashes on Windows. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or
+remove it.
+
+```yaml
+name: my-package
+version: 1.0.0
+x-team: platform
+```
+
 ## The 7 primitive types
 
 ### 1. Instruction (`*.instructions.md`)
@@ -890,6 +912,33 @@ Schema rules:
   or `per_package` (each package versions independently, gate only
   checks that `version:` is present). Omit entirely to skip the gate.
 - Unknown keys raise a schema error -- do not invent fields.
+
+### Additional marketplace outputs: Codex and Copilot CLI
+
+Beyond the default `.claude-plugin/marketplace.json`, `marketplace.outputs`
+(map form, e.g. `outputs: {claude: {}, copilot: {}}`, optionally with a
+per-format `path:`) can also select:
+
+- `codex` -> `.agents/plugins/marketplace.json` (default path). Every
+  package needs a `category`. Sources compile to the object shape
+  `{source, url/path, ref?, sha?}`.
+- `copilot` -> `.github/plugin/marketplace.json`. No `category`
+  requirement. Local `plugins[].source` strings preserve real paths,
+  e.g. `"./plugins/demo"`. Remote sources use GitHub
+  `{source: "github", repo: "owner/repo"}` or Git URL
+  `{source: "url", url: "..."}` objects with optional `path`, `ref`,
+  and full 40-character commit `sha`. Annotated tags use the peeled
+  commit; raw commit pins omit `ref`. Invalid pins or unrepresentable
+  sources fail explicitly. Marketplace description/version are nested
+  under `metadata`. Existing branch restrictions stay unchanged.
+  Path precedence is CLI `--marketplace-path copilot=PATH`, then
+  `marketplace.copilot.output`, then `marketplace.outputs.copilot.path`,
+  then the default. `APM_MARKETPLACE_COPILOT_PATH` is reserved and
+  validated but not consumed; do not use it as an override.
+
+Each enabled output needs a matching `.gitignore` unignore line, e.g.
+`!.github/plugin/marketplace.json` alongside
+`!.claude-plugin/marketplace.json` and `!.agents/plugins/marketplace.json`.
 
 ### Cross-repo plugin sources on enterprise marketplaces
 

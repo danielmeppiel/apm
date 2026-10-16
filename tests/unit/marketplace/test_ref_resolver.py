@@ -48,14 +48,16 @@ class TestParseLsRemoteOutput:
         refs = _parse_ls_remote_output(output)
         assert len(refs) == 3
 
-    def test_peeled_tag_skipped(self) -> None:
-        output = (
-            "aaaa23456789abcdef1234567890abcdef123456\trefs/tags/v1.0.0\n"
-            "bbbb23456789abcdef1234567890abcdef123456\trefs/tags/v1.0.0^{}\n"
-        )
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_peeled_tag_retained_without_changing_legacy_sha(self, reverse: bool) -> None:
+        output = f"{'a' * 40}\trefs/tags/v1.0.0\n{'b' * 40}\trefs/tags/v1.0.0^{{}}\n"
+        if reverse:
+            output = "\n".join(reversed(output.splitlines()))
         refs = _parse_ls_remote_output(output)
         assert len(refs) == 1
         assert refs[0].name == "refs/tags/v1.0.0"
+        assert refs[0].sha == "a" * 40
+        assert refs[0].peeled_sha == "b" * 40
 
     def test_invalid_sha_skipped(self) -> None:
         output = "not-a-sha\trefs/tags/v1.0.0\n"

@@ -630,6 +630,26 @@ def _check_marketplace_package_remote(provider: FactsProvider) -> tuple[Violatio
                 "resolver_kwargs['port'] = port",
             ),
         ),
+        (
+            "src/apm_cli/install/validation.py",
+            "_uses_clone_root_probe",
+            ("initial_transport_scheme(dep_ref) == 'ssh'",),
+        ),
+        (
+            "src/apm_cli/deps/git_reference_resolver.py",
+            "GitReferenceResolver.resolve_commit_sha_for_ref",
+            ("initial_transport_scheme(dep_ref, host._protocol_pref) == 'ssh'",),
+        ),
+        (
+            "src/apm_cli/deps/bare_cache.py",
+            "bare_clone_with_fallback._bare_action",
+            ("git_resolve_commit(target, ref, env=env, bare=True)",),
+        ),
+        (
+            "src/apm_cli/utils/git_env.py",
+            "git_resolve_commit",
+            ("'--git-dir' if bare else '-C'",),
+        ),
     )
     findings: list[Violation] = []
     for path, function, required in contracts:
@@ -640,12 +660,19 @@ def _check_marketplace_package_remote(provider: FactsProvider) -> tuple[Violatio
         if failures:
             continue
         index = facts.tree_index
-        definition = effective_definition(index, function) if index is not None else None
+        definition = None
+        if index is not None:
+            for name in function.split("."):
+                definition = effective_definition(index, name, parent=definition)
+                if definition is None:
+                    break
         executable = (
             {
                 ast.unparse(node)
                 for node in index.own_scope(definition)
-                if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Return, ast.Call, ast.Compare))
+                if isinstance(
+                    node, (ast.Assign, ast.AnnAssign, ast.Return, ast.Call, ast.Compare, ast.IfExp)
+                )
             }
             if definition is not None
             else set()

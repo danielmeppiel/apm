@@ -254,6 +254,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Root context writes lose the canonical hand-authored ownership gate.",
     ),
     MutationCase(
+        guard_id="hooks-integrations-claude-mcp-paths",
+        rule_id="mutation_writes.claude_mcp_paths",
+        path="src/apm_cli/integration/mcp_integrator.py",
+        old="claude_cfg = ClaudeClientAdapter.resolve_user_claude_json_path(unresolved_cfg)",
+        new='claude_cfg = Path.home() / ".claude.json"',
+        intent="Claude user cleanup bypasses the adapter-selected profile path.",
+    ),
+    MutationCase(
         guard_id="hooks-integrations-copilot-cli-mcp-paths",
         rule_id="mutation_writes.copilot_cli_mcp_paths",
         path="src/apm_cli/adapters/client/copilot.py",
@@ -1387,6 +1395,24 @@ def test_owner_rules_report_nothing_before_mutation(
     assert baseline_violated_rule_ids == frozenset()
 
 
+def test_claude_cleanup_guard_preserves_unresolved_path_check() -> None:
+    """The profile-path guard catches normalization before symlink inspection."""
+    path = "src/apm_cli/integration/mcp_integrator.py"
+    source = _source(path)
+    old = "unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_unresolved_path()"
+    new = "unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_json_path()"
+    assert source.count(old) == 1
+    report = run_selected_rules(
+        ROOT,
+        ("mutation_writes.claude_mcp_paths",),
+        source_overrides={path: source.replace(old, new)},
+    )
+    assert report.failures == ()
+    assert any(
+        violation.rule_id == "mutation_writes.claude_mcp_paths" for violation in report.violations
+    )
+
+
 def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     """The shared-selector rule protects warnings as well as destructive pruning."""
     path = "src/apm_cli/commands/_helpers.py"
@@ -1396,6 +1422,37 @@ def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     mutated = source.replace(old, "return sorted(set(installed) - expected)", 1)
     ast.parse(mutated, filename=path)
     rule_id = "install-deployment-orphan-selection"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "rule_id", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "mutation_writes.opencode_enabled_intent",
+            "opencode_enabled_matches(existing[name], expected)",
+            "True",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator_install.py",
+            "mutation_writes.mcp_target_selection",
+            "_raise_strict_config_failures(unsafe_runtimes, console=console, logger=logger)",
+            "_raise_strict_config_failures([], console=console, logger=logger)",
+        ),
+    ],
+)
+def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str) -> None:
+    """Global consumers cannot bypass native type or selected-target safety owners."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.failures == ()
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
     report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
     assert report.failures == ()
     assert any(violation.rule_id == rule_id for violation in report.violations)

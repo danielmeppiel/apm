@@ -63,6 +63,25 @@
     },
     {
       "conformance_class": "consumer",
+      "id": "req-ext-003",
+      "keyword": "MUST",
+      "section": "4.6.2",
+      "status": "active",
+      "test_count": 9,
+      "tests": [
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[unknown]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-Foo]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-a_b]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-valid\\n]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_preserves_previous_contract",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_lock_entry_records_extensions_and_omits_when_empty",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_parser_keeps_x_extensions_and_warns_without_failing",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_req_ext_003_keeps_rewrite_preservation"
+      ]
+    },
+    {
+      "conformance_class": "consumer",
       "id": "req-lk-001",
       "keyword": "MUST",
       "section": "5.1",
@@ -89,11 +108,15 @@
       "keyword": "MUST",
       "section": "5.2",
       "status": "active",
-      "test_count": 5,
+      "test_count": 9,
       "tests": [
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_manifest_pin_requires_the_exact_locked_commit",
         "tests/spec_conformance/test_lockfile_reqs.py::test_full_sha_pin_audit_rejects_resolved_commit_mismatch",
         "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_carries_dependencies_block",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[git@github.com:fixture/private-mkt.git-success-named]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[git@github.com:fixture/private-mkt.git-success]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[ssh://git@github.com/fixture/private-mkt.git-success-named]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[ssh://git@github.com/fixture/private-mkt.git-success]",
         "tests/spec_conformance/test_resolution_reqs.py::test_frozen_short_pin_checks_recorded_commit_without_discovery[False]",
         "tests/spec_conformance/test_resolution_reqs.py::test_frozen_short_pin_checks_recorded_commit_without_discovery[True]"
       ]
@@ -799,9 +822,11 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
-        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified"
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[True]"
       ]
     },
     {
@@ -1403,8 +1428,9 @@
       "keyword": "MUST",
       "section": "8.5",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_claude_cleanup_roots.py::test_claude_cleanup_writes_only_to_selected_registered_root",
         "tests/spec_conformance/test_manifest_reqs.py::test_consumer_deploys_only_under_registered_roots"
       ]
     },
@@ -1542,8 +1568,9 @@
       "keyword": "MUST",
       "section": "8.5.8",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_manifest_reqs.py::test_declared_user_mcp_targets_install_without_project_signals",
         "tests/spec_conformance/test_manifest_reqs.py::test_user_scoped_mcp_target_selection_ignores_project_signals"
       ]
     },
@@ -1587,7 +1614,7 @@
   "spec_version": "v0.1.1",
   "summary_by_class": {
     "consumer": {
-      "active": 94,
+      "active": 95,
       "skipped": 1,
       "unbound": 0,
       "xfail": 0
@@ -1611,5 +1638,5 @@
       "xfail": 0
     }
   },
-  "total_requirements": 128
+  "total_requirements": 129
 }

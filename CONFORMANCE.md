@@ -33,7 +33,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | Class | Active | Skipped | Xfail | Unbound |
 |-------|-------:|--------:|------:|--------:|
 | Producer | 12 | 0 | 0 | 0 |
-| Consumer | 94 | 1 | 0 | 0 |
+| Consumer | 95 | 1 | 0 | 0 |
 | Registry | 1 | 0 | 0 | 0 |
 | Governance | 20 | 0 | 0 | 0 |
 
@@ -45,9 +45,10 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-cf-002](docs/src/content/docs/specs/openapm-v0.1.md#req-cf-002) | MUST | 12.3 | consumer | active | 1 | - |
 | [req-ext-001](docs/src/content/docs/specs/openapm-v0.1.md#req-ext-001) | MUST | 4.1 | consumer | active | 1 | - |
 | [req-ext-002](docs/src/content/docs/specs/openapm-v0.1.md#req-ext-002) | MUST | 4.1 | producer | active | 1 | - |
+| [req-ext-003](docs/src/content/docs/specs/openapm-v0.1.md#req-ext-003) | MUST | 4.6.2 | consumer | active | 9 | - |
 | [req-lk-001](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-001) | MUST | 5.1 | consumer | active | 1 | - |
 | [req-lk-002](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-002) | MUST | 5.4 | consumer | active | 1 | - |
-| [req-lk-003](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-003) | MUST | 5.2 | consumer | active | 5 | - |
+| [req-lk-003](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-003) | MUST | 5.2 | consumer | active | 9 | - |
 | [req-lk-004](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-004) | MUST | 5.4 | consumer | active | 1 | - |
 | [req-lk-005](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-005) | MUST | 5.5 | consumer | active | 2 | - |
 | [req-lk-006](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-006) | MUST | 5.5 | consumer | active | 6 | - |
@@ -105,7 +106,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-pl-011](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-011) | MUST | 6.1.1 | governance | active | 2 | - |
 | [req-pl-012](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-012) | MUST | 6.1.1 | governance | active | 1 | - |
 | [req-pl-013](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-013) | MUST | 6.8 | governance | active | 1 | - |
-| [req-pl-014](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-014) | MUST | 6.8 | governance | active | 1 | - |
+| [req-pl-014](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-014) | MUST | 6.8 | governance | active | 3 | - |
 | [req-pl-015](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-015) | MUST | 6.3.5 | governance | active | 1 | - |
 | [req-pl-016](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-016) | MUST | 6.8 | governance | active | 1 | - |
 | [req-pl-017](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-017) | MUST | 6.8 | governance | active | 1 | - |
@@ -153,7 +154,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-sc-014](docs/src/content/docs/specs/openapm-v0.1.md#req-sc-014) | MUST | 10.15 | consumer | active | 1 | - |
 | [req-sc-015](docs/src/content/docs/specs/openapm-v0.1.md#req-sc-015) | MUST | 10.16 | consumer | active | 5 | tests/fixtures/spec-conformance/source-plan/req-sc-015.json |
 | [req-tg-001](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-001) | MUST | 8.4 | consumer | active | 1 | - |
-| [req-tg-002](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-002) | MUST | 8.5 | consumer | active | 1 | - |
+| [req-tg-002](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-002) | MUST | 8.5 | consumer | active | 2 | - |
 | [req-tg-003](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-003) | MUST | 8.5 | consumer | active | 1 | - |
 | [req-tg-004](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-004) | MUST | 4.2.1 | consumer | active | 1 | - |
 | [req-tg-005](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-005) | MUST | 8.5 | consumer | active | 1 | - |
@@ -165,7 +166,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-tg-011](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-011) | MUST | 8.5.5 | consumer | active | 2 | - |
 | [req-tg-012](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-012) | MUST | 8.5.6 | consumer | active | 1 | - |
 | [req-tg-013](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-013) | MUST | 8.5.7 | consumer | active | 7 | - |
-| [req-tg-014](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-014) | MUST | 8.5.8 | consumer | active | 1 | - |
+| [req-tg-014](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-014) | MUST | 8.5.8 | consumer | active | 2 | - |
 | [req-tg-015](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-015) | MUST | 8.5.1 | consumer | active | 1 | - |
 | [req-tg-016](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-016) | MUST | 8.5.9 | consumer | active | 2 | - |
 | [req-tg-017](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-017) | MUST | 8.5.9 | consumer | active | 3 | - |
