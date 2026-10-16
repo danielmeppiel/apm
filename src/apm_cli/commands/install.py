@@ -1624,7 +1624,7 @@ def install(  # noqa: PLR0913
                     symbol="info",
                 )
 
-    except AgentPluginError as e:
+    except (AgentPluginError, DirectDependencyError) as e:
         logger.error(str(e))
         command_result = (
             transaction.fail(e)
@@ -1659,13 +1659,6 @@ def install(  # noqa: PLR0913
             logger.error_detail(reason)
         if tip := _frozen_install_tip(e):
             logger.info(tip)
-        command_result = (
-            transaction.fail(e)
-            if transaction is not None
-            else InstallResult(disposition=InstallDisposition.FAILED, exit_code=1, error=e)
-        )
-    except DirectDependencyError as e:
-        logger.error(str(e))
         command_result = (
             transaction.fail(e)
             if transaction is not None

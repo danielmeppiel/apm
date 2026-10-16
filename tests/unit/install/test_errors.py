@@ -1,10 +1,26 @@
 """Unit tests for install/errors.py exception types."""
 
+import pytest
+
+from apm_cli.deps.lockfile import LockfileConflictError, LockfileFormatError
 from apm_cli.install.errors import (
     AuthenticationError,
     DirectDependencyError,  # noqa: F401
     PolicyViolationError,  # noqa: F401
+    install_failure_message,
 )
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, OSError, LockfileFormatError])
+def test_non_conflict_install_failures_keep_existing_prefix(error_type):
+    assert install_failure_message(error_type("original cause")) == (
+        "Error installing dependencies: original cause"
+    )
+
+
+def test_install_conflict_message_remains_canonical(tmp_path):
+    error = LockfileConflictError(tmp_path / "apm.lock.yaml")
+    assert install_failure_message(error) == str(error)
 
 
 class TestAuthenticationError:
