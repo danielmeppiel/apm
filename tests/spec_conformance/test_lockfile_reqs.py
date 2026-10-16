@@ -57,6 +57,27 @@ def test_lockfile_carries_dependencies_block():
 
 
 @pytest.mark.req("req-lk-003")
+@pytest.mark.parametrize("scenario", ["success", "success-named"])
+@pytest.mark.parametrize(
+    "registered_url",
+    ["ssh://git@github.com/fixture/private-mkt.git", "git@github.com:fixture/private-mkt.git"],
+)
+def test_ssh_marketplace_install_records_repository_and_exact_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    registered_url: str,
+    scenario: str,
+) -> None:
+    from tests.integration.test_github_marketplace_ssh_install import (
+        test_github_ssh_marketplace_installs_without_https,
+    )
+
+    test_github_ssh_marketplace_installs_without_https(
+        tmp_path, monkeypatch, registered_url, scenario
+    )
+
+
+@pytest.mark.req("req-lk-003")
 def test_full_sha_pin_audit_rejects_resolved_commit_mismatch():
     from types import SimpleNamespace
 
