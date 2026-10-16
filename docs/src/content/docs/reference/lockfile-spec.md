@@ -55,6 +55,40 @@ my-project/
 Always commit it. The lockfile is what makes a fresh clone install identically
 on any machine.
 
+### `apm_modules/` is derived
+
+`apm.yml` records dependency intent; `apm.lock.yaml` records the resolved graph
+and managed-file state. Keep both in version control. `apm_modules/` contains
+installed dependency content, which can be regenerated with `apm install`
+while the declared package sources remain available.
+
+Normally, keep `apm_modules/` gitignored. Project installs add this entry to
+`.gitignore` automatically when it is missing:
+
+```gitignore
+apm_modules/
+```
+
+:::caution[Keep installed content available while it is in use]
+Derived content is not necessarily disposable when `apm install` exits.
+Supported native integrations, including Copilot Agent Plugins, load plugins
+live from `apm_modules/`. Agents and tools can also follow deployed links to
+package resources there. Keep the directory available for as long as those
+consumers need it.
+:::
+
+For [CI workflows](../../integrations/ci-cd/), check out the committed manifest
+and lockfile, then run `apm install --frozen` to restore the locked dependency
+graph. Discard a disposable workspace only after all dependent operations,
+native agent sessions, and other consumers have finished.
+
+APM has no install flag for automatic post-install removal. For a separate
+cleanup step, [`apm deps clean`](../cli/deps/#apm-deps-clean) removes the project
+`apm_modules/` without deleting `apm.yml` or `apm.lock.yaml`; the same lifetime
+restriction applies. Reinstall before using consumers that need those resources
+again. See [What to commit](../../consumer/install-packages/#what-to-commit)
+for target-owned files.
+
 ## Top-level structure
 
 ```yaml
