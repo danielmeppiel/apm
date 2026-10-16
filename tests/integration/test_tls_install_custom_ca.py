@@ -116,6 +116,24 @@ def test_apm_install_trusts_private_ca_and_retains_default_root(
             ("private-additive", extra, {"APM_EXTRA_CA_BUNDLE": extra.ca_path}, True),
             ("baseline-retained", baseline, {"APM_EXTRA_CA_BUNDLE": extra.ca_path}, True),
             ("replacement-control", baseline, {"REQUESTS_CA_BUNDLE": extra.ca_path}, False),
+            (
+                "requests-over-extra",
+                extra,
+                {"REQUESTS_CA_BUNDLE": baseline.ca_path, "APM_EXTRA_CA_BUNDLE": extra.ca_path},
+                False,
+            ),
+            (
+                "curl-over-extra",
+                extra,
+                {"CURL_CA_BUNDLE": baseline.ca_path, "APM_EXTRA_CA_BUNDLE": extra.ca_path},
+                False,
+            ),
+            (
+                "disabled-extra",
+                extra,
+                {"APM_DISABLE_TRUSTSTORE": "1", "APM_EXTRA_CA_BUNDLE": extra.ca_path},
+                False,
+            ),
         )
         for name, server, trust_env, succeeds in cases:
             project = isolated.work_root / name

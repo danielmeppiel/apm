@@ -275,7 +275,7 @@ def cli(ctx, verbose: bool) -> None:
     if _TLS_BOOTSTRAP_ERROR is not None:
         raise click.ClickException(
             f"{_TLS_BOOTSTRAP_ERROR}. "
-            "Set it to a readable certificate-only PEM, or unset it. "
+            "Check the APM_EXTRA_CA_BUNDLE setting, or unset it and retry. "
             "See https://microsoft.github.io/apm/troubleshooting/ssl-issues/"
         )
     ctx.ensure_object(dict)

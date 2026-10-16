@@ -70,7 +70,7 @@ You only need the settings below when the CA is *not* in the OS store, or you in
 - `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE` makes APM's Python HTTP layer verify against that bundle instead of the OS store. (`SSL_CERT_FILE` configures the stdlib `ssl` layer but is *not* read by `requests`, so on its own it does not override the HTTP path -- use `REQUESTS_CA_BUNDLE` for that.)
 - `APM_DISABLE_TRUSTSTORE=1` disables APM's OS/additive trust. It does not unset `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE`; an explicit replacement still controls Requests.
 
-The exact order is `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `APM_DISABLE_TRUSTSTORE`, `APM_EXTRA_CA_BUNDLE`, the OS trust store, then bundled `certifi` as the final Requests fallback. Higher-precedence controls suppress additive-bundle validation. Leaving the extra bundle unset or blank preserves existing behavior.
+The exact order is `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `APM_DISABLE_TRUSTSTORE`, `APM_EXTRA_CA_BUNDLE`, the OS trust store, then bundled `certifi` as the final Requests fallback. Higher-precedence controls suppress additive-bundle validation. Debug trust-source output names when the extra bundle is ignored by a higher-precedence setting. Leaving the extra bundle unset or blank preserves existing behavior.
 
 ### Runtime coverage
 
@@ -102,7 +102,7 @@ APM's primary Python HTTP paths use `requests`, a small number of metadata paths
 export APM_EXTRA_CA_BUNDLE=/path/to/corporate-ca.pem
 ```
 
-This retains native OS roots and adds the selected PEM certificates. If APM cannot inject OS trust, Requests-based HTTPS retains the additive certificates over its `certifi` fallback. APM validates one in-memory copy of the bundle before using it: the file must be regular, readable, non-empty, no larger than 8 MiB, certificate-only ASCII PEM, and contain at least one certificate. Private-key blocks are rejected. An invalid selected bundle fails closed before the command runs, rather than silently ignoring the requested trust or disabling verification. Set trust controls in the environment that launches APM.
+This retains native OS roots and adds the selected PEM certificates. If APM cannot inject OS trust, Requests-based HTTPS retains the additive certificates over its `certifi` fallback. APM validates one in-memory copy of the bundle before using it: the file must be regular, readable, non-empty, no larger than 8 MiB, certificate-only ASCII PEM, and contain at least one certificate. Private-key blocks are rejected. An invalid selected bundle fails closed before the command runs, rather than silently ignoring the requested trust or disabling verification. Named pipes are rejected without waiting for a writer. Set trust controls in the environment that launches APM.
 
 Use a replacement bundle only when you intend to pin the entire Requests trust set:
 

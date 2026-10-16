@@ -152,3 +152,13 @@ def test_changelog_scopes_additive_bundle_to_package_management() -> None:
     assert "package-management HTTPS" in entry
     assert "retaining default trust roots" in entry
     assert "Node" not in entry
+
+
+def test_packaged_tls_guidance_preserves_additive_and_native_git_boundaries() -> None:
+    guide = (
+        _repo_root() / "packages/apm-guide/.apm/skills/apm-usage/troubleshooting.md"
+    ).read_text(encoding="utf-8")
+    row = next(line for line in guide.splitlines() if line.startswith("| TLS verification failed"))
+    assert "`APM_EXTRA_CA_BUNDLE=/path/to/ca-bundle.pem`" in row
+    assert "configure `GIT_SSL_CAINFO` separately for Git" in row
+    assert "Use `REQUESTS_CA_BUNDLE` only when you intend to replace" in row

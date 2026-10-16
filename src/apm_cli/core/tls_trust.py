@@ -171,8 +171,13 @@ def _read_extra_ca_bundle(env: Mapping[str, str] | None = None) -> tuple[str, st
         raise TLSConfigurationError(f"{_EXTRA_CA_ENV_VAR} path does not exist: {display}") from exc
 
     display = _safe_path_display(resolved)
+
+    def _nonblocking_opener(path: str, flags: int) -> int:
+        # Reject FIFOs by fstat without waiting for a writer during open.
+        return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
+
     try:
-        with resolved.open("rb") as handle:
+        with open(resolved, "rb", opener=_nonblocking_opener) as handle:
             metadata = os.fstat(handle.fileno())
             if not stat.S_ISREG(metadata.st_mode):
                 raise TLSConfigurationError(
@@ -395,15 +400,24 @@ def configure_tls_trust(env: Mapping[str, str] | None = None) -> bool:
     if had_bundled_marker and environ.get(_SSL_CERT_FILE_VAR):
         _KNOWN_BUNDLED_CERT_FILE = os.path.abspath(environ[_SSL_CERT_FILE_VAR])
 
+    suppressed_extra = (
+        "; APM_EXTRA_CA_BUNDLE is ignored by this higher-precedence setting"
+        if (environ.get(_EXTRA_CA_ENV_VAR) or "").strip()
+        else ""
+    )
     if has_explicit_ca_override(environ):
         explicit_path = explicit_ca_bundle_path(environ)
         _record_tls_trust_status(
-            "TLS: explicit CA bundle in use: %s", _safe_path_display(Path(explicit_path))
+            "TLS: explicit CA bundle in use: %s%s",
+            _safe_path_display(Path(explicit_path)),
+            suppressed_extra,
         )
         return False
 
     if _env_flag(_DISABLE_ENV_VAR, environ):
-        _record_tls_trust_status("TLS: OS trust-store injection disabled (%s)", _DISABLE_ENV_VAR)
+        _record_tls_trust_status(
+            "TLS: OS trust-store injection disabled (%s)%s", _DISABLE_ENV_VAR, suppressed_extra
+        )
         return False
 
     extra_ca = _read_extra_ca_bundle(environ)

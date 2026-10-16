@@ -373,7 +373,7 @@ def test_invalid_extra_ca_fails_before_real_cli_command(
     assert result.stdout == ""
     assert result.stderr.count("APM_EXTRA_CA_BUNDLE") == 1
     assert "path does not exist" in result.stderr
-    assert "readable certificate-only PEM, or unset it" in result.stderr
+    assert "Check the APM_EXTRA_CA_BUNDLE setting, or unset it and retry" in result.stderr
     result.stderr.encode("ascii")
     assert not sentinel.exists()
 

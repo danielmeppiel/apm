@@ -237,7 +237,10 @@ def test_valid_additive_bundle_extends_injected_parent_context(
     ids=["disabled", "requests", "curl"],
 )
 def test_higher_precedence_controls_skip_invalid_additive_bundle(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, precedence: dict[str, str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    precedence: dict[str, str],
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Disable/replacement settings win before extra-path validation or mapping."""
     missing = tmp_path / "must-not-be-read.pem"
@@ -246,6 +249,12 @@ def test_higher_precedence_controls_skip_invalid_additive_bundle(
 
     assert configure_tls_trust(env=env) is False
     assert calls["n"] == 0
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="apm_cli.core.tls_trust"):
+        log_tls_trust_status()
+    messages = _trust_source_messages(caplog)
+    assert len(messages) == 1
+    assert "APM_EXTRA_CA_BUNDLE is ignored by this higher-precedence setting" in messages[0]
 
 
 def test_explicit_requests_bundle_remains_authoritative_with_disable(
@@ -310,6 +319,25 @@ def test_invalid_additive_bundle_fails_before_injection(tmp_path: Path, case: st
 
     with pytest.raises(TLSConfigurationError):
         configure_tls_trust(env=env)
+
+
+@pytest.mark.windows_compat
+def test_internal_tls_failure_names_setting_in_cli_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    from click.testing import CliRunner
+
+    cli_module = importlib.import_module("apm_cli.cli")
+    monkeypatch.setattr(
+        cli_module,
+        "_TLS_BOOTSTRAP_ERROR",
+        TLSConfigurationError("Additive TLS context did not preserve peer verification"),
+    )
+    result = CliRunner().invoke(cli_module.cli, ["install"])
+    assert result.exit_code == 1
+    assert "Check the APM_EXTRA_CA_BUNDLE setting, or unset it and retry" in result.output
 
 
 def _repo_root() -> Path:
