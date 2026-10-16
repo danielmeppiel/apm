@@ -37,7 +37,12 @@ from .footer import VALID_AGENTS_MD_MODES, build_generation_footer
 from .inventory import CompileInventory
 from .link_resolver import resolve_markdown_links, validate_link_targets
 from .managed_section import ManagedSectionError
-from .root_context_protection import hand_authored_root_context_blocks_write
+from .root_context_protection import (
+    _build_expected_rule_filenames,
+    _get_deployed_instruction_filenames,
+    _instruction_rule_filename,
+    hand_authored_root_context_blocks_write,
+)
 from .template_builder import (
     TemplateData,
     build_conditional_sections,
@@ -95,88 +100,6 @@ def _detect_deployed_instructions(
     if expected_filenames is not None:
         return any((rules_dir / name).is_file() for name in expected_filenames)
     return any(rules_dir.glob("*.md"))
-
-
-def _get_deployed_instruction_filenames(
-    rules_dir: Path,
-    base_dir: Path,
-    warn_fn: Callable[[str], None],
-    expected_filenames: set[str] | None = None,
-) -> set[str]:
-    """Return safely contained deployed rule names from a target rules directory."""
-    if not rules_dir.is_dir():
-        return set()
-
-    try:
-        ensure_path_within(rules_dir, base_dir)
-    except PathTraversalError:
-        warn_fn(f"{rules_dir} is a symlink outside the project root -- ignoring")
-        return set()
-
-    candidates = (
-        (rules_dir / name for name in expected_filenames)
-        if expected_filenames is not None
-        else rules_dir.glob("*.md")
-    )
-    deployed: set[str] = set()
-    for candidate in candidates:
-        if not candidate.is_file():
-            continue
-        try:
-            ensure_path_within(candidate, base_dir)
-        except PathTraversalError:
-            warn_fn(f"{candidate} is a symlink outside the project root -- ignoring")
-            continue
-        deployed.add(candidate.name)
-    return deployed
-
-
-def _instruction_rule_filename(target_key: str, instruction: Instruction) -> str | None:
-    """Return the target-native filename for one instruction, when supported."""
-    # Late import avoids a circular dependency: integration.targets imports
-    # integration helpers that eventually reach the compilation package.
-    from ..integration.targets import KNOWN_TARGETS
-
-    target_profile = KNOWN_TARGETS.get(target_key)
-    if not target_profile or "instructions" not in target_profile.primitives:
-        return None
-
-    stem = instruction.file_path.name
-    if stem.endswith(".instructions.md"):
-        stem = stem[: -len(".instructions.md")]
-    return f"{stem}{target_profile.primitives['instructions'].extension}"
-
-
-def _build_expected_rule_filenames(
-    target_key: str,
-    primitives: PrimitiveCollection,
-    instructions: list[Instruction] | None = None,
-) -> set[str]:
-    """Return the set of expected rule filenames for *target_key* given *primitives*.
-
-    Shared by the Antigravity/Copilot (_compile_distributed) and Claude
-    (_compile_claude_md) dedup paths so the filename-building policy stays in
-    one place (R0801 guard).
-
-    Args:
-        target_key: Canonical KNOWN_TARGETS key (e.g. "claude", "copilot",
-            "antigravity").
-        primitives: Compiled agent primitives whose instructions drive the
-            expected filenames.
-        instructions: Optional subset replacing primitives.instructions when
-            only selected instructions contribute expected filenames.
-
-    Returns:
-        A set of expected rule filenames (stem + target extension), or an empty
-        set if the target profile is unknown or lacks an ``instructions``
-        primitive mapping.
-    """
-    source_instructions = primitives.instructions if instructions is None else instructions
-    return {
-        filename
-        for instruction in source_instructions
-        if (filename := _instruction_rule_filename(target_key, instruction)) is not None
-    }
 
 
 # Compiler families allowed inside a multi-target frozenset (built by
