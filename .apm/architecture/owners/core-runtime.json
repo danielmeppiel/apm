@@ -61,7 +61,8 @@
       ],
       "guards": [
         "contracts-tooling-distributed-agents-output",
-        "contracts-tooling-root-context-write-eligibility"
+        "contracts-tooling-root-context-write-eligibility",
+        "registry-delegation-build-id-verification"
       ]
     },
     {

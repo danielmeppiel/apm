@@ -825,8 +825,10 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 3,
+      "test_count": 5,
       "tests": [
+        "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[True]",
         "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
         "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[False]",
         "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[True]"
@@ -1032,8 +1034,10 @@
       "keyword": "MUST",
       "section": "7.3",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_emits_lockfile_after_successful_resolution"
       ]
     },
@@ -1221,8 +1225,10 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 15,
+      "test_count": 17,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin--v1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin-v1.2.3]",
