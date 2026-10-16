@@ -647,6 +647,7 @@ def _validate_and_add_packages_to_apm_yml(
             source_path=apm_yml_path.parent,
             manifest_path=apm_yml_path,
             create_config=create_config,
+            warning_handler=None,  # The disk parse emits the manifest diagnostic.
         )
 
     outcome = _ValidationOutcome(
@@ -889,7 +890,8 @@ def _handle_mcp_install(  # noqa: PLR0913
     is_flag=True,
     help=(
         "Refuse to install when apm.lock.yaml is missing or out of sync with "
-        "apm.yml, including MCP config state (CI-safe; mutually exclusive with "
+        "apm.yml, including Git source, ref, host provider, transport, and MCP "
+        "config state (CI-safe; mutually exclusive with "
         "--update, --mcp, and positional packages). Use 'apm audit' for on-disk "
         "integrity."
     ),
@@ -950,7 +952,7 @@ def _handle_mcp_install(  # noqa: PLR0913
     "global_",
     is_flag=True,
     default=False,
-    help="Install to user scope (~/.apm/) instead of the current project. Direct MCP installs create or update ~/.apm/apm.yml. Mixed selections warn and skip workspace-only runtimes; selections with no global-capable runtime exit 2 before changing the user manifest, lockfile, or runtime configuration. Supported runtimes include Copilot CLI, Claude Code, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot.",
+    help="Install to user scope (~/.apm/) instead of the current project. Direct MCP installs create or update ~/.apm/apm.yml. Mixed selections warn and skip workspace-only runtimes; selections with no global-capable runtime exit 2 before changing the user manifest, lockfile, or runtime configuration. Supported runtimes include Copilot CLI, Claude Code, Cursor, OpenCode, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot.",
 )
 @click.option(
     "--ssh",
