@@ -19,6 +19,7 @@ import re
 
 from .constants import BUILD_ID_PLACEHOLDER
 
+# The truncated hash detects edits; it is not a provenance or security attestation.
 _BUILD_ID_LINE_RE = re.compile(r"^<!-- Build ID: ([0-9a-f]{12}) -->$")
 
 
@@ -52,28 +53,20 @@ def _find_build_id(lines: list[str]) -> tuple[int, re.Match[str]] | None:
     return matches[0]
 
 
-def _expected_build_id(lines: list[str], index: int) -> str:
-    """Compute the expected 12-char Build ID hash for content excluding line at index."""
-    hash_input = "\n".join(line for line_index, line in enumerate(lines) if line_index != index)
-    return hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:12]
-
-
 def has_valid_build_id(content: str) -> bool:
-    """Return whether content has exactly one Build ID line that matches content."""
-    lines = content.splitlines()
-    found = _find_build_id(lines)
-    if found is None:
+    """Check that generated content has not changed since its Build ID was made."""
+    matches = list(re.finditer(r"^<!-- Build ID: [0-9a-f]{12} -->$", content, re.MULTILINE))
+    if len(matches) != 1:
         return False
-    index, match = found
-    return match.group(1) == _expected_build_id(lines, index)
+    match = matches[0]
+    template = content[: match.start()] + BUILD_ID_PLACEHOLDER + content[match.end() :]
+    return stabilize_build_id(template) == content
 
 
 def has_build_id_line(content: str) -> bool:
     """Return whether content contains exactly one Build ID line (regardless of hash match).
 
-    Used by cleanup logic to distinguish three cases:
-      * No Build ID line  → legacy pre-Build-ID APM output (safe to remove stale file).
-      * Build ID present & matching → unmodified APM output (safe to remove).
-      * Build ID present & mismatching → user-edited APM output (must preserve + warn).
+    Presence alone never authorizes cleanup. Call ``has_valid_build_id`` to
+    verify content before deleting a generated file, including legacy output.
     """
     return _find_build_id(content.splitlines()) is not None

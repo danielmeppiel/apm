@@ -24,7 +24,7 @@ from ..primitives.models import Instruction, PrimitiveCollection
 from ..utils.path_security import PathTraversalError, ensure_path_within
 from ..utils.paths import portable_relpath, resolve_base_and_source_dirs
 from ..version import get_version
-from .build_id import has_build_id_line, has_valid_build_id, stabilize_build_id
+from .build_id import has_valid_build_id, stabilize_build_id
 from .claude_formatter import CLAUDE_HEADER, ClaudeFormatter
 from .constants import (
     AGENTS_MD_GENERATED_MARKER,
@@ -163,6 +163,8 @@ def _build_expected_rule_filenames(
             "antigravity").
         primitives: Compiled agent primitives whose instructions drive the
             expected filenames.
+        instructions: Optional subset replacing primitives.instructions when
+            only selected instructions contribute expected filenames.
 
     Returns:
         A set of expected rule filenames (stem + target extension), or an empty
@@ -1759,15 +1761,17 @@ class AgentsCompiler:
             if not has_generated_marker_header(existing, (AGENTS_MD_GENERATED_MARKER,)):
                 result.stats.setdefault("copilot_root_instructions_removed", 0)
                 return result
-            if has_build_id_line(existing) and not has_valid_build_id(existing):
+            if not has_valid_build_id(existing):
                 result.warnings.append(
                     f"Retained {portable_relpath(output_path, self.base_dir)}: "
                     "the generated marker is present, but the Build ID does not match "
-                    "the current content."
+                    "the current content. Review it and delete or rename it manually "
+                    "if duplicate context is unwanted."
                 )
                 result.stats.setdefault("copilot_root_instructions_removed", 0)
                 return result
 
+            ensure_path_within(output_path, self.base_dir)
             if dry_run:
                 result.warnings.append(
                     f"[dry-run] would remove stale "
@@ -1780,7 +1784,7 @@ class AgentsCompiler:
             output_path.unlink()
             result.stats["copilot_root_instructions_removed"] = 1
             return result
-        except OSError as exc:
+        except (OSError, PathTraversalError) as exc:
             message = f"Failed to remove stale {output_path}: {exc}"
             self.errors.append(message)
             result.errors.append(message)

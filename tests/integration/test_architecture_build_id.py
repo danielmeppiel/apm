@@ -30,7 +30,7 @@ def test_compiler_routes_build_id_creation_and_verification_to_owner() -> None:
         for node in owner.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
-    assert {"stabilize_build_id", "has_valid_build_id", "has_build_id_line"} <= owner_functions
+    assert {"stabilize_build_id", "has_valid_build_id"} <= owner_functions
 
     imported = {
         alias.name
@@ -43,8 +43,8 @@ def test_compiler_routes_build_id_creation_and_verification_to_owner() -> None:
         for node in ast.walk(consumer)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
-    assert {"stabilize_build_id", "has_valid_build_id", "has_build_id_line"} <= imported
-    assert {"stabilize_build_id", "has_valid_build_id", "has_build_id_line"} <= called
+    assert {"stabilize_build_id", "has_valid_build_id"} <= imported
+    assert {"stabilize_build_id", "has_valid_build_id"} <= called
     assert "_has_valid_build_id" not in {
         node.name for node in ast.walk(consumer) if isinstance(node, ast.FunctionDef)
     }
@@ -61,18 +61,20 @@ def test_compiler_routes_build_id_creation_and_verification_to_owner() -> None:
 def test_build_id_owner_and_semantic_guard_are_registered() -> None:
     inventory = build_inventory(ROOT)
     registry = load_registry(ROOT / ".apm/architecture/owners", inventory.files)
-    owner = next(entry for entry in registry.owners if entry.id == "build-id-content-verification")
+    owner = next(
+        entry for entry in registry.owners if entry.id == "distributed-agents-output-preparation"
+    )
 
-    assert owner.selectors == (OWNER_REL,)
-    assert owner.guards == ("registry-delegation-build-id-verification",)
+    assert OWNER_REL in owner.selectors
+    assert "registry-delegation-build-id-verification" in owner.guards
     assert RULE_ID in {rule.id for rule in registered_rules()}
 
 
 def test_build_id_guard_rejects_parallel_hashing() -> None:
     source = CONSUMER.read_text(encoding="utf-8")
     mutated = source.replace(
-        "if has_build_id_line(existing) and not has_valid_build_id(existing):",
-        "if has_build_id_line(existing) and not has_valid_build_id(existing):\n"
+        "if not has_valid_build_id(existing):",
+        "if not has_valid_build_id(existing):\n"
         "                hashlib.sha256(b'parallel').hexdigest()",
     )
     assert mutated != source
@@ -89,3 +91,14 @@ def test_build_id_guard_rejects_parallel_hashing() -> None:
         and "must not duplicate Build ID parsing or hashing" in violation.message
         for violation in report.violations
     )
+
+
+def test_build_id_guard_accepts_multiline_reordered_imports() -> None:
+    source = CONSUMER.read_text(encoding="utf-8")
+    mutated = source.replace(
+        "from .build_id import has_valid_build_id, stabilize_build_id",
+        "from .build_id import (\n    stabilize_build_id,\n    has_valid_build_id,\n)",
+    )
+    assert mutated != source
+    report = run_selected_rules(ROOT, (RULE_ID,), source_overrides={CONSUMER_REL: mutated})
+    assert not report.violations

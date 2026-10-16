@@ -45,6 +45,8 @@ INSTRUCTION_BODY = (
 INSTRUCTION_SENTINEL = "Use type hints everywhere."
 GLOBAL_INSTRUCTION_SENTINEL = "Use shared configuration for all repository changes."
 
+pytestmark = pytest.mark.e2e
+
 
 def _run(apm_binary_path: Path, cwd: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -183,3 +185,27 @@ def test_install_then_compile_deduplicates_global_copilot_root_and_force_restore
     )
     assert root_file.exists(), "--force-instructions must restore the aggregated root file"
     assert GLOBAL_INSTRUCTION_SENTINEL in root_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.integration
+def test_install_then_compile_partial_dedup_retains_non_deployed_global_instructions(
+    project_with_global_instruction: Path, apm_binary_path: Path
+):
+    """Partial native coverage retains only the uncovered root guidance."""
+    proj = project_with_global_instruction
+    retained_sentinel = "Keep the uncovered repository guidance."
+    (proj / ".apm/instructions/uncovered.instructions.md").write_text(
+        f"---\ndescription: Uncovered global guidance\n---\n{retained_sentinel}\n",
+        encoding="utf-8",
+    )
+    installed = _run(apm_binary_path, proj, "install", "--target", "copilot")
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    (proj / ".github/instructions/uncovered.instructions.md").unlink()
+
+    compiled = _run(apm_binary_path, proj, "compile", "--target", "copilot")
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    root = proj / ".github/copilot-instructions.md"
+    assert root.exists()
+    content = root.read_text(encoding="utf-8")
+    assert retained_sentinel in content
+    assert GLOBAL_INSTRUCTION_SENTINEL not in content

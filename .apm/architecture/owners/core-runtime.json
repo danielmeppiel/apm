@@ -50,23 +50,19 @@
       "guards": ["registry-delegation-compiled-output-writes"]
     },
     {
-      "id": "build-id-content-verification",
-      "decision": "Build ID creation and verification",
-      "owner": "compilation/build_id.py",
-      "selectors": ["src/apm_cli/compilation/build_id.py"],
-      "guards": ["registry-delegation-build-id-verification"]
-    },
-    {
       "id": "distributed-agents-output-preparation",
-      "decision": "Agent root-context output eligibility and content preparation",
-      "owner": "compilation/agents_compiler.py with compilation/root_context_protection.py",
+      "decision": "Agent root-context output eligibility, user-root replacement and redundant-root cleanup, and content preparation",
+      "owner": "compilation/agents_compiler.py with compilation/root_context_protection.py and compilation/build_id.py",
       "selectors": [
         "src/apm_cli/compilation/agents_compiler.py",
-        "src/apm_cli/compilation/root_context_protection.py"
+        "src/apm_cli/compilation/root_context_protection.py",
+        "src/apm_cli/compilation/user_root_context.py",
+        "src/apm_cli/compilation/build_id.py"
       ],
       "guards": [
         "contracts-tooling-distributed-agents-output",
-        "contracts-tooling-root-context-write-eligibility"
+        "contracts-tooling-root-context-write-eligibility",
+        "registry-delegation-build-id-verification"
       ]
     },
     {
@@ -82,6 +78,17 @@
       "owner": "core/project_name.py (resolve_bootstrap_project_name)",
       "selectors": ["src/apm_cli/core/project_name.py"],
       "guards": ["registry-delegation-bootstrap-project-name"]
+    },
+    {
+      "id": "user-invocable-resolution",
+      "decision": "Agent user-invocable resolution from frontmatter, including the visibility: internal alias",
+      "owner": "primitives/models.py (resolve_user_invocable)",
+      "selectors": [
+        "src/apm_cli/primitives/models.py",
+        "src/apm_cli/primitives/parser.py",
+        "src/apm_cli/integration/agent_integrator.py"
+      ],
+      "guards": ["registry-delegation-user-invocable-resolution"]
     }
   ]
 }

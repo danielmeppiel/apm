@@ -35,6 +35,7 @@ from apm_cli.integration.mcp_config_view import (
     _get_server_configs,
     _get_server_provenance,
 )
+from apm_cli.models.dependency.mcp import ManifestHeaderValue
 from apm_cli.runtime.utils import find_runtime_binary
 from apm_cli.utils.atomic_io import atomic_write_text
 from apm_cli.utils.console import (
@@ -296,6 +297,7 @@ def _clean_claude_config(
     logger,
     is_user_scope: bool = False,
     fail_on_write_error: bool = False,
+    label: str | None = None,
 ) -> int:
     """Remove stale entries from a Claude Code JSON config file.
 
@@ -309,11 +311,14 @@ def _clean_claude_config(
         logger: Command logger for progress messages.
         is_user_scope: When True, validates that the top-level config is a dict
             (``~/.claude.json`` guard) and uses the user-scope log label.
+        fail_on_write_error: When True, raise RequiredIntegrationError on write failure.
+        label: Optional human-readable config label used in log messages.
 
     Returns:
         Number of entries removed.
     """
-    label = "~/.claude.json" if is_user_scope else ".mcp.json"
+    if label is None:
+        label = str(config_path) if is_user_scope else ".mcp.json"
     if (
         _reject_symlink_config(
             config_path,
@@ -449,7 +454,10 @@ class MCPIntegrator:
                 "url": dep.url or "",
             }
             if dep.headers:
-                remote["headers"] = [{"name": k, "value": v} for k, v in dep.headers.items()]
+                remote["headers"] = [
+                    {"name": k, "value": ManifestHeaderValue(v) if isinstance(v, str) else v}
+                    for k, v in dep.headers.items()
+                ]
             info["remotes"] = [remote]
         else:
             # Build as a stdio package
@@ -481,6 +489,8 @@ class MCPIntegrator:
         if dep.tools:
             info["_apm_tools_override"] = dep.tools
 
+        dep.apply_opencode_enabled(info)
+
         # Pass through harness-specific extra keys for adapters to merge
         if dep.extra:
             info["_extra"] = dict(dep.extra)
@@ -498,6 +508,8 @@ class MCPIntegrator:
         info = server_info_cache.get(dep.name)
         if not info:
             return
+
+        dep.apply_opencode_enabled(info)
 
         # Transport overlay: select matching transport from available options
         if dep.transport:
@@ -526,10 +538,20 @@ class MCPIntegrator:
                 existing_headers = remote.get("headers", [])
                 if isinstance(existing_headers, builtins.list):
                     for k, v in dep.headers.items():
-                        existing_headers.append({"name": k, "value": v})
+                        existing_headers.append(
+                            {
+                                "name": k,
+                                "value": ManifestHeaderValue(v) if isinstance(v, str) else v,
+                            }
+                        )
                     remote["headers"] = existing_headers
                 elif isinstance(existing_headers, builtins.dict):
-                    existing_headers.update(dep.headers)
+                    existing_headers.update(
+                        {
+                            k: ManifestHeaderValue(v) if isinstance(v, str) else v
+                            for k, v in dep.headers.items()
+                        }
+                    )
 
         # Args overlay: merge into package runtime arguments
         if dep.args and "packages" in info:
@@ -620,13 +642,17 @@ class MCPIntegrator:
         previously stored config in the lockfile.  Only dependencies that
         have a stored baseline *and* whose config has changed are returned.
         """
+        from apm_cli.models.dependency.mcp import opencode_enabled_matches
+
         drifted: builtins.set = builtins.set()
         for dep in mcp_deps:
             if not hasattr(dep, "to_dict") or not hasattr(dep, "name"):
                 continue
             current_config = dep.to_dict()
             stored = stored_configs.get(dep.name)
-            if stored is not None and stored != current_config:
+            if stored is not None and (
+                stored != current_config or not opencode_enabled_matches(current_config, stored)
+            ):
                 drifted.add(dep.name)
         return drifted
 
@@ -736,12 +762,14 @@ class MCPIntegrator:
             target_runtimes = supported
 
         # Claude Code: when scope is unspecified, fail safely toward the project
-        # config only -- never touch ~/.claude.json on the user's behalf without
+        # config only -- never touch user config on the user's behalf without
         # an explicit USER scope, since that file is shared across all Claude
         # Code projects on the host.
-        clean_claude_project = "claude" in target_runtimes and scope is not InstallScope.USER
-        clean_claude_user = "claude" in target_runtimes and scope is InstallScope.USER
-        if "claude" in target_runtimes and scope is None:
+        clean_claude_user = "claude" in target_runtimes and (
+            scope is InstallScope.USER or user_scope
+        )
+        clean_claude_project = "claude" in target_runtimes and not clean_claude_user
+        if "claude" in target_runtimes and scope is None and not user_scope:
             logger.progress(
                 "Claude Code stale cleanup: scope unspecified -- defaulting to "
                 "project .mcp.json only; pass -g/--global to also clean ~/.claude.json"
@@ -803,24 +831,29 @@ class MCPIntegrator:
                 fail_on_write_error=fail_on_write_error,
             )
 
+        clean_user_scope = user_scope or scope is InstallScope.USER
         if "cursor" in target_runtimes:
+            from apm_cli.adapters.client.cursor import CursorClientAdapter
+
             _clean_json_mcp_config(
-                project_root_path / ".cursor" / "mcp.json",
+                CursorClientAdapter.config_path_for(project_root_path, clean_user_scope),
                 expanded_stale,
                 logger,
-                ".cursor/mcp.json",
+                "Cursor MCP config",
                 use_rich=True,
                 fail_on_write_error=fail_on_write_error,
             )
 
-        # Clean opencode.json (only if .opencode/ directory exists)
+        # Project scope is opt-in; user scope uses ~/.config/opencode/.
         if "opencode" in target_runtimes:
-            if (project_root_path / ".opencode").is_dir():
+            if clean_user_scope or (project_root_path / ".opencode").is_dir():
+                from apm_cli.adapters.client.opencode import OpenCodeClientAdapter
+
                 _clean_json_mcp_config(
-                    project_root_path / "opencode.json",
+                    OpenCodeClientAdapter.config_path_for(project_root_path, clean_user_scope),
                     expanded_stale,
                     logger,
-                    "opencode.json",
+                    "OpenCode MCP config",
                     servers_key="mcp",
                     fail_on_write_error=fail_on_write_error,
                 )
@@ -938,14 +971,39 @@ class MCPIntegrator:
                     fail_on_write_error=fail_on_write_error,
                 )
 
-        # Clean Claude Code user ~/.claude.json (USER scope only)
+        # Clean Claude Code user ~/.claude.json or $CLAUDE_CONFIG_DIR/.claude.json (USER scope only)
         if clean_claude_user:
+            from apm_cli.adapters.client.claude import ClaudeClientAdapter
+
+            claude_label = "Claude user config"
+            try:
+                unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_unresolved_path()
+                claude_label = str(unresolved_cfg)
+                if _reject_symlink_config(
+                    unresolved_cfg,
+                    claude_label,
+                    logger,
+                    fail_on_write_error=fail_on_write_error,
+                ):
+                    return
+                claude_cfg = ClaudeClientAdapter.resolve_user_claude_json_path(unresolved_cfg)
+            except Exception as exc:
+                _log.debug("Failed to resolve Claude user-scope config path", exc_info=True)
+                if fail_on_write_error:
+                    from apm_cli.install.errors import RequiredIntegrationError
+
+                    raise RequiredIntegrationError(
+                        _cleanup_failure_message(claude_label, exc)
+                    ) from exc
+                return
+
             _clean_claude_config(
-                Path.home() / ".claude.json",
+                claude_cfg,
                 expanded_stale,
                 logger,
                 is_user_scope=True,
                 fail_on_write_error=fail_on_write_error,
+                label=claude_label,
             )
 
     # ------------------------------------------------------------------
@@ -1152,6 +1210,7 @@ class MCPIntegrator:
         user_scope: bool = False,
         logger=None,
         replace_existing: bool = False,
+        installed_servers: builtins.set[str] | None = None,
     ) -> bool:
         """Install MCP dependencies for a specific runtime.
 
@@ -1179,7 +1238,9 @@ class MCPIntegrator:
                     if result["failed"]:
                         logger.error(f"  Failed to install {dep}")
                         all_ok = False
-                    elif logger and runtime == "codex":
+                    elif result.get("installed") and installed_servers is not None:
+                        installed_servers.add(dep)
+                    if not result["failed"] and logger and runtime == "codex":
                         from apm_cli.factory import ClientFactory
 
                         config_path = ClientFactory.create_client(

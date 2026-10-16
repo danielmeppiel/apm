@@ -4,6 +4,39 @@
 
 CLI bootstrap/update metadata recovery is separate from package authentication. See [Public release metadata](https://microsoft.github.io/apm/getting-started/installation/#public-release-metadata) for token precedence and bounded anonymous retry, and [mirror migration](https://microsoft.github.io/apm/getting-started/installation/#enterprise-bootstrap-mirror-mode) for final-endpoint configuration.
 
+## GitHub MCP authentication
+
+MCP authentication is separate from repository authentication below. For a
+recognized GitHub MCP server, the first nonempty variable wins:
+`GITHUB_COPILOT_PAT`, `GITHUB_TOKEN`, `GITHUB_APM_PAT`, then
+`GITHUB_PERSONAL_ACCESS_TOKEN`. No per-org or credential-helper fallback runs.
+Runtime-capable targets write the selected variable's native reference;
+literal-only targets retain their existing token behavior.
+
+A nonempty string manifest `Authorization` value wins, regardless of header-name
+casing. Registry headers alone do not disable automatic authentication.
+Reinstalling the same declaration does not automatically repair existing
+credentials. Follow [Repairing existing credentials](https://microsoft.github.io/apm/consumer/install-mcp-servers/#repairing-existing-credentials)
+to preserve custom fields, use environment references and rotate exposed
+credentials.
+See [GitHub MCP token injection](https://microsoft.github.io/apm/consumer/install-mcp-servers/#token-injection-github-mcp-server).
+
+## Getting a token
+
+```bash
+# Check for, and set up, a working credential for a host
+apm auth github.com
+
+# Also validate the credential against the host's REST API
+apm auth gitlab.com --check
+
+# Export the resolved token into the current shell
+eval "$(apm auth github.com --export)"
+```
+
+`apm auth` does not register a marketplace or install anything; it only
+resolves or helps you create a token for `HOST`.
+
 ## Token precedence chain
 
 For public `github.com` HTTPS repositories, APM makes one anonymous attempt before checking any token source. The attempt removes GitHub token variables, credential-bearing HTTP headers, and credential helpers while preserving CA settings, safe URL rewrites, non-credential HTTP headers, and `credential.interactive=never`.
@@ -54,9 +87,11 @@ When fallback is required, APM checks these sources in order:
 
 APM checks the active `gh` CLI account before invoking OS credential helpers. This reduces ambiguous multi-account prompts on hosts like github.com. If the `gh` CLI is not installed or no account is active, APM skips this step silently and continues to `git credential fill`.
 
-This anonymous-first rule applies only to `github.com` HTTPS. GHE Cloud, GHES, ADO,
+This anonymous-first rule applies only to `github.com` HTTPS. GHE Cloud, GHES,
 GitLab, SSH, local paths, and generic hosts keep their existing authentication
-and transport behavior.
+and transport behavior. Azure DevOps Services uses `ADO_APM_PAT`, then `az`
+bearer, then path-scoped `git credential fill`. Azure DevOps Server uses
+`ADO_APM_PAT` then fill.
 
 For multi-account Git Credential Manager setups, see the [Multi-account Git Credential Manager](https://microsoft.github.io/apm/getting-started/authentication/#multi-account-git-credential-manager) section in the main authentication guide.
 
@@ -75,7 +110,10 @@ APM uses the selected transport for clone/fetch and semver tag discovery. When
 For in-repository plugins from GitLab and generic git marketplaces, an SSH
 registration stays SSH when APM generates the concrete `git:` and `path:`
 dependency. Existing SSH keys keep working instead of the dependency being
-rewritten to HTTPS.
+rewritten to HTTPS. A `github.com` marketplace registered over SSH is
+pre-flighted with `git ls-remote` over SSH as well, so a private catalog needs
+only an SSH key, not a GitHub token. Named refs on an SSH dependency also
+resolve through Git rather than the HTTPS commits API.
 
 Generic marketplace HTTPS sources may use the native Git credential helper from
 your Git configuration. Generic HTTP fetches suppress credential channels, HTTPS-
@@ -130,13 +168,16 @@ For SSO-protected orgs, authorize the token under Settings > Tokens > Configure 
 
 ## Azure DevOps (ADO)
 
-Azure DevOps Services supports two auth modes; the GitHub token chain does
-not apply. The recommended approach is `az login`; explicit PATs are also
+Azure DevOps Services supports PAT, Azure CLI bearer, and path-scoped git
+credential fill; the GitHub token chain does not apply. The recommended
+approach is `az login`; explicit PATs and Git Credential Manager are also
 supported. Resolution order:
 
 1. `ADO_APM_PAT` env var if set
 2. AAD bearer from `az account get-access-token` if `az` is installed and signed in
-3. Otherwise: auth-failed error with actionable diagnostic
+3. After an operation's HTTP 401/403 or recognized Git authentication failure:
+   path-scoped `git credential fill` (Git Credential Manager)
+4. If the helper is empty or rejected: an error naming the attempted steps
 
 ```bash
 # Recommended: bearer mode (no env var needed)
@@ -149,16 +190,16 @@ apm install dev.azure.com/org/project/_git/repo
 ```
 
 ADO paths use the 3-segment format: `org/project/repo`. Auth is always required.
-No ADO Git path invokes native credential helpers.
-`apm marketplace check` uses the PAT-to-bearer chain. See
+`apm marketplace check` uses the PAT-to-bearer-to-fill chain. See
 [Marketplace source bases](package-authoring.md#marketplace-source-bases) for
 ADO marketplace URL authoring.
 
 **Finding your tenant ID:** visit `https://dev.azure.com/{org}/_settings/organizationAad`,
 or run `az login` and inspect `az account show --query tenantId -o tsv`.
 
-If `ADO_APM_PAT` is set but ADO returns 401, APM silently retries with the `az`
-bearer for clone, preflight, semver tag, and marketplace ref resolution, then warns:
+If `ADO_APM_PAT` is rejected with HTTP 401/403 or a recognized Git authentication
+failure, APM tries an available `az` bearer for clone, preflight, semver tag,
+and marketplace ref resolution. A successful bearer retry warns:
 `[!] ADO_APM_PAT was rejected for {host}; fell back to az cli bearer.`
 
 When auth fails entirely, APM prints a targeted diagnostic (not a generic "not accessible"
@@ -191,8 +232,8 @@ the dependency URL. The first path segment is the server collection.
 Root-hosted collection URLs are supported; `/tfs/` or another server
 base-path prefix is not currently supported.
 
-Azure DevOps Server authentication is PAT-only in APM. Set `ADO_APM_PAT`;
-the Azure CLI bearer fallback applies to Azure DevOps Services, not Server.
+Azure DevOps Server uses `ADO_APM_PAT` then path-scoped `git credential fill`.
+The Azure CLI bearer fallback applies to Azure DevOps Services, not Server.
 
 `GITHUB_HOST` alone classifies a custom hostname as GitHub Enterprise Server.
 When `ADO_HOST` or `APM_ADO_HOSTS` also names that host, the ADO
@@ -201,12 +242,17 @@ need to unset `GITHUB_HOST`.
 
 ### ADO auth troubleshooting
 
+Initial PAT/bearer diagnostics describe those sources, not the later helper
+retry. Git credential fill runs only after an operation reports an auth failure;
+DNS, TLS, and timeout errors do not trigger it.
+
 | Symptom | Cause | Fix |
 |---|---|---|
-| `No ADO_APM_PAT was set and az CLI is not installed` | Neither path available | Install `az` from https://aka.ms/installazurecli and run `az login --tenant <tenant>`, or set `ADO_APM_PAT` |
-| `az CLI is installed but no active session was found` | `az account show` fails | Run `az login --tenant <tenant>` against the tenant that owns the org |
-| `az CLI returned a token but the org does not accept it (likely a tenant mismatch)` | Wrong tenant | Run `az login --tenant <correct-tenant>`, or set `ADO_APM_PAT` |
-| `ADO_APM_PAT was rejected (HTTP 401) and no az cli fallback was available` | Stale PAT, no `az` | Rotate the PAT, or install `az` and run `az login --tenant <tenant>` |
+| `Azure DevOps requires authentication. You have two options` | No PAT and no az session | Install `az` from https://aka.ms/installazurecli and run `az login --tenant <tenant>`, or set `ADO_APM_PAT` |
+| `ADO_APM_PAT is set, but the Azure DevOps request failed` | Stale or wrong-org PAT, no az | Rotate the PAT, run `az login --tenant <tenant>`, or store a Git Credential Manager credential |
+| `ADO_APM_PAT was rejected; az cli bearer was also rejected` | PAT and az both failed | `unset ADO_APM_PAT`, run `az login --tenant <correct-tenant>`, or store a Git Credential Manager credential |
+| `Azure DevOps Server requires ADO_APM_PAT or a Git credential helper` | On-prem Server, no PAT or fill | Set `ADO_APM_PAT` or store a repository credential in Git Credential Manager (`az` does not apply) |
+| `Authentication failed for <host>: <attempted steps> ... rejected` | Helper empty or rejected after an auth failure | Refresh `ADO_APM_PAT`, run `az login` on Services, or store a repository credential in Git Credential Manager |
 | On-prem host classified as GHES / GitHub credentials selected | `GITHUB_HOST` set without an ADO host configuration | Add `ADO_HOST=your-ado-server.example.com` (or list it in `APM_ADO_HOSTS`); ADO takes precedence |
 
 ## GitHub Enterprise Server (GHES)

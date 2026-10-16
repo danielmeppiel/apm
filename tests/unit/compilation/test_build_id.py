@@ -122,3 +122,4 @@ def test_has_build_id_line_distinguishes_presence_from_validity():
     assert has_build_id_line(valid + "edited\n")
     assert not has_build_id_line("# A\nbody\n")
     assert not has_build_id_line(f"{AGENTS_MD_GENERATED_MARKER}\n# Legacy content\n")
+    assert not has_build_id_line(valid + valid.splitlines()[1] + "\n")

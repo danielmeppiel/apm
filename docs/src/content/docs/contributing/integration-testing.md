@@ -46,6 +46,7 @@ APM uses a tiered approach to integration testing:
 - **Fixture controls**: lifecycle helpers set `APM_TEST_LOOPBACK_PORTS` for a port-scoped local registry and `APM_TEST_FAIL_LOCK_REPLACE=1` for atomic-write fault injection. These are internal test controls, not user-facing APM settings.
 - **Learning ledger**: `tests/fixtures/lifecycle_bug_ledger.json` maps representative escaped defects to generalized laws, oracle tiers, phases, and executable regression node IDs, including coverage of already-correct behavior. Use same-workspace transitions to prove survivor ownership and scoped cleanup. It is not a bug-count census; `tests/quality/test_lifecycle_bug_ledger.py` validates its taxonomy and links.
 - **Generated lifecycle model**: `test_generated_lifecycle_state_machine.py` uses Hypothesis to generate guarded install, dry-run, audit, tamper, repair, declaration, and prune sequences against the real CLI. The model tracks declaration, materialization, integrity, and lock state independently of the product lockfile. Every transition captures complete project and user roots, and mutating commands must stay inside reviewed write sets. It stays in the merge-group family until hosted runtime supports promotion to the bounded PR-time smoke set.
+- **Frozen under-recording**: the required smoke scenario and the generated model's mandatory project replay add a local skill without refreshing the lockfile, require frozen refusal with unchanged lockfile bytes, repair with ordinary install, and verify two byte-stable frozen replays. The scenario uses `ApmLifecycleRunner` in an isolated environment. It does not promise filesystem rollback: the new skill is deployed before refusal.
 - **Known gap**: a late lockfile replacement failure can leave target files on the newly declared target while retaining the prior lockfile. The required lifecycle suite bounds that blast radius and proves the next install converges; expanding the install transaction is a separate design decision recorded in the ledger.
 - **Run it locally** (the exact command CI runs):
   ```bash
@@ -62,6 +63,48 @@ APM uses a tiered approach to integration testing:
 
 ## Running Tests Locally
 
+### Exact-head HOME-alias lifecycle qualification
+
+The #2867 contract uses real CLI subprocesses in isolated project, canonical-home
+and aliased-home fixtures. Its eight required/generated/replay witnesses retain
+the mandatory lifecycle inside Hypothesis execution; an additional project
+scenario checks semver transport refusal and recovery. Ownership snapshot tests
+also enforce one lockfile read per used root and integration phase, zero unused
+reads, and at most 15x record visits when fixture size grows from N to 10N.
+These counts do not claim a wall-clock speedup.
+
+For fully native Claude fixtures, global compile verifies the installed revision
+in `rules/revision.md`, absence of redundant `CLAUDE.md`, and unchanged complete
+snapshots. Separate lifecycle cases retain unmatched fallback, policy refusal,
+and protected explicit-cleanup coverage. Mixed Claude/Hermes fixtures additionally
+check the Hermes revision and permit only its `AGENTS.md` compilation write.
+
+Use a clean committed checkout. Set `BASE_SHA` to the full 40-hex commit SHA
+of a locally available, distinct ancestor of the checked-out `HEAD`.
+Set `REPORT_PATH` and `COMPLETION_PATH` to distinct, new paths outside the checkout:
+
+```bash
+uv run --frozen --extra dev python scripts/check_lifecycle_evidence.py \
+  --base "$BASE_SHA" --head "$(git rev-parse HEAD)" --lane full \
+  --report "$REPORT_PATH" --completion-output "$COMPLETION_PATH"
+```
+
+The command emits the schema-validated native completion sidecar only after fresh success.
+It verifies source/interpreter identity and freshly executes the authored
+contract; a skipped witness or disconnected sequence is not acceptance.
+It is source-Python coverage, not packaged-binary parity. Ordinary hosted
+platform checks remain separate.
+
+For independent acceptance, use another clean checkout with the same base/head,
+its own interpreter and disposable environment. Replace `--completion-output`
+with `--completion "$DRIVER_COMPLETION_PATH"`, pointing to the driver's native
+sidecar, and use a new external `--report` path. Keep the driver's report available
+at the path recorded in that sidecar. Completion mode verifies its digest and
+reruns the contract; it does not reuse the report as execution. Keep this native
+sidecar separate from the unchanged merge-worker completion JSON.
+
+### Selecting integration tests
+
 Integration tests live under `tests/integration/` and run via `pytest`
 directly. Each test module declares the preconditions it needs as
 standard pytest markers; the registry in
@@ -76,6 +119,7 @@ what the test family you want actually requires.
 | `requires_e2e_mode` | Opt-in for the heavyweight golden-scenario suite | `export APM_E2E_TESTS=1` |
 | `requires_network_integration` | Opt-in for tests that hit live registries | `export APM_RUN_INTEGRATION_TESTS=1` |
 | `requires_windows` | A Windows-only process or filesystem boundary | Run on Windows |
+| `requires_windows_native_standard_user` | Verified standard-user token without symlink privilege | The disposable Windows native-symlink CI job; do not enable manually |
 | `requires_inference` | Opt-in for tests that call inference APIs | `export APM_RUN_INFERENCE_TESTS=1` |
 | `requires_github_token` | A token usable against `github.com` / GitHub Models | `export GITHUB_APM_PAT=...` (or `GITHUB_TOKEN`) |
 | `requires_ado_pat` | Azure DevOps PAT for ADO host tests | `export ADO_APM_PAT=...` |
@@ -414,13 +458,27 @@ fallback; a candidate-count regression checks linear extension scanning.
 Only a native Windows run demonstrates Windows behavior; passing mocks or
 collection alone do not.
 
+The **Windows Native Symlink Acceptance** job checks out the exact PR head and
+uses a temporary standard account on a disposable hosted runner. It requires
+successful ordinary file I/O, no administrator or symlink privilege, and actual
+Windows error 1314 before running the Git/APM fallback regression. The test keeps
+inherited global `core.symlinks=true` while honoring Git's native local `false`;
+explicit command-scope intent remains covered separately.
+
+The job requires a passing native case, failure after removing the local
+precedence guard in memory, and a restored pass. Empty or skipped runs fail.
+Account, profile, scratch and any changed Developer Mode value are cleaned up
+independently, with an `always()` cleanup fallback. A restoration failure fails
+the job. This is link-text checkout evidence, not archive-symlink support, and
+the job does not change repository protection or replace required SDL scanning.
+
 Plugin sequential-install coverage checks deployed-file removal and lockfile
 ownership after uninstall, plus unchanged files and ownership for the retained
 skill. The local fixture covers both an independent skill and a separately
 installed skill from the plugin; the network-backed case uses the same assertions.
 Cleanup wording is not the lifecycle contract.
 
-Linux Lifecycle Smoke runs the required marker subset with `-n 2 --dist loadgroup`. Grouped tests stay on one worker, and the six-minute job limit remains unchanged.
+Linux Lifecycle Smoke runs the required marker subset with four bounded workers (`-n 4 --dist loadgroup`) on the public Ubuntu runner. Grouped tests stay on one worker, and the six-minute job limit remains unchanged.
 Its `lifecycle_smoke and not lifecycle_merge_group` selection is not all
 lifecycle coverage: also run affected generated state machines, deployment
 ledger, and failure/retry contracts when changing those behaviors.

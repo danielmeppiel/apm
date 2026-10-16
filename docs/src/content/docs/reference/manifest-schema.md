@@ -65,9 +65,10 @@ devDependencies:
 compilation:   <CompilationConfig>
 policy:        <PolicyConfig>
 marketplace:   <MarketplaceConfig>       # OPTIONAL; marketplace authoring
+x-[a-z][a-z0-9-]*: <any>             # OPTIONAL vendor extensions
 ```
 
-Two fields are REQUIRED at parse time: `name` and `version`. All other fields are OPTIONAL. Unknown top-level keys MUST be preserved by writers but MAY be ignored by resolvers.
+Two fields are REQUIRED at parse time: `name` and `version`. All other fields are OPTIONAL. Unknown top-level keys MUST be preserved by writers. The CLI keeps keys matching `x-[a-z][a-z0-9-]*` and warns, without failing, on any other unknown top-level key. See [Extension keys](#312-extension-keys).
 
 The standard `$schema` key selects the manifest contract; omission selects
 APM's current working draft. Amendment 0.1.41 selects
@@ -344,6 +345,22 @@ Unknown keys under a registry entry MUST be rejected at parse time (typo guard).
 
 For full client semantics - auth, lockfile fields, and routing rules - see the [Registries guide](../../guides/registries/). For the wire contract servers implement, see the [Registry HTTP API](../registry-http-api/).
 
+### 3.12. Extension keys
+
+Any top-level key matching `x-[a-z][a-z0-9-]*` is a vendor extension. The CLI keeps these keys, in declaration order, on the parsed package. It does not validate or interpret the values. Normative contract: [req-ext-001](../../specs/openapm-v01/#req-ext-001) and [req-ext-003](../../specs/openapm-v01/#req-ext-003).
+
+When a dependency's `apm.yml` declares keys matching `x-[a-z][a-z0-9-]*`, `apm lock` records them on that dependency's entry in `apm.lock.yaml` under `extensions`. The field is omitted when the dependency declares none, so existing lockfiles stay unchanged.
+
+Any other unknown top-level key is ignored. The CLI prints one warning that names each ignored key and does not fail because of that key. An install dry-run reports the source manifest's warning once, not again for its prospective dependency edit. Warning paths use forward slashes on Windows too. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or remove it.
+
+```yaml
+name: my-package
+version: 1.0.0
+x-team: platform
+x-internal:
+  ticket: ABC-1
+```
+
 ---
 
 ## 4. Dependencies
@@ -438,7 +455,7 @@ REQUIRED when the shorthand is ambiguous (e.g. direct nested-group repos with vi
 | `type` | `string` | OPTIONAL (remote Git only) | `gitlab` | Treat a bespoke hostname as self-managed GitLab. |
 | `allow_insecure` | `boolean` | OPTIONAL (remote Git only) | `true` or `false` | Manifest-side approval for an `http://` dependency; the install command still requires its separate insecure-host opt-in. |
 | `skills` | `list<string>` | OPTIONAL | Non-empty skill names or `["*"]` | Installs only the selected skills from a dependency that exposes selectable skills. |
-| `targets` | `list<string>` | OPTIONAL | Target slugs. Stable: `copilot`, `claude`, `grok-build`, `cursor`, `kiro`, `opencode`, `gemini`, `antigravity`, `codex`, `windsurf`, `agent-skills`, `hermes`. Experimental: `grok-cloud`, `openclaw`, `copilot-cowork`, `copilot-app`. | Restricts which install targets receive this dependency's target-scoped primitives. Omitted = all active install targets. Effective reach = install targets INTERSECT this list. |
+| `targets` | `list<string>` | OPTIONAL | Target slugs. Stable: `copilot`, `claude`, `grok-build`, `cursor`, `kiro`, `opencode`, `gemini`, `antigravity`, `codex`, `windsurf`, `agent-skills`, `hermes`, `grok-bot`. Experimental: `grok-cloud`, `openclaw`, `copilot-cowork`, `copilot-app`. | Restricts which install targets receive this dependency's target-scoped primitives. Omitted = all active install targets. Effective reach = install targets INTERSECT this list; `agent-skills` is also accepted by the `grok-bot` target. |
 
 Unknown object-form fields are rejected. On a Git object, `version` reports an
 actionable error to use `ref` for a branch, tag, or commit; `version` belongs
@@ -605,12 +622,13 @@ A plain registry reference: `io.github.github/github-mcp-server`.
 | `tools` | `list<string>` | OPTIONAL | Default: `["*"]` | Restrict which tools are exposed. |
 | `url` | `string` | Conditional | | Endpoint URL. REQUIRED when `registry: false` and `transport` is `http`, `sse`, or `streamable-http`. |
 | `command` | `string` | Conditional | Single binary path; no embedded whitespace unless `args` is also present | Binary path. REQUIRED when `registry: false` and `transport` is `stdio`. |
+| `enabled` | any JSON value | OPTIONAL | OpenCode only | Passed unchanged to OpenCode's `opencode.json` entry. When omitted, APM keeps its existing `true` default. APM does not validate the value; OpenCode interprets it. Other targets ignore this field. |
 
 Any additional keys not listed above are preserved as **extra passthrough fields** and round-tripped verbatim into the generated target manifests. This allows harness-specific configuration (e.g. Claude Code's `oauth` block for remote-MCP OAuth client config) to be declared in `apm.yml` and appear in the generated config without modification. A warning is emitted at parse time naming each non-standard key.
 
 Two guardrails apply:
 
-- **Reserved keys are rejected.** A passthrough key whose name collides with a modeled field above -- `name`, `transport`/`type`, `command`, `url`, `headers`, `env`, `args`, `tools`, `version`, `registry`, `package` -- or with an adapter-owned field (`http_headers`, `env_http_headers`, `bearer_token_env_var`, `enabled`, `environment`, `id`) is dropped with a warning. This prevents a passthrough value from shadowing or redirecting a modeled field. Extra keys also never overwrite a value the target adapter set itself.
+- **Reserved keys are rejected.** A passthrough key whose name collides with a modeled field above -- `name`, `transport`/`type`, `command`, `url`, `headers`, `env`, `args`, `tools`, `version`, `registry`, `package`, `enabled` -- or with an adapter-owned field (`http_headers`, `env_http_headers`, `bearer_token_env_var`, `environment`, `id`) is dropped with a warning. This prevents a passthrough value from shadowing or redirecting a modeled field. Extra keys also never overwrite a value the target adapter set itself. The top-level `enabled` field is the OpenCode-only exception: it is forwarded only to OpenCode, and an `extra.enabled` value remains reserved.
 - **Extra keys broadcast to every target.** Passthrough keys are written uniformly into the generated config for **all** installed harnesses, not just the one that understands them. A Claude Code `oauth` block (`clientId`/`callbackPort`), for example, is emitted into every target's server entry; harnesses that do not recognise the key ignore it. Per-harness scoping is tracked as a future enhancement (see issue #1806).
 
 > A future release may require passthrough keys to be nested under an explicit `extra:` block and stop auto-capturing bare top-level keys (fail-closed), via a deprecation path. See issue #1806.
@@ -659,17 +677,27 @@ dependencies:
 
 Values in `headers` and `env` may contain three placeholder syntaxes. APM resolves them per-target so secrets stay out of generated config files where possible.
 
-| Syntax | Source | VS Code | JetBrains Copilot | Copilot CLI / Kiro | Codex / Gemini / Cursor |
-|---|---|---|---|---|---|
-| `${VAR}` | host environment | Translated to `${env:VAR}` (resolved at server-start by VS Code) | Translated to `${env:VAR}` | Native; passed through verbatim | `env`: resolved at install time from env (or interactive prompt). Codex `headers`: see note below |
-| `${env:VAR}` | host environment | Native; passed through verbatim | Native; passed through verbatim | Translated to `${VAR}` | `env`: resolved at install time from env (or interactive prompt). Codex `headers`: see note below |
-| `${input:<id>}` | user prompt | Native; VS Code prompts at runtime | Not supported; use `${VAR}` or `${env:VAR}` instead | Not supported; use `${VAR}` or `${env:VAR}` instead | Not supported; use `${VAR}` or `${env:VAR}` instead |
-| `<VAR>` (legacy) | host environment | Not recognized | Translated to `${env:VAR}` | Translated to `${VAR}` | Resolved at install time (kept for back-compat) |
+For recognized GitHub MCP servers, automatic authentication follows the
+same target capability: runtime-capable targets write a native reference
+to the selected token environment variable, while literal-only targets
+retain their existing automatic-token behavior. A manifest-supplied nonempty
+string `Authorization` value takes precedence over automatic authentication.
+See [Token injection: GitHub MCP server](../../consumer/install-mcp-servers/#token-injection-github-mcp-server)
+for the selection order and guidance for repairing existing generated
+configurations.
+
+| Syntax | Source | VS Code | JetBrains Copilot | Copilot CLI / Kiro | Codex / Gemini | Cursor |
+|---|---|---|---|---|---|---|
+| `${VAR}` | host environment | Translated to `${env:VAR}` (resolved at server-start by VS Code) | Translated to `${env:VAR}` | Native; passed through verbatim | `env`: resolved at install time from env (or interactive prompt). Codex `headers`: see note below | Translated to `${env:VAR}`; resolved by Cursor at runtime |
+| `${env:VAR}` | host environment | Native; passed through verbatim | Native; passed through verbatim | Translated to `${VAR}` | `env`: resolved at install time from env (or interactive prompt). Codex `headers`: see note below | Native; passed through verbatim and resolved at runtime |
+| `${input:<id>}` | user prompt | Native; VS Code prompts at runtime | Not supported; use `${VAR}` or `${env:VAR}` instead | Not supported; use `${VAR}` or `${env:VAR}` instead | Not supported; use `${VAR}` or `${env:VAR}` instead | Not supported; use `${VAR}` or `${env:VAR}` instead |
+| `<VAR>` (legacy) | host environment | Not recognized | Translated to `${env:VAR}` | Translated to `${VAR}` | Resolved at install time (kept for back-compat) | Translated to `${env:VAR}`; resolved by Cursor at runtime |
 
 - **VS Code** has native `${env:VAR}` and `${input:VAR}` interpolation, so APM emits placeholders rather than baking secrets into `mcp.json`. Bare `${VAR}` is normalized to `${env:VAR}` for you.
 - **JetBrains Copilot** has native `${env:VAR}` interpolation in `mcp.json`; APM normalizes `${VAR}` and legacy `<VAR>` to `${env:VAR}`.
 - **Copilot CLI and Kiro** have native `${VAR}` interpolation in their MCP config files; APM normalizes `${env:VAR}` and legacy `<VAR>` to `${VAR}`.
-- **Codex, Gemini, and Cursor** have no runtime interpolation for `env`, so APM resolves `${VAR}`, `${env:VAR}`, and the legacy `<VAR>` there at install time using `os.environ` (or an interactive prompt when missing). Resolved values are not re-scanned, so a value containing literal `${...}` text is preserved.
+- **Codex and Gemini** have no runtime interpolation for `env`, so APM resolves `${VAR}`, `${env:VAR}`, and the legacy `<VAR>` there at install time using `os.environ` (or an interactive prompt when missing). Resolved values are not re-scanned, so a value containing literal `${...}` text is preserved.
+- **Cursor** resolves `${env:VAR}` references at runtime. APM translates `${VAR}` and legacy `<VAR>` into that native form in `env`, `args`, and `headers`, so referenced values are not written into the project-local Cursor config. This normalization does not cover `command` or `url`; their existing behavior is unchanged.
 - **Codex `headers` are the exception.** Codex does read a remote server's headers from the environment, through dedicated fields rather than from inside `http_headers`, which it documents as static values. APM writes `Authorization: "Bearer ${VAR}"` as `bearer_token_env_var` and a value that is exactly `${VAR}` as `env_http_headers`; Codex resolves both at server start, so no token is written to `config.toml`. A value Codex cannot express that way -- literal text around the reference, or a shell-style default such as `${VAR:-}` -- is skipped with a warning instead of being written as static text.
 - **Recommended:** Use `${VAR}` or `${env:VAR}` in all new manifests - they work on every target that supports remote MCP servers. `<VAR>` is legacy; in VS Code it would silently render as literal text in the generated config.
 - **Registry-backed servers** - APM auto-generates input prompts from registry metadata only for required variables. Optional variables do not generate prompts or runtime config entries when no value is available. If a user has already edited an optional value in runtime config, reinstall preserves that value rather than overwriting it.

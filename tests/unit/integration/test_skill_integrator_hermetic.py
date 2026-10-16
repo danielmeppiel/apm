@@ -29,6 +29,7 @@ from apm_cli.integration.skill_integrator import (
     should_compile_instructions,
     validate_skill_name,
 )
+from apm_cli.integration.targets import TargetProfile
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,6 +74,10 @@ def _make_target(
     mapping.deploy_root = deploy_root
     prim.__getitem__ = MagicMock(return_value=mapping)
     target.primitives = {"skills": mapping}
+    target.skills_rel_root = f"{deploy_root or root_dir}/skills"
+    target.skills_deploy_path.side_effect = lambda root: TargetProfile.skills_deploy_path(
+        target, root
+    )
     return target
 
 
@@ -971,9 +976,9 @@ class TestSkipBinDenialPath:
 
 
 class TestIntegrateSkillBundleSubsetNoMatch:
-    """--skill filter that matches zero skills emits a warning with available names."""
+    """A persisted selection matching zero skills emits an error with available names."""
 
-    def test_no_match_warns_with_available_names(self, tmp_path: Path) -> None:
+    def test_no_match_errors_with_available_names(self, tmp_path: Path) -> None:
         pkg_dir = tmp_path / "bundle-pkg"
         pkg_dir.mkdir()
         skills_dir = pkg_dir / "skills"
@@ -1003,13 +1008,14 @@ class TestIntegrateSkillBundleSubsetNoMatch:
                 skill_subset=("nonexistent",),
             )
 
-        diagnostics.warn.assert_called_once()
-        warning_msg = diagnostics.warn.call_args.args[0]
+        diagnostics.error.assert_called_once()
+        warning_msg = diagnostics.error.call_args.args[0]
         assert "nonexistent" in warning_msg
         assert "tdd" in warning_msg
         assert "owner/bundle-pkg" not in warning_msg
         assert "'skills:' in apm.yml" in warning_msg
-        assert diagnostics.warn.call_args.kwargs == {"package": "owner/bundle-pkg"}
+        assert diagnostics.error.call_args.kwargs == {"package": "owner/bundle-pkg"}
+        diagnostics.warn.assert_not_called()
         mock_warn.assert_not_called()
 
     def test_path_request_displays_only_declared_name(self, tmp_path: Path) -> None:
@@ -1032,7 +1038,7 @@ class TestIntegrateSkillBundleSubsetNoMatch:
                 skill_subset=("skills/productivity/missing",),
             )
 
-        warning_msg = diagnostics.warn.call_args.args[0]
+        warning_msg = diagnostics.error.call_args.args[0]
         assert "Requested: skills/productivity/missing." in warning_msg
         assert "Requested: missing," not in warning_msg
 
@@ -1065,6 +1071,7 @@ class TestIntegrateSkillBundleSubsetNoMatch:
         assert result.sub_skills_promoted == 0
         diagnostics.skip.assert_called_once()
         diagnostics.warn.assert_not_called()
+        diagnostics.error.assert_not_called()
 
     def test_first_skills_capable_target_owns_promotion_count(self, tmp_path: Path) -> None:
         """An unsupported first target cannot suppress later promotion accounting."""
@@ -1126,9 +1133,9 @@ class TestIntegrateSkillBundleSubsetNoMatch:
 
 
 class TestPromoteSubSkillsStandaloneSubsetNoMatch:
-    """--skill filter that matches zero .apm/skills/ entries emits a warning."""
+    """A persisted selection matching zero .apm/skills entries emits an error."""
 
-    def test_no_match_warns_with_available_names(self, tmp_path: Path) -> None:
+    def test_no_match_errors_with_available_names(self, tmp_path: Path) -> None:
         pkg_dir = tmp_path / "instr-pkg"
         pkg_dir.mkdir()
         sub_skills_dir = pkg_dir / ".apm" / "skills"
@@ -1157,29 +1164,29 @@ class TestPromoteSubSkillsStandaloneSubsetNoMatch:
                 skill_subset=("nonexistent",),
             )
 
-        logger.warning.assert_called_once()
-        warning_msg = logger.warning.call_args.args[0]
+        logger.error.assert_called_once()
+        warning_msg = logger.error.call_args.args[0]
         assert "nonexistent" in warning_msg
         assert "tdd" in warning_msg
         assert "owner/instr-pkg" in warning_msg
         assert "'skills:' in apm.yml" in warning_msg
         mock_warn.assert_not_called()
 
-    def test_missing_skills_directory_warns_without_crashing(self, tmp_path: Path) -> None:
+    def test_missing_skills_directory_errors_without_crashing(self, tmp_path: Path) -> None:
         """An absent source directory is represented as an empty available set."""
         available = SkillIntegrator._skill_names_in_directory(tmp_path / "missing")
 
-        with patch("apm_cli.utils.console._rich_warning") as mock_warn:
-            SkillIntegrator._warn_no_skill_filter_match(
+        with patch("apm_cli.utils.console._rich_error") as mock_error:
+            SkillIntegrator._error_no_skill_filter_match(
                 available,
                 ("missing",),
                 "owner/instr-pkg",
             )
 
         assert available == frozenset()
-        warning_msg = mock_warn.call_args.args[0]
+        warning_msg = mock_error.call_args.args[0]
         assert "Available: (none)." in warning_msg
-        assert mock_warn.call_args.kwargs == {"symbol": "warning"}
+        assert mock_error.call_args.kwargs == {"symbol": "error"}
 
     def test_no_match_does_not_warn_when_no_filter(self, tmp_path: Path) -> None:
         """No warning when skill_subset is None."""

@@ -156,6 +156,23 @@ _BOOTSTRAP_OWNED_DEFS: tuple[str, ...] = (
 _RESOLVER_ALT = r"_?resolve_bootstrap_project_name"
 
 
+_USER_INVOCABLE_OWNER = "src/apm_cli/primitives/models.py"
+
+
+_USER_INVOCABLE_CONSUMERS: tuple[str, ...] = (
+    "src/apm_cli/primitives/parser.py",
+    "src/apm_cli/integration/agent_integrator.py",
+)
+
+
+_USER_INVOCABLE_OWNED_DEFS: tuple[str, ...] = ("resolve_user_invocable",)
+
+
+_USER_INVOCABLE_REDERIVE_PATTERN = (
+    r'\.get\(\s*["\']user-invocable["\']\s*\)|\.get\(\s*["\']visibility["\']\s*\)'
+)
+
+
 def _count_fixed_lines(facts: FileFacts, needle: str) -> int:
     """Count lexical lines containing `needle` (mirrors ``grep -Fc``)."""
     return sum(1 for line in facts.lines if needle in line)
@@ -502,10 +519,13 @@ def _check_build_id_verification(provider: FactsProvider) -> Iterable[Violation]
         findings.append(
             violation(rule_id, _BUILD_ID_OWNER, "build_id.py must own stabilize_build_id")
         )
-    if not _has_regex(
-        consumer,
-        re.compile(r"^from \.build_id import .*\bhas_valid_build_id\b.*\bstabilize_build_id\b"),
-    ):
+    imported_helpers = {
+        name
+        for imported in consumer.imports
+        if imported.module == "build_id" and imported.level == 1
+        for name in imported.names
+    }
+    if not {"has_valid_build_id", "stabilize_build_id"} <= imported_helpers:
         findings.append(
             violation(
                 rule_id,
@@ -650,6 +670,56 @@ def _check_bootstrap_project_name(provider: FactsProvider) -> Iterable[Violation
     return findings
 
 
+def _check_user_invocable_resolution(provider: FactsProvider) -> Iterable[Violation]:
+    """Agent user-invocability must route through ``resolve_user_invocable``.
+
+    The parser and agent integrator must call the single interpretation
+    authority in ``primitives/models.py`` instead of re-deriving the boolean
+    from the ``user-invocable`` field or its ``visibility: internal`` alias.
+    """
+    rule_id = "registry_delegation.user_invocable_resolution"
+    consumers = (_USER_INVOCABLE_OWNER, *_USER_INVOCABLE_CONSUMERS)
+    facts_by_path, failures = _read_required(provider, rule_id, consumers)
+    if failures:
+        return failures
+
+    findings: list[Violation] = []
+    for name in _USER_INVOCABLE_OWNED_DEFS:
+        definers, def_failures = _defining_files(provider, rule_id, name, kinds=("function",))
+        if def_failures:
+            findings.extend(def_failures)
+            continue
+        if definers != frozenset({_USER_INVOCABLE_OWNER}):
+            findings.append(
+                violation(
+                    rule_id,
+                    _USER_INVOCABLE_OWNER,
+                    f"{name} must be defined only by primitives/models.py",
+                )
+            )
+
+    rederive_pattern = re.compile(_USER_INVOCABLE_REDERIVE_PATTERN)
+    for consumer in _USER_INVOCABLE_CONSUMERS:
+        facts = facts_by_path[consumer]
+        if not _has_fixed(facts, "resolve_user_invocable("):
+            findings.append(
+                violation(
+                    rule_id,
+                    consumer,
+                    "consumer must call resolve_user_invocable() instead of re-deriving it",
+                )
+            )
+        if _has_regex(facts, rederive_pattern):
+            findings.append(
+                violation(
+                    rule_id,
+                    consumer,
+                    "consumer must not re-derive user-invocable/visibility locally",
+                )
+            )
+    return findings
+
+
 def _is_name(node: ast.AST | None, name: str) -> bool:
     return isinstance(node, ast.Name) and node.id == name
 
@@ -765,6 +835,16 @@ RULES: tuple[Rule, ...] = (
         guard_ids=("registry-delegation-bootstrap-project-name",),
         description="Bootstrap project names must route through core/project_name.py.",
         check=_check_bootstrap_project_name,
+    ),
+    Rule(
+        id="registry_delegation.user_invocable_resolution",
+        group=GROUP,
+        guard_ids=("registry-delegation-user-invocable-resolution",),
+        description=(
+            "Agent user-invocability must route through "
+            "primitives/models.py (resolve_user_invocable)."
+        ),
+        check=_check_user_invocable_resolution,
     ),
 )
 

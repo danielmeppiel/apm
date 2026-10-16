@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -537,6 +538,7 @@ class TestRemoveStale:
             patch("apm_cli.factory.ClientFactory.supported_clients", return_value=["claude"]),
             patch("apm_cli.factory.ClientFactory.create_client", return_value=client),
             patch("apm_cli.integration.mcp_integrator.Path.home", return_value=tmp_path),
+            patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": ""}),
         ):
             MCPIntegrator.remove_stale(
                 {"stale"},

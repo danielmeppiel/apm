@@ -627,6 +627,30 @@ class TestValidationFailureReasonMessages:
             # user is already in verbose mode.
             assert "run with --verbose for the full probe log" not in output
 
+    @patch("apm_cli.commands.install._uses_clone_root_probe", return_value=True)
+    @patch("apm_cli.commands.install._validate_package_exists", return_value=False)
+    def test_subdir_with_ref_clone_root_probe_omits_probe_chain(self, mock_validate, mock_probe):
+        with self._chdir_tmp():
+            Path("apm.yml").write_text("name: test\ndependencies:\n  apm: []\n  mcp: []\n")
+            result = self.runner.invoke(cli, ["install", "owner/repo/skills/foo#v1.2.0"])
+            output = " ".join(result.output.split())
+            assert "all probes failed" not in output
+            assert "not accessible or doesn't exist" in output
+
+    @patch("apm_cli.commands.install._initial_scheme", return_value="ssh")
+    @patch("apm_cli.commands.install._uses_clone_root_probe", return_value=True)
+    @patch("apm_cli.commands.install._validate_package_exists", return_value=False)
+    def test_subdir_with_ref_ssh_probe_names_ssh_failure(
+        self, mock_validate, mock_probe, mock_scheme
+    ):
+        with self._chdir_tmp():
+            Path("apm.yml").write_text("name: test\ndependencies:\n  apm: []\n  mcp: []\n")
+            result = self.runner.invoke(cli, ["install", "owner/repo/skills/foo#v1.2.0"])
+            output = " ".join(result.output.split())
+            assert "all probes failed" not in output
+            assert "git ls-remote over SSH failed" in output
+            assert "SSH key has read access" in output
+
     @patch("apm_cli.commands.install._validate_package_exists", return_value=False)
     def test_selfhosted_gitlab_like_host_hints_gitlab_host_env(self, mock_validate, monkeypatch):
         """Issue #2066: an unrecognised self-hosted FQDN with a multi-segment
@@ -1572,14 +1596,16 @@ class TestAllowInsecureFlag:
             assert "allow_insecure: true" in result.output
             assert "--allow-insecure" in result.output
 
-    def test_install_help_mentions_allow_insecure_for_http_deps(self):
-        """Install help should mention the HTTP allow-insecure flow."""
+    def test_install_help_describes_transport_and_frozen_identity(self):
+        """Install help describes opt-in HTTP and the frozen identity boundary."""
         result = self.runner.invoke(cli, ["install", "--help"])
 
         assert result.exit_code == 0
         normalized = " ".join(result.output.split())
         assert "use --allow-insecure for http:// packages" in normalized
         assert "--allow-insecure-host HOSTNAME" in result.output
+        assert "Git source, ref, host provider, transport, and MCP config state" in normalized
+        assert "Use 'apm audit' for on-disk integrity." in normalized
 
     def test_allow_insecure_host_rejects_non_hostname(self):
         """The explicit transitive host option only accepts bare hostnames."""
