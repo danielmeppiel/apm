@@ -135,7 +135,10 @@ For non-interactive environments (CI, devcontainers), set the credential through
 For in-repository plugins from GitLab and generic git marketplaces, an SSH
 registration stays SSH when APM generates the concrete `git:` and `path:`
 dependency. Existing SSH keys keep working instead of the dependency being
-rewritten to HTTPS. See
+rewritten to HTTPS. A `github.com` marketplace registered over SSH is
+pre-flighted with `git ls-remote` over SSH as well, so a private catalog needs
+only an SSH key, not a GitHub token. Named refs on an SSH dependency also
+resolve through Git rather than the HTTPS commits API. See
 [Installing from marketplaces](../installing-from-marketplaces/#local-and-self-hosted-marketplaces).
 
 ## Going further

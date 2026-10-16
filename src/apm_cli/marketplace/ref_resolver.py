@@ -103,6 +103,7 @@ class RemoteRef:
 
     name: str  # e.g. "refs/tags/v1.2.0" or "refs/heads/main"
     sha: str  # 40-char hex SHA
+    peeled_sha: str | None = None  # commit behind an annotated tag, when advertised
 
 
 class _RemoteAttemptError(RuntimeError):
@@ -176,7 +177,8 @@ def _parse_ls_remote_output(output: str) -> list[RemoteRef]:
     Tags carry the commit a checkout of them lands on, as resolved by
     ``deps.git_remote_ops.tag_commit_shas``: an annotated or signed tag takes
     the SHA of its peeled record, which adds no ref of its own. Branches and
-    other refs keep their only SHA.
+    other refs keep their only SHA. ``peeled_sha`` retains the same canonical
+    commit for consumers that distinguish annotated tags from other refs.
     """
     records: list[tuple[str, str]] = []
     for line in output.splitlines():
@@ -190,7 +192,7 @@ def _parse_ls_remote_output(output: str) -> list[RemoteRef]:
         if not _SHA_RE.match(sha):
             continue
         records.append((sha, refname))
-    commits, _annotated = tag_commit_shas(records)
+    commits, annotated = tag_commit_shas(records)
     refs: list[RemoteRef] = []
     # Preserve record order; the owner's keys exclude peeled-only refnames.
     for sha, refname in records:
@@ -198,7 +200,9 @@ def _parse_ls_remote_output(output: str) -> list[RemoteRef]:
             if refname not in commits:
                 continue  # the peeled record of an annotated tag
             sha = commits[refname]
-        refs.append(RemoteRef(name=refname, sha=sha))
+        refs.append(
+            RemoteRef(name=refname, sha=sha, peeled_sha=sha if refname in annotated else None)
+        )
     return refs
 
 
