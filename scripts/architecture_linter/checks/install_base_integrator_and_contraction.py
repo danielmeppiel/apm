@@ -209,6 +209,116 @@ def _contraction_ownership_messages(provider: FactsProvider, rule_id: str) -> li
     return [_summary(rule_id, path, message) for path, message in messages]
 
 
+# Local rows rebuilt without their reconciled locators fall back to the
+# unattributed target, which no later install can prove stale (#3179).
+_LOCAL_PERSISTENCE_SITES = (
+    (_CONTRACTION_POST_LOCAL, "run"),
+    (_CONTRACTION_LOCKFILE, "LockfileBuilder._preserve_existing_local_state"),
+)
+
+
+def _carries_provenance(index: TreeIndex, function: ast.AST) -> bool:
+    """Return whether every ``replace_legacy_owner`` call in *function* passes provenance and targets."""
+    calls = [
+        node
+        for node in index.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "replace_legacy_owner"
+    ]
+
+    def _empty(value: ast.expr) -> bool:
+        return (
+            (isinstance(value, ast.Constant) and value.value is None)
+            or (isinstance(value, (ast.Tuple, ast.List, ast.Set)) and not value.elts)
+            or (isinstance(value, ast.Dict) and not value.keys)
+            or (
+                isinstance(value, ast.Call)
+                and not value.args
+                and all(_empty(keyword.value) for keyword in value.keywords)
+            )
+        )
+
+    def _passes(call: ast.Call, name: str) -> bool:
+        return any(keyword.arg == name and not _empty(keyword.value) for keyword in call.keywords)
+
+    return bool(calls) and all(
+        _passes(call, "provenance") and _passes(call, "current_targets") for call in calls
+    )
+
+
+def _local_persistence_messages(provider: FactsProvider, rule_id: str) -> list[Violation]:
+    """Local deployment rows must persist with the locators reconciliation chose."""
+    findings: list[Violation] = []
+    for path, qualname in _LOCAL_PERSISTENCE_SITES:
+        _facts, fail = _facts_for(provider, path, rule_id)
+        if fail:
+            findings.extend(fail)
+            continue
+        index = provider.tree_index(path)
+        function = index.function(qualname) if index is not None else None
+        if function is None or not _carries_provenance(index, function):
+            findings.append(
+                _summary(
+                    rule_id,
+                    path,
+                    "local deployment rows must persist through replace_legacy_owner(provenance=..., current_targets=...)",
+                )
+            )
+    return findings
+
+
+def _local_preservation_messages(provider: FactsProvider, rule_id: str) -> list[Violation]:
+    """Require explicit generic governance and preserve unprocessed target claims."""
+    index = provider.tree_index(_CONTRACTION_MANIFEST)
+    function = index.function("union_preserving") if index is not None else None
+    if function is None:
+        return []
+    findings: list[Violation] = []
+    assignments = [
+        node
+        for node in index.walk(function)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "sweep" for target in node.targets)
+    ]
+    if len(assignments) != 1 or not (
+        isinstance(assignments[0].value, ast.Name)
+        and assignments[0].value.id == "generic_governed_values"
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                _CONTRACTION_MANIFEST,
+                "generic cleanup must use explicit caller governance, not infer historical ownership",
+            )
+        )
+    claims = [
+        keyword.value
+        for node in index.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "DeploymentIntent"
+        for keyword in node.keywords
+        if keyword.arg == "unprocessed_claims"
+    ]
+    if len(claims) != 1 or "unprocessed" not in _loaded_names(index, claims[0]):
+        findings.append(
+            _summary(
+                rule_id, _CONTRACTION_MANIFEST, "reconciliation must pass unprocessed target claims"
+            )
+        )
+    state_path = "src/apm_cli/core/deployment_state.py"
+    state, failures = _facts_for(provider, state_path, rule_id)
+    findings.extend(failures)
+    if not failures and not _present(
+        state, "and record.locator.value not in intent.unprocessed_claims"
+    ):
+        findings.append(
+            _summary(rule_id, state_path, "stale-target cleanup must preserve unprocessed claims")
+        )
+    return findings
+
+
 def _reconciler_reconcile_call(node: ast.AST) -> bool:
     """Return whether `node` is ``DeploymentReconciler(...).reconcile(...)``."""
     return (
@@ -282,6 +392,8 @@ def check_target_file_contraction(provider: FactsProvider) -> tuple[Violation, .
     rule_id = _GUARD_TARGET_CONTRACTION
     findings = _contraction_ownership_messages(provider, rule_id)
     findings.extend(_shared_contraction_messages(provider, rule_id))
+    findings.extend(_local_persistence_messages(provider, rule_id))
+    findings.extend(_local_preservation_messages(provider, rule_id))
     return tuple(findings)
 
 

@@ -387,18 +387,71 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
         CONTRACTION_RULE,
         "src/apm_cli/install/phases/post_deps_local.py",
         _replace(
-            "    _files, _hashes = reconcile_deployed_block(",
+            "    _files, _hashes, _ledger = reconcile_deployed_block(",
             "    remove_stale_deployed_files(set(), ctx.project_root)\n"
-            "    _files, _hashes = reconcile_deployed_block(",
+            "    _files, _hashes, _ledger = reconcile_deployed_block(",
         ),
+    ),
+    CompoundMutation(
+        "contraction-implicit-historical-sweep",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace("    sweep = generic_governed_values\n", "    sweep = frozenset(prior_values)\n"),
+    ),
+    CompoundMutation(
+        "contraction-missing-unprocessed-claims",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace("            unprocessed_claims=(\n", "            ignored_claims=(\n"),
+    ),
+    CompoundMutation(
+        "contraction-unprocessed-claim-bypass",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace("            and record.locator.value not in intent.unprocessed_claims\n", ""),
+    ),
+    CompoundMutation(
+        "contraction-post-local-lossy-persistence",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/phases/post_deps_local.py",
+        _replace("        provenance=_ledger,\n", ""),
+    ),
+    CompoundMutation(
+        "contraction-lockfile-lossy-local-carry-forward",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/phases/lockfile.py",
+        _replace(
+            "                provenance=DeploymentLedgerCodec.from_lockfile(self.ctx.existing_lockfile),\n",
+            "",
+        ),
+    ),
+    CompoundMutation(
+        "contraction-post-local-null-provenance",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/phases/post_deps_local.py",
+        _replace("        provenance=_ledger,\n", "        provenance=None,\n"),
+    ),
+    CompoundMutation(
+        "contraction-post-local-empty-provenance",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/phases/post_deps_local.py",
+        _replace(
+            "        provenance=_ledger,\n", "        provenance=DeploymentLedger(records={}),\n"
+        ),
+    ),
+    CompoundMutation(
+        "contraction-post-local-unordered-targets",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/phases/post_deps_local.py",
+        _replace("        current_targets=ctx.targets or (),\n", ""),
     ),
     CompoundMutation(
         "contraction-post-local-route",
         CONTRACTION_RULE,
         "src/apm_cli/install/phases/post_deps_local.py",
         _replace(
-            "    _files, _hashes = reconcile_deployed_block(",
-            "    _files, _hashes = reconcile_deployed_block_disabled(",
+            "    _files, _hashes, _ledger = reconcile_deployed_block(",
+            "    _files, _hashes, _ledger = reconcile_deployed_block_disabled(",
         ),
     ),
     CompoundMutation(
@@ -694,6 +747,13 @@ def test_each_install_compound_subcheck_has_mutation_proof(
     assert report.failures == ()
     assert report.exit_code == 2
     assert any(violation.rule_id == case.rule_id for violation in report.violations)
+
+
+def test_local_contraction_boundary_is_complete() -> None:
+    """The real local persistence and preservation path satisfies the registered guard."""
+    report = run_selected_rules(ROOT, (CONTRACTION_RULE,))
+    assert report.failures == ()
+    assert report.violations == ()
 
 
 def test_request_defaults_accepts_wrapper_without_positional_defaults() -> None:
