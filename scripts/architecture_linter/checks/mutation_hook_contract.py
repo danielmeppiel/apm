@@ -770,6 +770,7 @@ def _nhc_drift_projection(provider: FactsProvider, rule_id: str) -> tuple[Violat
     """Shared hook drift comparisons must route through ``hook_ownership.py``."""
     facts_by_path, failures = _read_required(provider, rule_id, (_HOOK_OWNERSHIP, _INSTALL_DRIFT))
     findings: list[Violation] = list(failures)
+    scan_paths = _python_paths(provider, under=_SRC, exclude=(_HOOK_OWNERSHIP,))
     for helper in ("project_apm_owned_hook_entries", "canonicalize_hook_sidecar"):
         if not failures:
             findings.extend(
@@ -792,7 +793,7 @@ def _nhc_drift_projection(provider: FactsProvider, rule_id: str) -> tuple[Violat
             _duplicate_scan(
                 provider,
                 rule_id=rule_id,
-                paths=_python_paths(provider, under=_SRC, exclude=(_HOOK_OWNERSHIP,)),
+                paths=scan_paths,
                 pattern=rf"^def {helper}\(",
                 message="shared hook drift comparisons must route through hook_ownership.py",
                 exempt=False,

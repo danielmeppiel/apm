@@ -255,7 +255,8 @@ targets, audit compares only APM-owned hook entries; user-owned hooks do not
 create drift. The APM-owned sidecar is compared as JSON, ignoring object-key
 order and formatting while retaining every field and list order. Changed
 commands, ownership markers, or execution order still report `modified`, as
-do malformed JSON and duplicate keys. `unrecorded` findings fail
+do malformed JSON, duplicate keys, and non-JSON constants (`NaN`, `Infinity`,
+`-Infinity`). `unrecorded` findings fail
 `--ci`; run `apm install`, then commit the regenerated `apm.lock.yaml`.
 
 Drift is whole-project only; `--file` and explicit `PACKAGE` runs skip it.

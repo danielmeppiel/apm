@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections import Counter, deque
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from apm_cli.utils.path_security import (
     PathTraversalError,
@@ -71,7 +71,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _reject_non_json_constant(constant: str) -> None:
+def _reject_non_json_constant(constant: str) -> NoReturn:
     raise ValueError(f"invalid JSON constant: {constant}")
 
 
