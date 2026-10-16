@@ -209,3 +209,34 @@ def test_install_then_compile_partial_dedup_retains_non_deployed_global_instruct
     content = root.read_text(encoding="utf-8")
     assert retained_sentinel in content
     assert GLOBAL_INSTRUCTION_SENTINEL not in content
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_compile_cleanup_preserves_root_under_linked_parent(
+    project_with_global_instruction: Path, apm_binary_path: Path, dry_run: bool
+):
+    """The real compile command refuses cleanup outside the project root."""
+    proj = project_with_global_instruction
+    generated = _run(apm_binary_path, proj, "compile", "--target", "copilot")
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    github_dir = proj / ".github"
+    external = proj.with_name(proj.name + "-external")
+    github_dir.rename(external)
+    retained = (external / "copilot-instructions.md").read_bytes()
+    try:
+        github_dir.symlink_to(external, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+    instruction = proj / ".apm/instructions/global.instructions.md"
+    instruction.write_text(
+        instruction.read_text(encoding="utf-8").replace(
+            "description:", "applyTo: '**/*.py'\ndescription:", 1
+        ),
+        encoding="utf-8",
+    )
+    args = ("--dry-run",) if dry_run else ()
+    compiled = _run(apm_binary_path, proj, "compile", "--target", "copilot", *args)
+    assert compiled.returncode != 0, compiled.stdout + compiled.stderr
+    assert (external / "copilot-instructions.md").read_bytes() == retained
+    assert github_dir.is_symlink()
