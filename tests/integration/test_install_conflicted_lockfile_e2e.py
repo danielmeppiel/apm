@@ -108,6 +108,8 @@ def test_commands_fail_closed_and_preserve_the_lockfile(
     assert "".join(str(lockfile_path).split()) in "".join(output.split())
     assert "restore a known-good lockfile" in output
     assert "retry your original command" in output
+    if args == ["install"]:
+        assert "Error installing dependencies:" not in output
     assert "git checkout" not in output
     # The original bug: advice the reader cannot act on while the file is unreadable.
     assert "apm outdated" not in output

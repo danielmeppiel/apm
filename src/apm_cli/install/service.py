@@ -305,8 +305,7 @@ class InstallService:
             lockfile = LockFile.read(lockfile_path)
         except LockfileConflictError as e:
             raise FrozenInstallError(
-                f"--frozen cannot read the lockfile. {e}\n"
-                "Commit the resolved lockfile before re-running the frozen install.",
+                f"--frozen cannot read the lockfile. {e}\nFor CI, commit the resolved lockfile.",
             ) from e
         except Exception as e:
             raise FrozenInstallError(

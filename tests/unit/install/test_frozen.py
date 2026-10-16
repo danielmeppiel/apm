@@ -102,7 +102,9 @@ class TestEnforceFrozen:
 
         message = str(exc_info.value)
         assert "restore a known-good lockfile" in message
-        assert "retry your original command" in message
+        assert message.count("retry your original command") == 1
+        assert "For CI, commit the resolved lockfile." in message
+        assert "re-running the frozen install" not in message
         assert "apm outdated" not in frozen_install_tip(exc_info.value)
         assert (tmp_path / "apm.lock.yaml").read_text() == conflicted
 

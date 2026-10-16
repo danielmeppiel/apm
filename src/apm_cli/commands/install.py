@@ -1675,8 +1675,12 @@ def install(  # noqa: PLR0913
         # render with exit code 2 and the standard "Usage: ..." prefix.
         raise
     except Exception as e:
+        from apm_cli.deps.lockfile import LockfileConflictError
+
         (logger or InstallLogger(verbose=verbose, dry_run=dry_run)).exception(
-            f"Error installing dependencies: {e}"
+            str(e)
+            if isinstance(e, LockfileConflictError)
+            else f"Error installing dependencies: {e}"
         )
         command_result = (
             transaction.fail(e)
