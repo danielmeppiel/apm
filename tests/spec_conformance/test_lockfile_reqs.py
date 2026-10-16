@@ -8,6 +8,7 @@ fixture pair under `integrity/`.
 from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
+from unittest.mock import MagicMock
 
 import jsonschema
 import pytest
@@ -53,6 +54,27 @@ def test_lockfile_declares_apiversion():
 def test_lockfile_carries_dependencies_block():
     schema = load_schema("lockfile-v0.1.41.schema.json")
     assert "dependencies" in schema["required"]
+
+
+@pytest.mark.req("req-lk-003")
+@pytest.mark.parametrize("scenario", ["success", "success-named"])
+@pytest.mark.parametrize(
+    "registered_url",
+    ["ssh://git@github.com/fixture/private-mkt.git", "git@github.com:fixture/private-mkt.git"],
+)
+def test_ssh_marketplace_install_records_repository_and_exact_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    registered_url: str,
+    scenario: str,
+) -> None:
+    from tests.integration.test_github_marketplace_ssh_install import (
+        test_github_ssh_marketplace_installs_without_https,
+    )
+
+    test_github_ssh_marketplace_installs_without_https(
+        tmp_path, monkeypatch, registered_url, scenario
+    )
 
 
 @pytest.mark.req("req-lk-003")
@@ -677,6 +699,78 @@ def test_lockfile_reconciles_inactive_target_paths_fail_safe(tmp_path):
     )
 
 
+@pytest.mark.req("req-lk-020")
+def test_lockfile_keeps_shared_root_paths_another_declared_target_governs(tmp_path: Path) -> None:
+    """A shared-root path stays while another declared target governs it (#3179).
+
+    Its recorded target (codex) has left the manifest, and a ``--target
+    claude`` run does not process copilot. Copilot still governs the
+    ``.agents/skills`` partition, so the path is attributable to a declared
+    target and preserved. Once no declared target governs it, it is removed.
+    """
+    from apm_cli.core.deployment_state import (
+        DeploymentLedger,
+        DeploymentLocator,
+        DeploymentRecord,
+        LocatorKind,
+    )
+    from apm_cli.install.manifest_reconcile import (
+        declared_target_profiles,
+        reconcile_deployed_block,
+    )
+    from apm_cli.integration.targets import KNOWN_TARGETS, TargetProfile
+    from apm_cli.utils.content_hash import compute_file_hash
+    from apm_cli.utils.diagnostics import DiagnosticCollector
+
+    shared = ".agents/skills/shared/SKILL.md"
+    deployed = tmp_path / shared
+    deployed.parent.mkdir(parents=True)
+    deployed.write_text("shared", encoding="utf-8")
+    recorded = compute_file_hash(deployed)
+    locator = DeploymentLocator(
+        kind=LocatorKind.PROJECT_RELATIVE,
+        target="codex",
+        value=shared,
+        runtime=None,
+        scope="project",
+    )
+    ledger = DeploymentLedger(
+        records={
+            locator.key: DeploymentRecord(
+                locator=locator, owners=(".",), active_owner=".", content_hash=recorded
+            )
+        }
+    )
+
+    def reconcile(manifest: str) -> list[str]:
+        (tmp_path / "apm.yml").write_text(manifest, encoding="utf-8")
+        active: list[TargetProfile] = [KNOWN_TARGETS["claude"]]
+        files, _hashes = reconcile_deployed_block(
+            project_root=tmp_path,
+            dep_key="<local .apm/>",
+            current_files=[],
+            current_hashes={},
+            prior_files=[shared],
+            prior_hashes={shared: recorded},
+            active_targets=active,
+            declared_targets=declared_target_profiles(tmp_path),
+            diagnostics=DiagnosticCollector(),
+            prior_ledger=ledger,
+        )
+        return files
+
+    assert reconcile("targets:\n  - claude\n  - copilot\n") == [shared]
+    assert deployed.exists()
+    assert reconcile("targets:\n  - claude\n") == []
+    assert not deployed.exists()
+
+    assert_spec_contains(
+        "(b) another declared target",
+        "shared deploy roots\nare partitioned by the filename patterns",
+        "MUST remove a prior path attributable to\nnone of those targets",
+    )
+
+
 class TestFinalLockfileTargetContraction:
     """req-lk-020 coverage for the final-lockfile deployed-file owner.
 
@@ -872,6 +966,139 @@ def test_dropped_target_merge_hook_state_reconciled_fail_safe(tmp_path):
     )
     assert not (codex_dir / "apm-hooks.json").exists(), (
         "ownership record left empty by the removal MUST also be removed"
+    )
+    assert claude_snapshot == (claude_dir / "settings.json").read_text(encoding="utf-8"), (
+        "a target still attributable to the declared set MUST be preserved untouched"
+    )
+    assert (claude_dir / "apm-hooks.json").exists(), "retained target's ownership record survives"
+
+    assert_spec_contains(
+        "MUST apply the same preserve-or-remove decision",
+        "MUST remove only the consumer-owned entries",
+        "It MUST preserve\nevery entry that does not carry the consumer's own ownership",
+        "the merge-based hook configuration document is already absent for a\n"
+        "target while its ownership record remains",
+        "MUST leave that document or record unmodified and\nemit an actionable diagnostic",
+    )
+
+
+class TestFrozenInstallNeverWritesLockfile:
+    """req-lk-006's first clause, at the write chokepoint.
+
+    req-lk-006 is one sentence carrying two obligations: a frozen mode "in
+    which the lockfile is never written or rewritten" AND a failure "on any
+    direct dependency for which the lockfile has no pin".  Only the second
+    had behavioural coverage -- ``lockfile_satisfies_manifest`` -- so a
+    frozen install deployed files and rewrote the lockfile to claim them,
+    which is how a committed lockfile that under-records survives CI
+    (issue #2379).  The existing req-lk-006 test asserts a fixture's
+    ``resolved_hash`` field, not frozen behaviour.
+    """
+
+    @pytest.mark.req("req-lk-006")
+    def test_frozen_install_withholds_the_write_and_fails_instead(self, tmp_path):
+        """A frozen install MUST leave apm.lock.yaml byte-identical, and MUST
+        NOT report success when the lockfile it withheld claims deployed
+        files the committed one does not."""
+        from apm_cli.deps.lockfile import LockedDependency, LockFile, suppress_lockfile_writes
+        from apm_cli.install.errors import FrozenInstallError
+        from apm_cli.install.service import InstallService
+
+        def _lock(deployed):
+            lock = LockFile(lockfile_version="1", apm_version="0.0.0-test")
+            lock.add_dependency(
+                LockedDependency(
+                    repo_url="https://github.com/o/r",
+                    resolved_ref="main",
+                    resolved_commit="a" * 40,
+                    depth=1,
+                    deployed_files=list(deployed),
+                )
+            )
+            return lock
+
+        lockfile_path = tmp_path / "apm.lock.yaml"
+        (tmp_path / "apm.yml").write_text("name: t\nversion: 1.0.0\n")
+        _lock([".claude/skills/recorded/SKILL.md"]).write(lockfile_path)
+        committed_bytes = lockfile_path.read_bytes()
+
+        request = MagicMock()
+        request.apm_package.package_path = tmp_path / "apm.yml"
+
+        # What the install would deploy: the recorded skill plus one the
+        # committed lockfile never claims.
+        produced = _lock([".claude/skills/recorded/SKILL.md", ".claude/skills/unclaimed/SKILL.md"])
+        with suppress_lockfile_writes() as withheld:
+            produced.write(lockfile_path)
+
+        assert lockfile_path.read_bytes() == committed_bytes, "MUST never be rewritten"
+
+        with pytest.raises(FrozenInstallError) as exc:
+            InstallService._enforce_frozen_no_rewrite(request, withheld)
+        assert ".claude/skills/unclaimed/SKILL.md" in " ".join(exc.value.reasons)
+        assert lockfile_path.read_bytes() == committed_bytes
+
+        assert_spec_contains("the lockfile is never written\nor rewritten")
+
+
+@pytest.mark.req("req-lk-021")
+def test_dropped_cursor_target_merge_hook_state_reconciled_fail_safe(tmp_path):
+    """req-lk-021's preserve/remove decision also covers Cursor's flat
+    native hook format, where ownership is attributed inline via
+    ``_apm_source`` on each entry rather than via a separate sidecar
+    file: a dropped Cursor target's consumer-owned entries are removed,
+    an entry without the consumer's own ownership attribution survives
+    even in the dropped target's own file, and a retained target (here
+    Claude's merge-based settings) is preserved untouched."""
+    import json
+
+    from apm_cli.integration.hook_integrator import HookIntegrator
+
+    cursor_dir = tmp_path / ".cursor"
+    cursor_dir.mkdir(parents=True)
+    (cursor_dir / "hooks.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "hooks": {
+                    "preToolUse": [
+                        {
+                            "command": "owned",
+                            "_apm_source": "req-lk-021-fixture",
+                        },
+                        {"command": "user-authored"},
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir(parents=True)
+    (claude_dir / "settings.json").write_text(
+        json.dumps({"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": []}]}}),
+        encoding="utf-8",
+    )
+    (claude_dir / "apm-hooks.json").write_text(
+        json.dumps({"PreToolUse": [{"matcher": "Bash", "_apm_source": "req-lk-021-fixture"}]}),
+        encoding="utf-8",
+    )
+    claude_snapshot = (claude_dir / "settings.json").read_text(encoding="utf-8")
+
+    stats = HookIntegrator().reconcile_dropped_targets(tmp_path, ["cursor"])
+
+    assert stats["errors"] == 0
+    cursor_native = json.loads((cursor_dir / "hooks.json").read_text(encoding="utf-8"))
+    cursor_entries = cursor_native.get("hooks", {}).get("preToolUse", [])
+    assert not any(e.get("command") == "owned" for e in cursor_entries), (
+        "consumer-owned entry for the dropped Cursor target MUST be removed"
+    )
+    assert any(e.get("command") == "user-authored" for e in cursor_entries), (
+        "entry without consumer ownership attribution MUST be preserved"
+    )
+    assert not (cursor_dir / "apm-hooks.json").exists(), (
+        "Cursor has no ownership sidecar to begin with; reconciliation MUST NOT invent one"
     )
     assert claude_snapshot == (claude_dir / "settings.json").read_text(encoding="utf-8"), (
         "a target still attributable to the declared set MUST be preserved untouched"

@@ -657,6 +657,7 @@ install-deployment-require-hashes-enforcement
 install-deployment-resolution-replacement
 install-deployment-resolver-queue-dedup
 install-deployment-skill-subset-tokens
+install-deployment-skills-root-derivation
 install-deployment-source-plan
 install-deployment-target-file-contraction
 install-deployment-uninstall-reachability
@@ -684,6 +685,7 @@ marketplace-integrations-source-admission
 marketplace-integrations-source-parsing
 marketplace-integrations-tag-pattern
 marketplace-integrations-version-precedence
+mutation_writes.claude_mcp_paths
 mutation_writes.copilot_cli_mcp_paths
 mutation_writes.drift_hook_membership
 mutation_writes.hook_cleanup_scope
@@ -718,6 +720,7 @@ registry_delegation.policy_ref_redaction
 registry_delegation.root_cli_output_mode
 registry_delegation.runtime_descriptors
 registry_delegation.target_vocabulary
+registry_delegation.user_invocable_resolution
 transport-platform-artifactory-full-commit-sha
 transport-platform-artifactory-netrc-isolation
 transport-platform-cache-cleanup-outcome

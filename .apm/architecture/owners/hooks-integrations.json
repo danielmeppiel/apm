@@ -45,6 +45,7 @@
         "src/apm_cli/hook_contract.py",
         "src/apm_cli/integration/hook_ir.py",
         "src/apm_cli/integration/hook_native_formats.py",
+        "src/apm_cli/integration/hook_cursor_preflight.py",
         "src/apm_cli/integration/hook_integrator.py",
         "src/apm_cli/integration/hook_ownership.py"
       ],
@@ -91,6 +92,13 @@
       "owner": "adapters/client/intellij.py",
       "selectors": ["src/apm_cli/adapters/client/intellij.py"],
       "guards": ["hooks-integrations-jetbrains-mcp-path"]
+    },
+    {
+      "id": "claude-mcp-config-paths",
+      "decision": "Claude user-scope MCP config path",
+      "owner": "adapters/client/claude.py (ClaudeClientAdapter.resolve_user_claude_json_path)",
+      "selectors": ["src/apm_cli/adapters/client/claude.py"],
+      "guards": ["hooks-integrations-claude-mcp-paths"]
     },
     {
       "id": "copilot-cli-mcp-config-paths",

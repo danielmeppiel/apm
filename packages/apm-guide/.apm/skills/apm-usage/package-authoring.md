@@ -188,6 +188,18 @@ when a flat command entry omits `type`. Explicit handler types are kept.
 For Codex, APM wraps flat command entries in hook groups containing a
 nested `hooks` array in `.codex/hooks.json`.
 
+For Cursor, APM writes native v1 flat command or prompt handlers using only
+verified aliases. Unsupported fields, restrictions and overlapping Claude
+imports fail before writes; diagnostics name unsupported source-level,
+matcher-group and handler fields and distinguish whitespace in literal matcher
+alternatives. Choose one hook route per dependency:
+native `cursor`, or `claude` with Cursor's existing import. APM never changes
+import settings. Reinstall and target retirement preserve unrelated user hooks.
+See the
+[Cursor native hooks guide](../../../../../docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import)
+for supported mappings and limitations. Test execution in each harness;
+configuration compatibility does not guarantee equivalent behavior.
+
 <!-- Keep this table synchronized with docs/src/content/docs/producer/author-primitives/hooks-and-commands.md. -->
 
 ### Session lifecycle event aliases
@@ -198,7 +210,7 @@ nested `hooks` array in `.codex/hooks.json`.
 | `Stop`, `AgentStop`, `agentStop` | `agentStop` | `Stop` |
 | `UserPromptSubmit`, `userPromptSubmit`, `userPromptSubmitted` | `userPromptSubmitted` | `UserPromptSubmit` (native; the other two spellings are not renamed and will not fire) |
 
-Event names absent from this table are preserved unchanged. Only an unmapped
+For Copilot and Claude, event names absent from this table are preserved unchanged. Only an unmapped
 camelCase or PascalCase name that conflicts with the target convention emits
 an install warning. All-lowercase names such as `stop` pass through silently;
 `stop` is not a native Copilot or Claude event and will not fire.
@@ -334,6 +346,28 @@ the package before any primitive is deployed. Critical hidden characters
 decoded from metadata also prevent installation by default; `--force`
 overrides only that critical finding, while warning-level findings do not
 prevent installation.
+
+## Manifest fields: `x-[a-z][a-z0-9-]*` extension keys
+
+Top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions (OpenAPM
+`req-ext-001`, `req-ext-003`). APM keeps them on the parsed manifest and
+records a dependency's extensions on that dependency's `apm.lock.yaml` entry
+(`extensions`). Values are not validated. The lockfile field is omitted when
+the dependency declares none. Writers still preserve other unknown top-level
+keys on rewrite.
+
+Any other unknown top-level key is ignored with one warning that names the
+key. The command does not fail solely because that key is unknown; independent
+policy and security failures still apply. Install dry-runs warn once for the
+source manifest, not again for the prospective edit. Warning paths use forward
+slashes on Windows. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or
+remove it.
+
+```yaml
+name: my-package
+version: 1.0.0
+x-team: platform
+```
 
 ## The 7 primitive types
 
@@ -477,6 +511,46 @@ instructions: |
   - Performance
 ---
 ```
+
+Optional `user-invocable: false` (boolean, default `true`) records that the
+agent is intended to be reachable programmatically only, for example via
+another agent's `handoffs:` or a subagent call. APM only preserves the
+metadata. Exclusion from the user-facing agent picker, and programmatic-only
+reachability, take effect only when the receiving harness supports them.
+APM does not filter the picker itself. `visibility: internal` is an accepted
+alias (the canonical field wins if both are set). Verbatim targets (Copilot,
+Claude, Cursor, OpenCode, Grok Build) carry the field through unchanged.
+Codex and Kiro cannot represent it, so APM emits an install-time warning
+naming the agent instead of silently dropping it -- the APM source stays the
+authority for the preserved metadata.
+
+#### Codex target: native model settings
+
+Codex agents deploy to `.codex/agents/<name>.toml`. APM writes `name`,
+`description`, and the Markdown body as `developer_instructions`.
+String `model` and `model_reasoning_effort` frontmatter values are
+preserved as top-level TOML keys:
+
+```markdown
+---
+name: reviewer
+description: Reviews code
+model: gpt-5.6-sol
+model_reasoning_effort: high
+---
+Review the requested change.
+```
+
+Absent settings stay absent. APM does not translate model names, choose
+defaults, or validate model availability or supported effort values.
+Non-string values are dropped with a warning. Other frontmatter,
+including other native Codex settings and a `codex:` block, is dropped
+with a warning; APM provides no arbitrary or namespaced passthrough.
+Remove unnecessary fields or do not rely on their settings in the
+generated agent. `tools` restrictions still cannot be preserved: the
+agent may inherit all project/session MCP servers. Remove `tools` only
+if unrestricted access is intentional; otherwise do not use the generated
+agent with Codex.
 
 #### OpenCode target: frontmatter constraints
 
@@ -840,6 +914,33 @@ Schema rules:
   or `per_package` (each package versions independently, gate only
   checks that `version:` is present). Omit entirely to skip the gate.
 - Unknown keys raise a schema error -- do not invent fields.
+
+### Additional marketplace outputs: Codex and Copilot CLI
+
+Beyond the default `.claude-plugin/marketplace.json`, `marketplace.outputs`
+(map form, e.g. `outputs: {claude: {}, copilot: {}}`, optionally with a
+per-format `path:`) can also select:
+
+- `codex` -> `.agents/plugins/marketplace.json` (default path). Every
+  package needs a `category`. Sources compile to the object shape
+  `{source, url/path, ref?, sha?}`.
+- `copilot` -> `.github/plugin/marketplace.json`. No `category`
+  requirement. Local `plugins[].source` strings preserve real paths,
+  e.g. `"./plugins/demo"`. Remote sources use GitHub
+  `{source: "github", repo: "owner/repo"}` or Git URL
+  `{source: "url", url: "..."}` objects with optional `path`, `ref`,
+  and full 40-character commit `sha`. Annotated tags use the peeled
+  commit; raw commit pins omit `ref`. Invalid pins or unrepresentable
+  sources fail explicitly. Marketplace description/version are nested
+  under `metadata`. Existing branch restrictions stay unchanged.
+  Path precedence is CLI `--marketplace-path copilot=PATH`, then
+  `marketplace.copilot.output`, then `marketplace.outputs.copilot.path`,
+  then the default. `APM_MARKETPLACE_COPILOT_PATH` is reserved and
+  validated but not consumed; do not use it as an override.
+
+Each enabled output needs a matching `.gitignore` unignore line, e.g.
+`!.github/plugin/marketplace.json` alongside
+`!.claude-plugin/marketplace.json` and `!.agents/plugins/marketplace.json`.
 
 ### Cross-repo plugin sources on enterprise marketplaces
 
