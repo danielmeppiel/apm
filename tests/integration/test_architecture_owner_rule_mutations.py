@@ -1142,6 +1142,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Downloader skips the dangling-cone-symlink repair owner.",
     ),
     MutationCase(
+        guard_id="transport-platform-tls-trust-injection",
+        rule_id="transport-platform-tls-trust-injection",
+        path="src/apm_cli/core/tls_trust.py",
+        old="if has_explicit_ca_override(environ):",
+        new="if False:",
+        intent="Additive trust bypasses the explicit replacement authority.",
+    ),
+    MutationCase(
         guard_id="transport-platform-unix-install-ownership",
         rule_id="transport-platform-unix-install-ownership",
         path="install.sh",
