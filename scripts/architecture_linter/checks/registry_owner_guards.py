@@ -18,6 +18,8 @@ registry-delegation-output-diagnostics  AC12 doctor-status STATUS_SYMBOLS
                                         owner check
 registry-delegation-compiled-output-    AC2 "Compiled output writes must use
 writes                                  CompiledOutputWriter"
+registry-delegation-build-id-verification Build IDs are verified in their
+                                        canonical owner
 registry-delegation-bootstrap-project-  AC18 ``lint-bootstrap-project-name``
 name                                    (ported semantically)
 ======================================  ==================================
@@ -117,6 +119,8 @@ _COMPILATION_PREFIX = "src/apm_cli/compilation/"
 
 
 _COMPILED_OUTPUT_OWNER = "src/apm_cli/compilation/output_writer.py"
+_BUILD_ID_OWNER = "src/apm_cli/compilation/build_id.py"
+_BUILD_ID_CONSUMER = "src/apm_cli/compilation/agents_compiler.py"
 
 
 _COMPILED_WRITE_PATTERN = r'write_text_lf|atomic_write_text|\.write_text\(|open\([^)]*["\']w'
@@ -495,6 +499,74 @@ def _check_compiled_output_writes(provider: FactsProvider) -> Iterable[Violation
     )
 
 
+def _check_build_id_verification(provider: FactsProvider) -> Iterable[Violation]:
+    """Build ID verification and stabilization must use compilation/build_id.py."""
+    rule_id = "registry_delegation.build_id_verification"
+    facts_by_path, failures = _read_required(
+        provider, rule_id, (_BUILD_ID_OWNER, _BUILD_ID_CONSUMER)
+    )
+    if failures:
+        return failures
+
+    owner = facts_by_path[_BUILD_ID_OWNER]
+    consumer = facts_by_path[_BUILD_ID_CONSUMER]
+    findings: list[Violation] = []
+    if not _has_regex(owner, re.compile(r"^def has_valid_build_id\(")):
+        findings.append(
+            violation(rule_id, _BUILD_ID_OWNER, "build_id.py must own has_valid_build_id")
+        )
+    if not _has_regex(owner, re.compile(r"^def stabilize_build_id\(")):
+        findings.append(
+            violation(rule_id, _BUILD_ID_OWNER, "build_id.py must own stabilize_build_id")
+        )
+    imported_helpers = {
+        name
+        for imported in consumer.imports
+        if imported.module == "build_id" and imported.level == 1
+        for name in imported.names
+    }
+    if not {"has_valid_build_id", "stabilize_build_id"} <= imported_helpers:
+        findings.append(
+            violation(
+                rule_id,
+                _BUILD_ID_CONSUMER,
+                "agents_compiler.py must import Build ID helpers from build_id.py",
+            )
+        )
+    if not _has_regex(consumer, re.compile(r"\bhas_valid_build_id\(existing\)")):
+        findings.append(
+            violation(
+                rule_id,
+                _BUILD_ID_CONSUMER,
+                "root cleanup must verify content with has_valid_build_id",
+            )
+        )
+    if not _has_regex(consumer, re.compile(r"return stabilize_build_id\(content\)")):
+        findings.append(
+            violation(
+                rule_id,
+                _BUILD_ID_CONSUMER,
+                "root content finalization must use stabilize_build_id",
+            )
+        )
+    if any(
+        _has_regex(consumer, pattern)
+        for pattern in (
+            re.compile(r"^def _has_valid_build_id\("),
+            re.compile(r"_BUILD_ID_LINE_RE"),
+            re.compile(r"\bhashlib\.sha256\("),
+        )
+    ):
+        findings.append(
+            violation(
+                rule_id,
+                _BUILD_ID_CONSUMER,
+                "agents_compiler.py must not duplicate Build ID parsing or hashing",
+            )
+        )
+    return findings
+
+
 def _check_bootstrap_project_name(provider: FactsProvider) -> Iterable[Violation]:
     """Manifest bootstrap names must route through ``core/project_name.py``.
 
@@ -749,6 +821,13 @@ RULES: tuple[Rule, ...] = (
         guard_ids=("registry-delegation-compiled-output-writes",),
         description="Compiled-output writes must route through CompiledOutputWriter.",
         check=_check_compiled_output_writes,
+    ),
+    Rule(
+        id="registry_delegation.build_id_verification",
+        group=GROUP,
+        guard_ids=("registry-delegation-build-id-verification",),
+        description="Build ID creation and verification must route through compilation/build_id.py.",
+        check=_check_build_id_verification,
     ),
     Rule(
         id="registry_delegation.bootstrap_project_name",

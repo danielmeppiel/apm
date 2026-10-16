@@ -2,6 +2,13 @@
   "version": 1,
   "owners": [
     {
+      "id": "https-trust-policy",
+      "decision": "Package HTTPS trust precedence, additive CA validation and publication",
+      "owner": "core/tls_trust.py (configure_tls_trust, explicit_ca_bundle_path)",
+      "selectors": ["src/apm_cli/core/tls_trust.py", "src/apm_cli/core/script_executors.py"],
+      "guards": ["transport-platform-tls-trust-injection"]
+    },
+    {
       "id": "git-transport-selection",
       "decision": "Initial Git scheme, ordered protocol attempts, and GitLab sparse-fetch plan consumption",
       "owner": "deps/transport_selection.py (initial_transport_scheme, TransportSelector); deps/download_strategies.py (DownloadDelegate.download_gitlab_file)",
