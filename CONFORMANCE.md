@@ -48,7 +48,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-ext-003](docs/src/content/docs/specs/openapm-v0.1.md#req-ext-003) | MUST | 4.6.2 | consumer | active | 9 | - |
 | [req-lk-001](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-001) | MUST | 5.1 | consumer | active | 1 | - |
 | [req-lk-002](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-002) | MUST | 5.4 | consumer | active | 1 | - |
-| [req-lk-003](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-003) | MUST | 5.2 | consumer | active | 5 | - |
+| [req-lk-003](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-003) | MUST | 5.2 | consumer | active | 9 | - |
 | [req-lk-004](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-004) | MUST | 5.4 | consumer | active | 1 | - |
 | [req-lk-005](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-005) | MUST | 5.5 | consumer | active | 2 | - |
 | [req-lk-006](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-006) | MUST | 5.5 | consumer | active | 6 | - |

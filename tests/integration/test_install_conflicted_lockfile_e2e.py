@@ -105,7 +105,7 @@ def test_commands_fail_closed_and_preserve_the_lockfile(
     assert result.exit_code == 1, result.output
     output = _combined_output(result)
     assert "conflict markers" in output
-    assert "apm.lock.yaml" in output
+    assert "".join(str(lockfile_path).split()) in "".join(output.split())
     assert "restore a known-good lockfile" in output
     assert "retry your original command" in output
     assert "git checkout" not in output
