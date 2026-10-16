@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)
 - `apm audit` no longer reports a sibling root `skills/` folder alongside a project's `.apm/` content as `unintegrated` after a clean install; replay now uses install's project-local package interpretation. - by @adityaanikam (#3209, closes #3151)
 - `apm.yml` keys matching `x-[a-z][a-z0-9-]*` are preserved in the parsed manifest and dependency lock entry; other unknown keys warn without failing, including a single warning during install dry-runs. Proposed `req-ext-003` in `openapm-v0.1.md` records this contract with a distinct `.46` lockfile schema; existing schema bytes remain unchanged. - by @sergio-sisternes-epam (#3222)
