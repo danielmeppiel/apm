@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - import for type hints only
+    from apm_cli.core.command_logger import InstallLogger
     from apm_cli.policy.models import CIAuditResult
 
 
@@ -117,6 +118,15 @@ def install_failure_message(error: Exception) -> str:
         if isinstance(error, LockfileConflictError)
         else f"Error installing dependencies: {error}"
     )
+
+
+def log_frozen_install_error(error: FrozenInstallError, logger: InstallLogger) -> None:
+    """Render the same frozen diagnostic and optional tip in both CLI handlers."""
+    logger.error(str(error))
+    for reason in error.reasons:
+        logger.error_detail(reason)
+    if tip := frozen_install_tip(error):
+        logger.info(tip)
 
 
 def frozen_install_tip(error: FrozenInstallError) -> str:

@@ -31,9 +31,7 @@ from apm_cli.install.errors import (
     PolicyViolationError,
     RequiredIntegrationError,
     install_failure_message,
-)
-from apm_cli.install.errors import (
-    frozen_install_tip as _frozen_install_tip,
+    log_frozen_install_error,
 )
 from apm_cli.install.gitlab_resolver import _try_resolve_gitlab_direct_shorthand
 from apm_cli.install.helpers.ref_reuse import is_git_semver_resolution_eligible
@@ -1624,7 +1622,7 @@ def install(  # noqa: PLR0913
                     symbol="info",
                 )
 
-    except (AgentPluginError, DirectDependencyError) as e:
+    except AgentPluginError as e:
         logger.error(str(e))
         command_result = (
             transaction.fail(e)
@@ -1654,11 +1652,14 @@ def install(  # noqa: PLR0913
             else InstallResult(disposition=InstallDisposition.FAILED, exit_code=1, error=e)
         )
     except FrozenInstallError as e:
+        log_frozen_install_error(e, logger)
+        command_result = (
+            transaction.fail(e)
+            if transaction is not None
+            else InstallResult(disposition=InstallDisposition.FAILED, exit_code=1, error=e)
+        )
+    except DirectDependencyError as e:
         logger.error(str(e))
-        for reason in e.reasons:
-            logger.error_detail(reason)
-        if tip := _frozen_install_tip(e):
-            logger.info(tip)
         command_result = (
             transaction.fail(e)
             if transaction is not None
@@ -1937,11 +1938,7 @@ def _install_apm_packages(ctx, outcome):
             logger.info("Tip: run 'apm doctor' to diagnose auth and connectivity.")
             raise InstallFailureAlreadyRendered(str(e)) from e
         except FrozenInstallError as e:
-            logger.error(str(e))
-            for reason in e.reasons:
-                logger.error_detail(reason)
-            if tip := _frozen_install_tip(e):
-                logger.info(tip)
+            log_frozen_install_error(e, logger)
             raise InstallFailureAlreadyRendered(str(e)) from e
         except InstallFailureAlreadyRendered:
             raise
