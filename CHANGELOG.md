@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hook ownership sidecars ignore JSON formatting during drift checks while preserving meaningful and invalid-content findings. -- by @Pybsama (#3155)
 - `apm install` now reconciles renamed or deleted project-local skills and removed targets using recorded concrete ownership, preserving ambiguous legacy output, shared claims, and user edits -- by @tillig (#3190)
 - `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)
