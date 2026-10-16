@@ -110,7 +110,10 @@ APM uses the selected transport for clone/fetch and semver tag discovery. When
 For in-repository plugins from GitLab and generic git marketplaces, an SSH
 registration stays SSH when APM generates the concrete `git:` and `path:`
 dependency. Existing SSH keys keep working instead of the dependency being
-rewritten to HTTPS.
+rewritten to HTTPS. A `github.com` marketplace registered over SSH is
+pre-flighted with `git ls-remote` over SSH as well, so a private catalog needs
+only an SSH key, not a GitHub token. Named refs on an SSH dependency also
+resolve through Git rather than the HTTPS commits API.
 
 Generic marketplace HTTPS sources may use the native Git credential helper from
 your Git configuration. Generic HTTP fetches suppress credential channels, HTTPS-

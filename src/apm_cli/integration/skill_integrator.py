@@ -666,14 +666,14 @@ class SkillIntegrator(BaseIntegrator):
         return name_filter is not None and name_filter.isdisjoint(available_names)
 
     @staticmethod
-    def _warn_no_skill_filter_match(
+    def _error_no_skill_filter_match(
         available_names: frozenset[str],
         requested_names: tuple[str, ...],
         parent_name: str,
         diagnostics=None,
         logger=None,
     ) -> None:
-        """Report a post-validation skill selection miss through the output cascade."""
+        """Fail an unsatisfied persisted required selection through the output cascade."""
         available_display = ", ".join(sorted(available_names)) if available_names else "(none)"
         requested_display = ", ".join(sorted(set(requested_names)))
         details = (
@@ -683,14 +683,14 @@ class SkillIntegrator(BaseIntegrator):
             "then run 'apm install'."
         )
         if diagnostics is not None:
-            diagnostics.warn(details, package=parent_name)
+            diagnostics.error(details, package=parent_name)
         elif logger:
-            logger.warning(f"Package '{parent_name}': {details}")
+            logger.error(f"Package '{parent_name}': {details}")
         else:
             try:
-                from apm_cli.utils.console import _rich_warning
+                from apm_cli.utils.console import _rich_error
 
-                _rich_warning(f"Package '{parent_name}': {details}", symbol="warning")
+                _rich_error(f"Package '{parent_name}': {details}", symbol="error")
             except ImportError:
                 pass
 
@@ -924,7 +924,12 @@ class SkillIntegrator(BaseIntegrator):
         self.init_link_resolver(package_info, project_root)
         package_path = package_info.install_path
         sub_skills_dir = package_path / ".apm" / "skills"
-        if not sub_skills_dir.is_dir():
+        name_filter = (
+            source_plan.selected_skill_names
+            if source_plan is not None
+            else skill_subset_filter_tokens(skill_subset)
+        )
+        if not sub_skills_dir.is_dir() and name_filter is None:
             return 0, []
 
         if targets is None:
@@ -938,11 +943,6 @@ class SkillIntegrator(BaseIntegrator):
         _dep_ref = getattr(package_info, "dependency_ref", None)
         parent_name = _dep_ref.get_unique_key() if _dep_ref is not None else package_path.name
         owned_by, _ = self._ownership_maps(lockfile_root or project_root)
-        name_filter = (
-            source_plan.selected_skill_names
-            if source_plan is not None
-            else skill_subset_filter_tokens(skill_subset)
-        )
         count = 0
         all_deployed: list[Path] = []
         seen_skill_dirs: set[Path] = set()
@@ -991,7 +991,7 @@ class SkillIntegrator(BaseIntegrator):
             all_deployed.extend(deployed)
 
         if self._skill_filter_misses_available(name_filter, available_names):
-            self._warn_no_skill_filter_match(
+            self._error_no_skill_filter_match(
                 available_names,
                 tuple(skill_subset or ()),
                 parent_name,
@@ -1369,7 +1369,7 @@ class SkillIntegrator(BaseIntegrator):
             all_deployed.extend(deployed)
 
         if self._skill_filter_misses_available(_name_filter, available_names):
-            self._warn_no_skill_filter_match(
+            self._error_no_skill_filter_match(
                 available_names,
                 tuple(skill_subset or ()),
                 parent_name,
@@ -1560,7 +1560,7 @@ class SkillIntegrator(BaseIntegrator):
         root_skills_dir = package_path / "skills"
         _source_paths = self.skill_source_paths(package_path, package_info.package_type)
         _is_plugin = package_info.package_type == _PackageType.MARKETPLACE_PLUGIN
-        if _is_plugin and not _source_paths:
+        if _is_plugin and not _source_paths and not skill_subset_filter_tokens(skill_subset):
             self._note_plugin_declaration_deploys_no_skills(
                 package_path,
                 package_path.name,
@@ -1582,7 +1582,7 @@ class SkillIntegrator(BaseIntegrator):
         source_dir_is_root = bool(_source_paths) and all(
             source.parent == root_skills_dir for source in _source_paths.values()
         )
-        if _source_paths and (_is_plugin or source_dir_is_root):
+        if _is_plugin or (_source_paths and source_dir_is_root):
             return self._merge_bin_paths(
                 self._integrate_skill_bundle(
                     package_info,

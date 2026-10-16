@@ -1500,12 +1500,13 @@ def git_resolve_commit(
     ref: str,
     *,
     env: dict[str, object] | None = None,
+    bare: bool = False,
 ) -> str:
-    """Resolve a ref to a commit in an explicitly located worktree."""
+    """Resolve a ref in a worktree or an explicitly selected bare repository."""
     result = subprocess.run(
         [
             get_git_executable(),
-            "-C",
+            "--git-dir" if bare else "-C",
             str(worktree),
             "rev-parse",
             "--verify",
