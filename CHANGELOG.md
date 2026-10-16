@@ -7,9 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- `apm install` now writes flat hook command entries that omit `type` to `.claude/settings.json` as schema-valid `"type": "command"` handlers, including when merged next to a Claude-shaped hook file. Explicit handler types and other targets are unchanged; reinstall to refresh existing entries. (by @Parth-Vasave, closes #3130, #3153)
 ### Added
 
 - Agent primitives (`*.agent.md`) accept an optional `user-invocable: false` frontmatter field (default `true`; `visibility: internal` is an accepted alias). APM preserves the metadata so the agent is intended to be reachable programmatically only (for example via `handoffs:` or subagent calls); picker exclusion and that reachability take effect only when the receiving harness supports them. Verbatim-copy targets preserve the field; Codex and Kiro warn instead of silently dropping it. -- by @richard-fowles-epam (#3132)
@@ -23,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm install` now writes untyped flat command hooks as Claude `"type": "command"` handlers, including alongside Claude-shaped hook files. Explicit types and other targets are unchanged; reinstall to refresh existing entries. -- by @Parth-Vasave (#3153, closes #3130)
 - `apm install` now reconciles renamed or deleted project-local skills and removed targets using recorded concrete ownership, preserving ambiguous legacy output, shared claims, and user edits -- by @tillig (#3190)
 - `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)

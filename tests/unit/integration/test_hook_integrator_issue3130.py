@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -139,6 +140,16 @@ def test_flat_untyped_entry_merged_next_to_claude_shaped_file(tmp_path: Path) ->
             id="untyped-bash-command",
         ),
         pytest.param(
+            {"powershell": "Write-Output windows"},
+            {"type": "command", "command": "Write-Output windows"},
+            id="untyped-powershell-command",
+        ),
+        pytest.param(
+            {"windows": "echo windows"},
+            {"type": "command", "command": "echo windows"},
+            id="untyped-windows-command",
+        ),
+        pytest.param(
             {"type": "command", "command": "echo typed"},
             {"type": "command", "command": "echo typed"},
             id="explicit-command",
@@ -147,6 +158,11 @@ def test_flat_untyped_entry_merged_next_to_claude_shaped_file(tmp_path: Path) ->
             {"type": "prompt", "prompt": "Review the change"},
             {"type": "prompt", "prompt": "Review the change"},
             id="explicit-prompt",
+        ),
+        pytest.param(
+            {"type": "prompt", "command": "echo explicit", "prompt": "Review"},
+            {"type": "prompt", "command": "echo explicit", "prompt": "Review"},
+            id="explicit-prompt-with-command",
         ),
         pytest.param(
             {"foo": 1},
@@ -193,11 +209,15 @@ def test_claude_handler_default_does_not_reach_other_targets(
     (tmp_path / config_dir).mkdir()
     package_info = _write_package(tmp_path, {"flat.json": _FLAT_UNTYPED_HOOK})
 
-    _integrate(tmp_path, package_info, target)
+    with patch(
+        "apm_cli.integration.hook_native_formats._with_claude_default_handler_type",
+        side_effect=AssertionError("Claude handler typing reached another target"),
+    ) as claude_default:
+        _integrate(tmp_path, package_info, target)
+    claude_default.assert_not_called()
 
     config = _read_json(tmp_path / config_dir / config_file)
     rendered = json.dumps(config["hooks"])
-    assert '"type"' not in rendered
     assert "gate.mjs" in rendered
 
 
@@ -227,6 +247,8 @@ def test_reinstall_replaces_untyped_group_written_before_fix(tmp_path: Path) -> 
 
     settings = _read_json(claude_dir / "settings.json")
     assert settings["hooks"] == {"PreToolUse": [_EXPECTED_FLAT_GROUP]}
+    sidecar = _read_json(claude_dir / "apm-hooks.json")
+    assert sidecar == {"PreToolUse": [{**_EXPECTED_FLAT_GROUP, "_apm_source": _PACKAGE_NAME}]}
 
 
 def test_stale_root_source_untyped_group_is_still_healed(tmp_path: Path) -> None:
@@ -258,4 +280,8 @@ def test_stale_root_source_untyped_group_is_still_healed(tmp_path: Path) -> None
     settings = _read_json(claude_dir / "settings.json")
     assert settings["hooks"] == {
         "PreToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "echo root"}]}]
+    }
+    sidecar = _read_json(claude_dir / "apm-hooks.json")
+    assert sidecar == {
+        "PreToolUse": [{**settings["hooks"]["PreToolUse"][0], "_apm_source": "_local/consumer"}]
     }
