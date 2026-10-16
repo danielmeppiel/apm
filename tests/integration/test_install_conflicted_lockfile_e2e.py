@@ -110,6 +110,8 @@ def test_commands_fail_closed_and_preserve_the_lockfile(
     assert "retry your original command" in output
     if args == ["install"]:
         assert "Error installing dependencies:" not in output
+    if "--frozen" in args:
+        assert "rerun 'apm install'" not in output
     assert "git checkout" not in output
     # The original bug: advice the reader cannot act on while the file is unreadable.
     assert "apm outdated" not in output

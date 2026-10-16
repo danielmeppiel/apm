@@ -132,14 +132,11 @@ def log_frozen_install_error(error: FrozenInstallError, logger: InstallLogger) -
 def frozen_install_tip(error: FrozenInstallError) -> str:
     """Return recovery guidance tailored to package or MCP lock drift.
 
-    Returns an empty string when the error carries no drift reasons. A missing
-    or unreadable lockfile message already names its own next action, and the
-    drift tips below point at commands that cannot read such a file.
+    An explicit empty tip suppresses drift advice when the error already
+    names its own action, including missing and unreadable lockfiles.
     """
     if error.tip is not None:
         return error.tip  # the no-rewrite check carries its own remedy
-    if not error.reasons:
-        return ""
     has_mcp_drift = any("MCP server" in reason for reason in error.reasons)
     has_package_drift = any("MCP server" not in reason for reason in error.reasons)
     if has_mcp_drift and has_package_drift:

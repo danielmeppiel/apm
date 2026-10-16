@@ -28,16 +28,27 @@ def test_install_conflict_message_remains_canonical(tmp_path):
     assert install_failure_message(error) == str(error)
 
 
-@pytest.mark.parametrize("tip", [None, "", "Keep the explicit remedy."])
-def test_frozen_renderer_only_logs_nonempty_tips(tip):
+@pytest.mark.parametrize(
+    ("tip", "expected_tip"),
+    [
+        (
+            None,
+            "Tip: rerun 'apm install' without --frozen to create or repair package lock state, "
+            "retaining the original options, including --root DIR or --global if specified.",
+        ),
+        ("", None),
+        ("Keep the explicit remedy.", "Keep the explicit remedy."),
+    ],
+)
+def test_frozen_renderer_honors_tip_overrides(tip, expected_tip):
     logger = Mock(spec=InstallLogger)
     error = FrozenInstallError("Original failure", tip=tip)
 
     log_frozen_install_error(error, logger)
 
     expected = [call.error("Original failure")]
-    if tip:
-        expected.append(call.info(tip))
+    if expected_tip:
+        expected.append(call.info(expected_tip))
     assert logger.mock_calls == expected
 
 

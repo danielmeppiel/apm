@@ -299,22 +299,24 @@ class InstallService:
         )
 
         if not lockfile_path.exists():
-            raise FrozenInstallError(missing_message)
+            raise FrozenInstallError(missing_message, tip="")
 
         try:
             lockfile = LockFile.read(lockfile_path)
         except LockfileConflictError as e:
             raise FrozenInstallError(
                 f"--frozen cannot read the lockfile. {e}\nFor CI, commit the resolved lockfile.",
+                tip="",
             ) from e
         except Exception as e:
             raise FrozenInstallError(
                 f"--frozen could not read apm.lock.yaml: {e}. Fix the file, or restore "
                 "a known-good lockfile from version control, before retrying.",
+                tip="",
             ) from e
 
         if lockfile is None:
-            raise FrozenInstallError(missing_message)
+            raise FrozenInstallError(missing_message, tip="")
 
         manifest_deps = list(request.apm_package.get_apm_dependencies())
         manifest_deps.extend(request.apm_package.get_dev_apm_dependencies())
