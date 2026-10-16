@@ -343,6 +343,28 @@ decoded from metadata also prevent installation by default; `--force`
 overrides only that critical finding, while warning-level findings do not
 prevent installation.
 
+## Manifest fields: `x-[a-z][a-z0-9-]*` extension keys
+
+Top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions (OpenAPM
+`req-ext-001`, `req-ext-003`). APM keeps them on the parsed manifest and
+records a dependency's extensions on that dependency's `apm.lock.yaml` entry
+(`extensions`). Values are not validated. The lockfile field is omitted when
+the dependency declares none. Writers still preserve other unknown top-level
+keys on rewrite.
+
+Any other unknown top-level key is ignored with one warning that names the
+key. The command does not fail solely because that key is unknown; independent
+policy and security failures still apply. Install dry-runs warn once for the
+source manifest, not again for the prospective edit. Warning paths use forward
+slashes on Windows. Rename the key to match `x-[a-z][a-z0-9-]*` to keep it, or
+remove it.
+
+```yaml
+name: my-package
+version: 1.0.0
+x-team: platform
+```
+
 ## The 7 primitive types
 
 ### 1. Instruction (`*.instructions.md`)
@@ -485,6 +507,18 @@ instructions: |
   - Performance
 ---
 ```
+
+Optional `user-invocable: false` (boolean, default `true`) records that the
+agent is intended to be reachable programmatically only, for example via
+another agent's `handoffs:` or a subagent call. APM only preserves the
+metadata. Exclusion from the user-facing agent picker, and programmatic-only
+reachability, take effect only when the receiving harness supports them.
+APM does not filter the picker itself. `visibility: internal` is an accepted
+alias (the canonical field wins if both are set). Verbatim targets (Copilot,
+Claude, Cursor, OpenCode, Grok Build) carry the field through unchanged.
+Codex and Kiro cannot represent it, so APM emits an install-time warning
+naming the agent instead of silently dropping it -- the APM source stays the
+authority for the preserved metadata.
 
 #### Codex target: native model settings
 
