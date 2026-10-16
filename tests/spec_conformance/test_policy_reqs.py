@@ -563,6 +563,84 @@ def test_project_self_replay_preserves_governed_drift(
 
 
 @pytest.mark.req("req-pl-014")
+@pytest.mark.parametrize("fail_on_drift", [False, True])
+def test_hook_sidecar_comparison_preserves_governed_drift_exit(
+    audit_project: Path, monkeypatch: pytest.MonkeyPatch, fail_on_drift: bool
+) -> None:
+    """Sidecar normalization must preserve req-pl-014's governed drift exit."""
+    import json
+    from types import SimpleNamespace
+
+    from click.testing import CliRunner
+
+    from apm_cli.cli import cli
+    from apm_cli.policy import discovery
+    from apm_cli.policy.parser import load_policy
+    from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
+
+    audit_contract._write(
+        audit_project,
+        ".apm/instructions/rules.instructions.md",
+        '---\napplyTo: "**"\n---\nBe brief.\n',
+    )
+    user_hook = {"hooks": [{"type": "command", "command": "echo user"}]}
+    audit_contract._write(
+        audit_project,
+        ".claude/settings.json",
+        json.dumps({"hooks": {"SessionStart": [user_hook]}}),
+    )
+    audit_contract._write(
+        audit_project,
+        ".apm/hooks/events.json",
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo tool"}]}
+                    ],
+                    "SessionStart": [{"hooks": [{"type": "command", "command": "echo start"}]}],
+                }
+            }
+        ),
+    )
+    runner = CliRunner()
+    install = runner.invoke(cli, ["install", "--no-policy", "--parallel-downloads", "0"])
+    assert install.exit_code == 0, install.output
+    sidecar = audit_project / ".claude/apm-hooks.json"
+    entries = json.loads(sidecar.read_text(encoding="utf-8"))
+    reordered = {event: entries[event] for event in ("SessionStart", "PreToolUse")}
+    sidecar.write_text(json.dumps(reordered, indent=4), encoding="utf-8")
+
+    policy_path = audit_project.parent / "governed-sidecar.yml"
+    policy_path.write_text(
+        "name: sidecar-drift\nsecurity:\n  audit:\n"
+        f"    fail_on_drift: {str(fail_on_drift).lower()}\n",
+        encoding="ascii",
+    )
+    policy, _ = load_policy(policy_path)
+    monkeypatch.delenv("APM_POLICY_DISABLE", raising=False)
+    monkeypatch.setattr(
+        discovery, "discover_policy_with_chain", lambda project_root: SimpleNamespace(policy=policy)
+    )
+    before = ArtifactSnapshot.capture(audit_project)
+    clean = runner.invoke(cli, ["audit"])
+    assert clean.exit_code == 0, clean.output
+    assert "No drift detected" in clean.output
+    assert_unchanged(before, ArtifactSnapshot.capture(audit_project))
+
+    reordered["PreToolUse"][0]["hooks"][0]["command"] = "echo changed"
+    sidecar.write_text(json.dumps(reordered), encoding="utf-8")
+    before = ArtifactSnapshot.capture(audit_project)
+    drifted = runner.invoke(cli, ["audit"])
+    assert drifted.exit_code == int(fail_on_drift), drifted.output
+    assert "modified" in drifted.output
+    assert ".claude/apm-hooks.json" in drifted.output
+    assert_unchanged(before, ArtifactSnapshot.capture(audit_project))
+    settings = json.loads((audit_project / ".claude/settings.json").read_text(encoding="utf-8"))
+    assert user_hook in settings["hooks"]["SessionStart"]
+
+
+@pytest.mark.req("req-pl-014")
 def test_policy_fail_on_drift_parses_and_is_specified():
     """req-pl-014: security.audit.fail_on_drift non-zero audit exit.
 
