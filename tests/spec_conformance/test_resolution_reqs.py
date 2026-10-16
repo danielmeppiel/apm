@@ -20,7 +20,11 @@ from pathlib import Path
 import pytest
 
 from apm_cli.cache.url_normalize import normalize_repo_url
-from apm_cli.deps.git_remote_ops import RemoteRefParseError, validate_ls_remote_tag_output
+from apm_cli.deps.git_remote_ops import (
+    RemoteRefParseError,
+    parse_ls_remote_output,
+    validate_ls_remote_tag_output,
+)
 from apm_cli.deps.plugin_parser import _map_plugin_artifacts
 from apm_cli.deps.revision_pins import (
     RevisionPinResolutionError,
@@ -118,6 +122,33 @@ def test_resolver_emits_lockfile_after_successful_resolution():
         "MUST emit",
         "apm.lock.yaml",
     )
+
+
+@pytest.mark.req("req-rs-002")
+@pytest.mark.req("req-rs-017")
+@pytest.mark.parametrize("peeled_first", [False, True])
+def test_peeled_tag_identity_survives_shared_parser(peeled_first: bool) -> None:
+    """Both record orders preserve the peeled commit and annotated-only selection."""
+    tag_lines = [
+        f"{'a' * 40}\trefs/tags/v1.0.0",
+        f"{'b' * 40}\trefs/tags/v1.0.0^{{}}",
+    ]
+    if peeled_first:
+        tag_lines.reverse()
+    output = "\n".join(
+        [*tag_lines, f"{'c' * 40}\trefs/tags/v2.0.0", f"{'d' * 40}\trefs/heads/v3.0.0"]
+    )
+    refs = parse_ls_remote_output(output)
+
+    candidate = find_latest_annotated_tag(refs, package_name="tagged-package")
+
+    assert candidate.tag == "v1.0.0"
+    assert candidate.commit_sha == "b" * 40
+    assert {ref.name: ref.annotated for ref in refs} == {
+        "v1.0.0": True,
+        "v2.0.0": False,
+        "v3.0.0": False,
+    }
 
 
 @pytest.mark.req("req-rs-003")
