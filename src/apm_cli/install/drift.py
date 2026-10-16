@@ -555,6 +555,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     """
     from apm_cli.deps.lockfile import _SELF_KEY, LockFile
     from apm_cli.install.audit_target_roots import replay_target
+    from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
     from apm_cli.integration.targets import resolve_targets
     from apm_cli.utils.diagnostics import DiagnosticCollector
@@ -672,11 +673,12 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             apm_modules_dir,
                         )
 
-                package_info = _build_package_info(lock_dep, install_path)
                 if lock_dep.local_path == _SELF_KEY:
+                    package_info = build_project_local_package_info(install_path)
                     package_info.root_local_project_root = project_root
                     package_info.deployment_package_root = scratch_root
                 else:
+                    package_info = _build_package_info(lock_dep, install_path)
                     package_info.deployment_package_root = (
                         lock_dep.to_dependency_ref().get_install_path(scratch_root / "apm_modules")
                     )
@@ -700,7 +702,11 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     package_name=dep_key,
                     logger=None,
                     scope=None,
-                    skill_subset=tuple(package_info.dependency_ref.skill_subset or ()) or None,
+                    skill_subset=(
+                        tuple(package_info.dependency_ref.skill_subset or ()) or None
+                        if package_info.dependency_ref
+                        else None
+                    ),
                     ctx=None,
                     scratch_root=scratch_root,
                     # Honor per-dependency 'targets:' narrowing from apm.yml so the

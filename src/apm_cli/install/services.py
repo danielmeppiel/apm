@@ -28,6 +28,7 @@ from apm_cli.agent_plugins.errors import enforce_agent_plugin_deployment_boundar
 from .deployed_paths import deployed_path_entry as _deployed_path_entry
 from .deployed_paths import format_target_collapse as _format_target_collapse
 from .deployed_paths import skill_bundle_file_entries as _skill_bundle_file_entries
+from .deployed_paths import skill_summary_paths as _skill_summary_paths
 from .exec_gate import check_executable_approval
 from .exec_gate import plugin_bin_deployable as _plugin_bin_deployable
 from .exec_gate import resolve_bin_skip as _resolve_bin_skip
@@ -37,6 +38,7 @@ from .local_bundle_paths import bundle_pack_files as _bundle_pack_files
 from .local_bundle_paths import bundle_slug_validation_error as _bundle_slug_error
 from .local_bundle_paths import known_bundle_deploy_prefixes as _known_bundle_prefixes
 from .local_bundle_paths import target_bundle_deploy_prefixes as _target_bundle_prefixes
+from .project_package import build_project_local_package_info
 from .target_filter import (
     log_package_target_restriction as _log_package_target_restriction,
 )
@@ -202,6 +204,12 @@ def _warn_target_reconcile_failure(
             f"configs: [{', '.join(failed_paths)}]; run apm install again"
         ),
     )
+
+
+def _targets_explicitly_requested(ctx: InstallContext | None) -> bool:
+    """Return True only when the active targets came from ``--target``."""
+    decision = getattr(ctx, "target_decision", None)
+    return getattr(decision, "source", None) == "--target flag"
 
 
 def integrate_package_primitives(  # noqa: PLR0913
@@ -398,14 +406,7 @@ def integrate_package_primitives(  # noqa: PLR0913
 
     from apm_cli.install.target_warnings import warn_unsupported_primitives
 
-    warn_unsupported_primitives(
-        package_info,
-        package_name,
-        targets,
-        ctx,
-        diagnostics,
-        logger,
-    )
+    warn_unsupported_primitives(package_info, package_name, targets, ctx, diagnostics, logger)
 
     def _log_integration(msg):
         if logger:
@@ -422,6 +423,16 @@ def integrate_package_primitives(  # noqa: PLR0913
         "canvas": integrators.canvas,
         "skills": integrators.skill,
     }
+
+    preflight_hooks = getattr(integrators.hook, "preflight_hooks_for_targets", None)
+    if _hooks_approved and callable(preflight_hooks):
+        preflight_hooks(
+            package_info,
+            project_root,
+            source_plan,
+            user_scope=scope is InstallScope.USER,
+            retiring_targets=frozenset(target.name for target in target_selection.excluded_targets),
+        )
 
     # Validate every converted instruction target before any primitive kind can
     # write. A rejected instruction must not leave prompts, agents, commands,
@@ -500,6 +511,11 @@ def integrate_package_primitives(  # noqa: PLR0913
                 _call_kwargs["user_scope"] = scope is InstallScope.USER
                 _call_kwargs["dep_targets_active"] = dep_targets_active
                 _call_kwargs["allowed_targets"] = allowed_dep_targets
+                # Mirror retiring_targets (#3129) so a fallback preflight isn't
+                # misflagged as an import-coexistence conflict on retirement.
+                _call_kwargs["retiring_targets"] = frozenset(
+                    t.name for t in target_selection.excluded_targets
+                )
             # Canvas integration: always pass is_first_party.  Approval
             # is enforced by the gate above (canvas already skipped if
             # not approved and not is_first_party), so here we always
@@ -616,35 +632,9 @@ def integrate_package_primitives(  # noqa: PLR0913
         trust_bin=trust_bin,
         source_plan=source_plan,
     )
-    _skill_target_dirs: set = builtins.set()
-    for tp in skill_result.target_paths:
-        try:
-            rel = tp.relative_to(project_root)
-            if rel.parts:
-                _skill_target_dirs.add(rel.parts[0])
-        except ValueError:
-            from apm_cli.integration.targets import target_name_for_locator
-
-            owner = next(
-                (
-                    target
-                    for target in targets
-                    if target.managed_deploy_root is not None
-                    and tp.is_relative_to(target.managed_deploy_root)
-                ),
-                None,
-            )
-            locator_name = target_name_for_locator(_deployed_path_entry(tp, project_root, targets))
-            _skill_target_dirs.add(
-                owner.name
-                if owner is not None
-                else locator_name
-                if locator_name is not None
-                else "external"
-            )
-    _skill_target_paths = [f"{d}/skills/" for d in sorted(_skill_target_dirs)]
-    if not _skill_target_paths:
-        _skill_target_paths = ["skills/"]
+    _skill_target_paths = _skill_summary_paths(
+        skill_result.target_paths, project_root, targets
+    ) or ["skills/"]
     _skill_suffix, _skill_expansion = _format_target_collapse(_skill_target_paths, _verbose)
     if skill_result.skill_created:
         result["skills"] += 1
@@ -733,22 +723,11 @@ def integrate_local_content(
     same shape as ``integrate_package_primitives()``.
     """
     from ..integration.canvas_integrator import CanvasIntegrator
-    from ..models.apm_package import APMPackage, PackageInfo, PackageType
 
     if source_root is None:
         source_root = project_root
 
-    local_pkg = APMPackage(
-        name="_local",
-        version="0.0.0",
-        package_path=source_root,
-        source="local",
-    )
-    local_info = PackageInfo(
-        package=local_pkg,
-        install_path=source_root,
-        package_type=PackageType.APM_PACKAGE,
-    )
+    local_info = build_project_local_package_info(source_root)
 
     return integrate_package_primitives(
         local_info,

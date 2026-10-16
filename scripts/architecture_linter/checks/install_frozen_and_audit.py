@@ -42,6 +42,8 @@ _GUARD_UNINSTALL_REACHABILITY = "install-deployment-uninstall-reachability"
 
 
 _GUARD_AUDIT_REPLAY = "install-deployment-audit-replay"
+_INSTALL_SERVICES = "src/apm_cli/install/services.py"
+_PROJECT_PACKAGE_OWNER = "src/apm_cli/install/project_package.py"
 _GUARD_LIFECYCLE_SERIALIZATION = "install-deployment-lifecycle-serialization"
 
 
@@ -279,15 +281,46 @@ def check_audit_replay(provider: FactsProvider) -> tuple[Violation, ...]:
             )
         )
 
+    services, services_fail = _facts_for(provider, _INSTALL_SERVICES, rule_id)
+    project_package, project_package_fail = _facts_for(provider, _PROJECT_PACKAGE_OWNER, rule_id)
+    if services_fail or project_package_fail:
+        return tuple(services_fail) + tuple(project_package_fail)
+    local_content_body = _awk_body(
+        services,
+        re.compile(r"^def integrate_local_content\("),
+        re.compile(r"^def "),
+        keep=re.compile(r"integrate_local_content"),
+    )
+    if not (
+        _present_re(project_package, re.compile(r"^def build_project_local_package_info\("))
+        and _body_has(local_content_body, "build_project_local_package_info(")
+        and _body_has(run_replay_body, "build_project_local_package_info(")
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                _PROJECT_PACKAGE_OWNER,
+                "Install and audit replay must build the project's own package through "
+                "build_project_local_package_info",
+            )
+        )
+
     audit_gate_calls = _name_calls_in(audit, "_audit_ci_gate")
     config_body = _awk_body(
         ci_checks, re.compile(r"^def _check_config_consistency\("), re.compile(r"^def ")
+    )
+    subset_body = _awk_body(
+        ci_checks, re.compile(r"^def _check_skill_subset_consistency\("), re.compile(r"^def ")
     )
     if (
         not _present_re(owner, re.compile(r"^def prepare_ci_audit_replay\("))
         or "prepare_ci_audit_replay" not in audit_gate_calls
         or "run_replay" in audit_gate_calls
         or not _body_has(config_body, "prepared_replay.modules_root")
+        or not _body_has(subset_body, "prepared_replay.modules_root")
+        or not _body_has(subset_body, "prepared_replay_error is not None")
+        or not _body_has(config_body, "project_root / APM_MODULES_DIR")
+        or not _body_has(subset_body, "project_root / APM_MODULES_DIR")
     ):
         findings.append(
             _summary(

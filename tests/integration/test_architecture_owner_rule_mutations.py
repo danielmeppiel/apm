@@ -541,6 +541,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
     ),
     MutationCase(
+        guard_id="install-deployment-skills-root-derivation",
+        rule_id="install-deployment-skills-root-derivation",
+        path="src/apm_cli/integration/skill_integrator.py",
+        old="target_skills_root = project_root / target.skills_rel_root",
+        new='target_skills_root = project_root / target.root_dir / "skills"',
+        intent="Skill integration re-derives the skills root instead of using the target profile.",
+    ),
+    MutationCase(
         guard_id="install-deployment-source-plan",
         rule_id="install-deployment-source-plan",
         path="src/apm_cli/install/services.py",
@@ -768,6 +776,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="config_target = list(apm_package.canonical_targets)",
         new="config_target = list(apm_package.targets)",
         intent="A manifest consumer reads raw targets instead of canonical_targets.",
+    ),
+    MutationCase(
+        guard_id="registry-delegation-user-invocable-resolution",
+        rule_id="registry_delegation.user_invocable_resolution",
+        path="src/apm_cli/primitives/models.py",
+        old="def resolve_user_invocable(metadata: dict) -> bool:",
+        new="def _resolve_user_invocable_removed(metadata: dict) -> bool:",
+        intent="The user-invocable owner loses its single interpretation entry point.",
     ),
     MutationCase(
         guard_id="transport-platform-ado-validation-bearer-fallback",
@@ -1424,6 +1440,37 @@ def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     assert any(violation.rule_id == rule_id for violation in report.violations)
 
 
+@pytest.mark.parametrize(
+    ("path", "rule_id", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "mutation_writes.opencode_enabled_intent",
+            "opencode_enabled_matches(existing[name], expected)",
+            "True",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator_install.py",
+            "mutation_writes.mcp_target_selection",
+            "_raise_strict_config_failures(unsafe_runtimes, console=console, logger=logger)",
+            "_raise_strict_config_failures([], console=console, logger=logger)",
+        ),
+    ],
+)
+def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str) -> None:
+    """Global consumers cannot bypass native type or selected-target safety owners."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.failures == ()
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 def test_frozen_preflight_uses_selected_lockfile_store() -> None:
     """Scoped frozen preflight must not substitute a source-side lockfile."""
     path = "src/apm_cli/install/service.py"
@@ -1475,6 +1522,140 @@ def test_git_semver_guard_rejects_bypassing_selected_attempt_requested_url() -> 
     assert report.failures == ()
     assert any(
         violation.rule_id == "transport-platform-git-semver-preflight"
+        for violation in report.violations
+    )
+
+
+@pytest.mark.parametrize("argument", ["raw", "entry"])
+def test_neutral_hook_contract_guard_rejects_split_cursor_field_validation(argument: str) -> None:
+    """Both source and native-output validation must route through the same predicates."""
+    path = "src/apm_cli/integration/hook_native_formats.py"
+    source = _source(path)
+    call = f"_check_cursor_field_types({argument})"
+    assert source.count(call) == 1
+    mutated = source.replace(call, "pass", 1)
+    ast.parse(mutated, filename=path)
+    rule_id = "mutation_writes.neutral_hook_contract"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+def test_neutral_hook_contract_guard_rejects_cached_cursor_preflight_gate() -> None:
+    """A lexical "preflight call is present" check cannot catch a cache-gated
+    reintroduction of the #3129 reused-plan bypass: the literal
+    ``preflight_cursor_hooks(`` call stays present in the file whether or
+    not it is wrapped in an ``if not plan.cursor_preflight_done:`` guard.
+    This proves the dedicated token-forbidding sub-check (not just the
+    existing presence check) is the thing that actually catches that
+    specific regression shape.
+    """
+    path = "src/apm_cli/integration/hook_integrator.py"
+    source = _source(path)
+    old = (
+        '        if config.target_key in {"cursor", "claude"}:\n'
+        "            preflight_cursor_hooks(\n"
+    )
+    assert source.count(old) == 1
+    mutated = source.replace(
+        old,
+        (
+            '        if config.target_key in {"cursor", "claude"} and not getattr(\n'
+            '            source_plan, "cursor_preflight_done", False\n'
+            "        ):\n"
+            "            preflight_cursor_hooks(\n"
+        ),
+        1,
+    )
+    ast.parse(mutated, filename=path)
+
+    rule_id = "mutation_writes.neutral_hook_contract"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+
+    assert report.failures == ()
+    assert any(
+        violation.rule_id == rule_id and "cursor_preflight_done" in violation.message
+        for violation in report.violations
+    )
+
+
+def test_neutral_hook_contract_guard_rejects_removed_preflight_call_site() -> None:
+    """A file-wide ``preflight_cursor_hooks(`` presence check cannot catch
+    the exact per-write call being deleted from
+    ``HookIntegrator._integrate_merged_hooks``: the separate, unrelated
+    upfront ``preflight_hooks_for_targets`` call site leaves that substring
+    present elsewhere in the file even after this one is removed. Only the
+    structural, call-site-specific sub-check catches this regression shape.
+    """
+    path = "src/apm_cli/integration/hook_integrator.py"
+    source = _source(path)
+    old = (
+        '        if config.target_key in {"cursor", "claude"}:\n'
+        "            preflight_cursor_hooks(\n"
+        "                self,\n"
+        "                package_info,\n"
+        "                project_root,\n"
+        "                hook_sources,\n"
+        "                _HOOK_EVENT_MAP,\n"
+        "                user_scope=user_scope,\n"
+        "                retiring_targets=retiring_targets,\n"
+        "            )\n"
+    )
+    assert source.count(old) == 1
+    mutated = source.replace(
+        old,
+        '        if config.target_key in {"cursor", "claude"}:\n            pass\n',
+        1,
+    )
+    assert "preflight_cursor_hooks(" in mutated, "unrelated call site must survive the mutation"
+    ast.parse(mutated, filename=path)
+
+    rule_id = "mutation_writes.neutral_hook_contract"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+
+    assert report.failures == ()
+    assert any(
+        violation.rule_id == rule_id
+        and "direct, unconditional statement" in violation.message
+        and "preflight_cursor_hooks" in violation.message
+        for violation in report.violations
+    )
+
+
+def test_neutral_hook_contract_guard_rejects_renamed_cache_predicate_rewrap() -> None:
+    """The reused-plan bypass can be reintroduced under any predicate name,
+    not just ``cursor_preflight_done``. Nesting the per-write call in a
+    second conditional -- regardless of what the cache flag is called --
+    must fail the structural call-site check even when the token-ban
+    sub-check has nothing to match.
+    """
+    path = "src/apm_cli/integration/hook_integrator.py"
+    source = _source(path)
+    old = (
+        '        if config.target_key in {"cursor", "claude"}:\n'
+        "            preflight_cursor_hooks(\n"
+    )
+    assert source.count(old) == 1
+    mutated = source.replace(
+        old,
+        (
+            '        if config.target_key in {"cursor", "claude"}:\n'
+            '            if not getattr(source_plan, "_already_rendered_once", False):\n'
+            "                preflight_cursor_hooks(\n"
+        ),
+        1,
+    )
+    assert "cursor_preflight_done" not in mutated
+    ast.parse(mutated, filename=path)
+
+    rule_id = "mutation_writes.neutral_hook_contract"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+
+    assert report.failures == ()
+    assert any(
+        violation.rule_id == rule_id
+        and "direct, unconditional statement" in violation.message
+        and "preflight_cursor_hooks" in violation.message
         for violation in report.violations
     )
 
