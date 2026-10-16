@@ -685,6 +685,7 @@ marketplace-integrations-source-admission
 marketplace-integrations-source-parsing
 marketplace-integrations-tag-pattern
 marketplace-integrations-version-precedence
+mutation_writes.claude_mcp_paths
 mutation_writes.copilot_cli_mcp_paths
 mutation_writes.drift_hook_membership
 mutation_writes.hook_cleanup_scope
