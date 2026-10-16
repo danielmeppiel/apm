@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Git marketplace installs accept versioned plugin directories while rejecting file, symlink, and submodule responses during directory validation. -- by @Pybsama (#3156)
+- `apm install` now reconciles renamed or deleted project-local skills and removed targets using recorded concrete ownership, preserving ambiguous legacy output, shared claims, and user edits -- by @tillig (#3190)
 - `apm install plugin@mkt` for an in-repository plugin of a `github.com` marketplace registered over SSH pre-flights the repository over SSH instead of HTTPS-only probes, so a private marketplace installs with an SSH key and no GitHub token. (#3164)
 - `apm pack --check-clean` now certifies GitHub-hosted manifestless skills when `SKILL.md` has valid frontmatter at the resolved repository, ref, and subdirectory, while invalid skill metadata and missing repositories, refs, and package paths remain fail-closed. (#3064)
 - `apm audit` no longer reports a sibling root `skills/` folder alongside a project's `.apm/` content as `unintegrated` after a clean install; replay now uses install's project-local package interpretation. - by @adityaanikam (#3209, closes #3151)
@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   older lockfile is not treated as a rewrite. (#2379)
   If CI starts failing on `--frozen` after upgrading, run `apm install`
   locally and commit the updated `apm.lock.yaml`.
+- Git marketplace installs accept versioned plugin directories while rejecting file, symlink, and submodule responses during directory validation. -- by @Pybsama (#3156)
 
 ## [0.33.0] - 2026-10-02
 
