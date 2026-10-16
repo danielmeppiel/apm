@@ -703,6 +703,7 @@ contracts-tooling-root-context-write-eligibility
 hooks-integrations-native-instruction-projection
 registry_delegation.agents_source_attribution
 registry_delegation.bootstrap_project_name
+registry_delegation.build_id_verification
 registry_delegation.command_machine_output
 registry_delegation.compile_inventory_authority
 registry_delegation.compiled_output_writes
