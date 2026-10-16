@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `APM_EXTRA_CA_BUNDLE` adds corporate PEM certificates to APM package-management HTTPS while retaining default trust roots and explicit Requests/curl overrides. (#2034) — by @TameTheGame (#2741)
 - Agent primitives (`*.agent.md`) accept an optional `user-invocable: false` frontmatter field (default `true`; `visibility: internal` is an accepted alias). APM preserves the metadata so the agent is intended to be reachable programmatically only (for example via `handoffs:` or subagent calls); picker exclusion and that reachability take effect only when the receiving harness supports them. Verbatim-copy targets preserve the field; Codex and Kiro warn instead of silently dropping it. -- by @richard-fowles-epam (#3132)
+- `apm pack` can emit a Copilot CLI marketplace (`marketplace.outputs: {copilot: {}}`), preserving real local paths and remote repository/subdirectory identities, tag refs, and full commit pins without changing Claude/Codex defaults. -- by @aryansk (#2600)
 - New `grok-bot` install target deploys skill packages to `agent-data/workflows/<skill-name>/` for Grok Bot at project and user (`--global`) scope; the `grok-bot` target accepts packages declaring `agent-skills`, and an explicit `--target` fails only when no dependency in the install has a compatible target or a package named on the command line (and its whole subtree) has none; other filtered dependencies warn. (#3106)
 
 ### Changed

@@ -102,6 +102,7 @@ class RemoteRef:
 
     name: str  # e.g. "refs/tags/v1.2.0" or "refs/heads/main"
     sha: str  # 40-char hex SHA
+    peeled_sha: str | None = None  # commit behind an annotated tag, when advertised
 
 
 class _RemoteAttemptError(RuntimeError):
@@ -172,6 +173,7 @@ class RefCache:
 def _parse_ls_remote_output(output: str) -> list[RemoteRef]:
     """Parse ``git ls-remote`` stdout into a list of ``RemoteRef``."""
     refs: list[RemoteRef] = []
+    peeled: dict[str, str] = {}
     for line in output.splitlines():
         line = line.strip()
         if not line:
@@ -182,11 +184,11 @@ def _parse_ls_remote_output(output: str) -> list[RemoteRef]:
         sha, refname = parts[0].strip(), parts[1].strip()
         if not _SHA_RE.match(sha):
             continue
-        # Skip peeled tag objects (^{})
         if refname.endswith("^{}"):
+            peeled[refname[:-3]] = sha
             continue
         refs.append(RemoteRef(name=refname, sha=sha))
-    return refs
+    return [RemoteRef(name=ref.name, sha=ref.sha, peeled_sha=peeled.get(ref.name)) for ref in refs]
 
 
 class RefResolver:
