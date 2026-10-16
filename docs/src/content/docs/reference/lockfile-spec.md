@@ -57,27 +57,37 @@ on any machine.
 
 ### `apm_modules/` is derived
 
-`apm_modules/` is an install cache/materialization directory, not a source of
-truth. Keep `apm.yml` and `apm.lock.yaml` in version control; the installed
-package sources under `apm_modules/` can be recreated by running `apm install`
-again.
+`apm.yml` records dependency intent; `apm.lock.yaml` records the resolved graph
+and managed-file state. Keep both in version control. `apm_modules/` contains
+installed dependency content, which can be regenerated with `apm install`
+while the declared package sources remain available.
 
-It is therefore safe, and recommended for normal repositories, to ignore the
-directory:
+Normally, keep `apm_modules/` gitignored. Project installs add this entry to
+`.gitignore` automatically when it is missing:
 
 ```gitignore
 apm_modules/
 ```
 
-This also works well in CI: check out the repository with its committed
-manifest and lockfile, run `apm install` to materialize dependencies for that
-job, and discard the workspace afterward. The lockfile remains the durable
-record of the resolved graph and deployed-file integrity.
+:::caution[Keep installed content available while it is in use]
+Derived content is not necessarily disposable when `apm install` exits.
+Supported native integrations, including Copilot Agent Plugins, load plugins
+live from `apm_modules/`. Agents and tools can also follow deployed links to
+package resources there. Keep the directory available for as long as those
+consumers need it.
+:::
 
-APM does not currently provide an install flag that automatically removes
-`apm_modules/` after a successful run. If a workflow needs an entirely
-ephemeral checkout today, remove the directory as a separate cleanup step
-after the APM operation completes.
+For [CI workflows](../../integrations/ci-cd/), check out the committed manifest
+and lockfile, then run `apm install --frozen` to restore the locked dependency
+graph. Discard a disposable workspace only after all dependent operations,
+native agent sessions, and other consumers have finished.
+
+APM has no install flag for automatic post-install removal. For a separate
+cleanup step, [`apm deps clean`](../cli/deps/#apm-deps-clean) removes the project
+`apm_modules/` without deleting `apm.yml` or `apm.lock.yaml`; the same lifetime
+restriction applies. Reinstall before using consumers that need those resources
+again. See [What to commit](../../consumer/install-packages/#what-to-commit)
+for target-owned files.
 
 ## Top-level structure
 
