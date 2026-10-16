@@ -411,6 +411,14 @@ def _to_gemini_hook_entries(entries: list) -> list:
     )
 
 
+def _legacy_hook_entries(entries: list, target: str) -> list:
+    """Render old native shapes for ownership matching, never for deployment."""
+    if target == "claude":
+        return _to_claude_hook_entries(entries, default_handler_type=False)
+    # Codex installs before native nesting wrote the original flat entries.
+    return entries if target == "codex" else []
+
+
 def _with_claude_default_handler_type(entry: object) -> object:
     """Supply Claude's required ``type`` for an untyped flat command entry.
 

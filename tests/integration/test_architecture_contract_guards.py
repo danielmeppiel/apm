@@ -12,6 +12,23 @@ from scripts.architecture_linter.runner import registered_rules, run_selected_ru
 _RULES_BY_ID = {rule.id: rule for rule in registered_rules()}
 
 
+def test_legacy_hook_shapes_boundary_rejects_cleanup_bypass() -> None:
+    """A second legacy-shape policy cannot silently bypass the native owner."""
+    root = Path(__file__).parents[2]
+    path = "src/apm_cli/integration/hook_integrator.py"
+    source = (root / path).read_text(encoding="utf-8")
+    old = "_legacy_hook_entries(entries, config.target_key)"
+    assert old in source
+    rule_id = "mutation_writes.neutral_hook_contract"
+    result = run_selected_rules(
+        root, (rule_id,), source_overrides={path: source.replace(old, "[]", 1)}
+    )
+    assert any(
+        finding.rule_id == rule_id and "_legacy_hook_entries" in finding.message
+        for finding in result.violations
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "old", "new"),
     [

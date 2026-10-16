@@ -48,6 +48,7 @@ from apm_cli.integration.hook_command_warnings import warn_unresolved_plugin_roo
 from apm_cli.integration.hook_cursor_preflight import preflight_cursor_hooks
 from apm_cli.integration.hook_file_routing import filter_hook_files_for_target
 from apm_cli.integration.hook_native_formats import (
+    _legacy_hook_entries,
     _to_antigravity_hook_entries,
     _to_claude_hook_entries,
     _to_codex_hook_entries,
@@ -1362,26 +1363,18 @@ class HookIntegrator(BaseIntegrator):
                 event_name = event_map.get(raw_event_name, raw_event_name)
                 if event_name not in json_config[container]:
                     json_config[container][event_name] = []
-                legacy_content_keys: set[str] = set()
+                legacy_content_keys = {
+                    self._hook_entry_content_key(entry)
+                    for entry in _legacy_hook_entries(entries, config.target_key)
+                    if isinstance(entry, dict)
+                }
                 if config.target_key == "claude":
-                    # Match owned untyped groups from installs before handler typing.
-                    legacy_content_keys = {
-                        self._hook_entry_content_key(entry)
-                        for entry in _to_claude_hook_entries(entries, default_handler_type=False)
-                        if isinstance(entry, dict)
-                    }
                     entries = _to_claude_hook_entries(entries)
                 elif config.target_key == "cursor":
                     entries = _to_cursor_hook_entries(
                         entries, event_name, foreign=raw_event_name in event_map
                     )
                 elif config.target_key == "codex":
-                    # Match owned flat entries from installs before Codex nesting.
-                    legacy_content_keys = {
-                        self._hook_entry_content_key(entry)
-                        for entry in entries
-                        if isinstance(entry, dict)
-                    }
                     entries = _to_codex_hook_entries(entries)
                 elif config.target_key == "gemini":
                     entries = _to_gemini_hook_entries(entries)
