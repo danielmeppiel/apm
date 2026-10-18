@@ -466,28 +466,56 @@ class HookIntegrator(BaseIntegrator):
             List[Path]: List of absolute paths to hook JSON files
         """
         hook_files: list[Path] = []
-        seen_stems: set[str] = set()
+        seen_paths: set[Path] = set()
 
         # Search in .apm/hooks/ (APM convention)
         apm_hooks = package_path / ".apm" / "hooks"
         if apm_hooks.exists():
+            # Root-level JSON files
             for f in sorted(apm_hooks.glob("*.json")):
                 if f.is_symlink():
                     continue
-                stem_key = f.stem.lower()
-                if stem_key not in seen_stems:
-                    seen_stems.add(stem_key)
+                if not f.is_file():
+                    continue
+                if f not in seen_paths:
+                    seen_paths.add(f)
+                    hook_files.append(f)
+            # Nested JSON files in subdirectories (recursive)
+            for f in sorted(apm_hooks.rglob("*.json")):
+                if f.is_symlink():
+                    continue
+                if not f.is_file():
+                    continue
+                # Skip root-level files (already handled above)
+                if f.parent == apm_hooks:
+                    continue
+                if f not in seen_paths:
+                    seen_paths.add(f)
                     hook_files.append(f)
 
         # Search in hooks/ (Claude-native convention)
         hooks_dir = package_path / "hooks"
         if hooks_dir.exists():
+            # Root-level JSON files
             for f in sorted(hooks_dir.glob("*.json")):
                 if f.is_symlink():
                     continue
-                stem_key = f.stem.lower()
-                if stem_key not in seen_stems:
-                    seen_stems.add(stem_key)
+                if not f.is_file():
+                    continue
+                if f not in seen_paths:
+                    seen_paths.add(f)
+                    hook_files.append(f)
+            # Nested JSON files in subdirectories (recursive)
+            for f in sorted(hooks_dir.rglob("*.json")):
+                if f.is_symlink():
+                    continue
+                if not f.is_file():
+                    continue
+                # Skip root-level files (already handled above)
+                if f.parent == hooks_dir:
+                    continue
+                if f not in seen_paths:
+                    seen_paths.add(f)
                     hook_files.append(f)
 
         return self.filter_authorized_files(hook_files, source_plan)

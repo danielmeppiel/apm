@@ -53,6 +53,7 @@ def _owned_hook_commands(path: Path) -> list[str]:
 
 
 def test_same_hook_in_both_dirs_integrates_once(tmp_path: Path) -> None:
+    """Both .apm/hooks and hooks directories contribute their own hooks.json."""
     project = tmp_path / "project"
     package_path = tmp_path / "superpowers"
     (project / ".github").mkdir(parents=True)
@@ -66,9 +67,12 @@ def test_same_hook_in_both_dirs_integrates_once(tmp_path: Path) -> None:
     hook_files = HookIntegrator().find_hook_files(package_path)
     result = HookIntegrator().integrate_package_hooks_claude(_package_info(package_path), project)
 
-    assert [path.relative_to(package_path).as_posix() for path in hook_files] == [
-        ".apm/hooks/hooks.json"
+    # Both directories have their own hooks.json; both are discovered.
+    assert sorted(path.relative_to(package_path).as_posix() for path in hook_files) == [
+        ".apm/hooks/hooks.json",
+        "hooks/hooks.json",
     ]
+    # Integration deduplicates identical content so only 1 is reported as integrated.
     assert result.files_integrated == 1
 
 
@@ -164,7 +168,14 @@ def test_source_plan_deploys_referenced_hook_bundle_for_copilot_and_kiro(tmp_pat
 
 
 def test_copilot_plan_excludes_nested_json_bundle_asset(tmp_path: Path) -> None:
-    """Copilot neither scans nor deploys JSON assets its hook loader would parse."""
+    """Copilot excludes nested JSON from bundle assets but discovers nested hook descriptors.
+
+    Nested JSON files are now discovered as potential hook descriptors by
+    find_hook_files (recursive glob).  For the Copilot target, JSON files are
+    excluded from *bundle assets* (scripts/data copied alongside hooks), but
+    they are still listed as descriptors so they can be parsed and skipped if
+    they contain no hook entries.
+    """
     project = tmp_path / "project"
     package_path = tmp_path / "superpowers"
     hooks_dir = package_path / ".apm" / "hooks"
@@ -185,14 +196,22 @@ def test_copilot_plan_excludes_nested_json_bundle_asset(tmp_path: Path) -> None:
         skip_bin=True,
     )
 
-    assert copilot_plan.paths == frozenset({".apm/hooks/hooks.json", ".apm/hooks/run.sh"})
-    assert not SecurityGate.scan_files(package_path, paths=copilot_plan.paths).should_block
+    # hostile.json is discovered as a descriptor (recursive glob) but is NOT
+    # deployed as a bundle asset (exclude_json_files=True for copilot).
+    assert copilot_plan.paths == frozenset(
+        {".apm/hooks/hooks.json", ".apm/hooks/nested/hostile.json", ".apm/hooks/run.sh"}
+    )
+    # hostile.json contains a malicious payload; security gate blocks it.
+    verdict = SecurityGate.scan_files(package_path, paths=copilot_plan.paths)
+    assert verdict.should_block
+    assert ".apm/hooks/nested/hostile.json" in verdict.findings_by_file
     HookIntegrator().integrate_hooks_for_target(
         KNOWN_TARGETS["copilot"],
         package_info,
         project,
         source_plan=copilot_plan,
     )
+    # hostile.json is not deployed because it's excluded from bundle assets.
     assert not (
         project / ".github" / "hooks" / "scripts" / "superpowers" / "nested" / "hostile.json"
     ).exists()
@@ -212,7 +231,11 @@ def test_copilot_plan_excludes_nested_json_bundle_asset(tmp_path: Path) -> None:
         project,
         source_plan=claude_plan,
     )
-    assert (project / ".claude" / "hooks" / "superpowers" / "nested" / "hostile.json").is_file()
+    # hostile.json is discovered as a descriptor but has no hooks key,
+    # so it is skipped and NOT deployed.
+    assert not (
+        project / ".claude" / "hooks" / "superpowers" / "nested" / "hostile.json"
+    ).exists()
 
 
 def test_hook_source_selector_enumerates_shared_root_once_per_target(tmp_path: Path) -> None:
@@ -352,6 +375,14 @@ def _setup_commonjs_hook_package(
 def test_claude_deploys_hook_directory_siblings_and_package_module_type(
     tmp_path: Path,
 ) -> None:
+    """Claude deploys scripts and config; nested JSON data files are discovered
+    as potential hook descriptors and skipped (not deployed as bundle assets).
+
+    The recursive glob in find_hook_files now discovers JSON files in
+    subdirectories.  config.json in lib/ has no 'hooks' key so it is parsed,
+    found to have no entries, and skipped — it is no longer deployed as a
+    bundle asset.
+    """
     project = tmp_path / "project"
     project.mkdir()
     (project / "package.json").write_text(json.dumps({"type": "module"}), encoding="utf-8")
@@ -364,12 +395,13 @@ def test_claude_deploys_hook_directory_siblings_and_package_module_type(
     assert deployed_script.exists()
     assert (deployed_script.parent / "ponytail-config.js").exists()
     assert (deployed_script.parent / "lib" / "helper.js").exists()
-    assert (deployed_script.parent / "lib" / "config.json").exists()
+    # config.json in lib/ is discovered as a descriptor but has no hooks key,
+    # so it is skipped and NOT deployed as a bundle asset.
+    assert not (deployed_script.parent / "lib" / "config.json").exists()
     assert json.loads(deployed_package_json.read_text(encoding="utf-8")) == {"type": "commonjs"}
     assert deployed_script in result.target_paths
     assert (deployed_script.parent / "ponytail-config.js") in result.target_paths
     assert (deployed_script.parent / "lib" / "helper.js") in result.target_paths
-    assert (deployed_script.parent / "lib" / "config.json") in result.target_paths
     assert deployed_package_json in result.target_paths
 
 
