@@ -1976,3 +1976,136 @@ class TestSyntheticManifestLineEndings:
         raw = (apm_dir / "hooks" / "hooks.json").read_bytes()
         assert b"\r" not in raw
         assert json.loads(raw.decode("utf-8")) == hooks
+
+
+class TestEmptyComponentArrayWarning:
+    """Issue #3169: empty component arrays should warn instead of failing silently.
+
+    When a plugin.json declares a component as an empty array (e.g. ``"commands": []``)
+    but the corresponding directory exists on disk with content, APM should emit a
+    warning to alert the user that their explicit empty declaration is hiding real files.
+    """
+
+    def test_empty_commands_warns_when_commands_dir_has_content(self, tmp_path):
+        """Empty commands array with a populated commands/ dir emits a warning."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / "commands").mkdir()
+        (plugin / "commands" / "run.prompt.md").write_text("# Run")
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "commands": []})
+        )
+
+        with patch("apm_cli.deps.plugin_parser._surface_warning") as mock_warn:
+            synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "commands": []})
+
+        assert mock_warn.called
+        warning_text = " ".join(str(a[0][0]) for a in mock_warn.call_args_list)
+        assert "commands" in warning_text.lower()
+        assert "empty" in warning_text.lower()
+
+    def test_empty_agents_warns_when_agents_dir_has_content(self, tmp_path):
+        """Empty agents array with a populated agents/ dir emits a warning."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / "agents").mkdir()
+        (plugin / "agents" / "helper.agent.md").write_text("# Helper")
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "agents": []})
+        )
+
+        with patch("apm_cli.deps.plugin_parser._surface_warning") as mock_warn:
+            synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "agents": []})
+
+        assert mock_warn.called
+        warning_text = " ".join(str(a[0][0]) for a in mock_warn.call_args_list)
+        assert "agents" in warning_text.lower()
+        assert "empty" in warning_text.lower()
+
+    def test_empty_skills_warns_when_skills_dir_has_content(self, tmp_path):
+        """Empty skills array with a populated skills/ dir emits a warning."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / "skills").mkdir()
+        (plugin / "skills" / "SKILL.md").write_text("# Skill")
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "skills": []})
+        )
+
+        with patch("apm_cli.deps.plugin_parser._surface_warning") as mock_warn:
+            synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "skills": []})
+
+        assert mock_warn.called
+        warning_text = " ".join(str(a[0][0]) for a in mock_warn.call_args_list)
+        assert "skills" in warning_text.lower()
+        assert "empty" in warning_text.lower()
+
+    def test_empty_hooks_warns_when_hooks_dir_has_content(self, tmp_path):
+        """Empty hooks array with a populated hooks/ dir emits a warning."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / "hooks").mkdir()
+        (plugin / "hooks" / "pre-commit.json").write_text('{}')
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "hooks": []})
+        )
+
+        with patch("apm_cli.deps.plugin_parser._surface_warning") as mock_warn:
+            synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "hooks": []})
+
+        assert mock_warn.called
+        warning_text = " ".join(str(a[0][0]) for a in mock_warn.call_args_list)
+        assert "hooks" in warning_text.lower()
+        assert "empty" in warning_text.lower()
+
+    def test_empty_array_no_warn_when_dir_missing(self, tmp_path):
+        """Empty array with no corresponding directory should not warn."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "commands": []})
+        )
+        # No commands/ directory exists
+
+        with patch("apm_cli.deps.plugin_parser._surface_warning") as mock_warn:
+            synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "commands": []})
+
+        assert not mock_warn.called
+
+    def test_empty_array_no_warn_when_dir_empty(self, tmp_path):
+        """Empty array with an empty directory should not warn."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / "commands").mkdir()
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "commands": []})
+        )
+        # commands/ exists but is empty
+
+        with patch("apm_cli.deps.plugin_parser._surface_warning") as mock_warn:
+            synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "commands": []})
+
+        assert not mock_warn.called
+
+    def test_empty_array_does_not_deploy_files(self, tmp_path):
+        """Empty array must still silently skip -- behavior unchanged."""
+        plugin = tmp_path / "plug"
+        plugin.mkdir()
+        (plugin / ".claude-plugin").mkdir()
+        (plugin / "commands").mkdir()
+        (plugin / "commands" / "run.prompt.md").write_text("# Run")
+        (plugin / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "plug", "commands": []})
+        )
+
+        synthesize_apm_yml_from_plugin(plugin, {"name": "plug", "commands": []})
+
+        # Files should NOT be deployed despite existing on disk
+        assert not (plugin / ".apm" / "prompts").exists()
+        assert not list((plugin / ".apm" / "prompts").rglob("*"))

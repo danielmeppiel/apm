@@ -518,7 +518,19 @@ def _validate_declared_component_paths(plugin_path: Path, manifest: dict[str, An
     plugin_name = str(manifest.get("name") or plugin_path.name)
     for field in ("agents", "skills", "commands", "hooks"):
         declared = manifest.get(field)
-        if declared is None or declared == [] or (field == "hooks" and isinstance(declared, dict)):
+        if declared == []:
+            # Issue #3169: warn when an empty array hides existing component files.
+            default_dir = plugin_path / field
+            if default_dir.is_dir() and any(default_dir.iterdir()):
+                _surface_warning(
+                    f"Plugin '{plugin_name}' declares an empty '{field}' array in "
+                    f"plugin.json but a '{field}/' directory with content exists on disk. "
+                    f"The empty declaration is honored (nothing will deploy); remove the "
+                    f"empty array or add explicit paths to include those files.",
+                    _logger,
+                )
+            continue
+        if declared is None or (field == "hooks" and isinstance(declared, dict)):
             continue
         values = declared if isinstance(declared, list) else [declared]
         for value in values:
