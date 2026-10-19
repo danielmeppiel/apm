@@ -79,6 +79,44 @@ def _hook_module_type(package_path: Path, hook_source_root: Path) -> str:
         current = current.parent
 
 
+def _nested_module_type(
+    source_root: Path,
+) -> dict[str, str]:
+    """Return {relative_subdir: module_type} for nested package.json boundaries.
+
+    Walks the hook source root for ``package.json`` files that sit at a
+    directory boundary (i.e. a subdirectory containing a .js hook script
+    or other deployable content).  The returned dict maps the relative
+    path from *source_root* to the directory containing the
+    ``package.json`` with the module type declared in that file.
+
+    Only directories that are *below* the root are considered; the root
+    itself is handled by ``_hook_module_type``.
+    """
+    result: dict[str, str] = {}
+    for package_json in source_root.rglob("package.json"):
+        # Skip the root-level package.json -- that's handled by _hook_module_type
+        if package_json.parent == source_root:
+            continue
+        rel = package_json.parent.relative_to(source_root)
+        # Only record if this directory has deployable content (a JS script)
+        has_script = any(
+            (package_json.parent / child).is_file()
+            for child in package_json.parent.iterdir()
+            if child.suffix.lower() in _HOOK_SCRIPT_EXTENSIONS
+        )
+        if not has_script:
+            continue
+        try:
+            data = json.loads(package_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        package_type = data.get("type") if isinstance(data, dict) else None
+        if package_type in {"commonjs", "module"}:
+            result[str(rel)] = package_type
+    return result
+
+
 def _same_text(path: Path, content: str) -> bool:
     """Return True when path already contains content."""
     try:
@@ -114,12 +152,15 @@ def iter_deployable_hook_bundle_files(
                 source_file,
             )
             continue
-        if (
-            source_file.is_symlink()
-            or not source_file.is_file()
-            or source_file.name in {"package.json", MARKER_FILENAME}
-            or _is_root_hook_descriptor(source_file, source_root, descriptors)
+        if source_file.is_symlink() or not source_file.is_file():
+            continue
+        # Exclude root-level package.json and marker files
+        if source_file.parent == source_root and (
+            source_file.name in {"package.json", MARKER_FILENAME}
         ):
+            continue
+        # Exclude root-level hook descriptors
+        if _is_root_hook_descriptor(source_file, source_root, descriptors):
             continue
         yield source_file
 
@@ -243,5 +284,29 @@ def copy_deployed_hook_bundle(
         target_file.parent.mkdir(parents=True, exist_ok=True)
         target_file.write_text(content, encoding="utf-8")
         target_paths.append(target_file)
+
+        # Generate sidecars at nested module boundaries (issue #2950)
+        nested_types = _nested_module_type(_source_root)
+        for rel_subdir, nested_type in nested_types.items():
+            nested_target = target_root / rel_subdir / "package.json"
+            nested_rel = portable_relpath(nested_target, project_root)
+            ensure_path_within(nested_target, project_root)
+            nested_content = json.dumps(
+                {"type": nested_type}, indent=2, sort_keys=True
+            ) + "\n"
+            if nested_target.exists() and _same_text(nested_target, nested_content):
+                target_paths.append(nested_target)
+                continue
+            if integrator.check_collision(
+                nested_target,
+                nested_rel,
+                managed_files,
+                force,
+                diagnostics=diagnostics,
+            ):
+                continue
+            nested_target.parent.mkdir(parents=True, exist_ok=True)
+            nested_target.write_text(nested_content, encoding="utf-8")
+            target_paths.append(nested_target)
 
     return result

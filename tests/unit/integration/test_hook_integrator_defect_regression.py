@@ -792,6 +792,173 @@ def test_unambiguous_legacy_leaf_marker_migrates_to_canonical_owner(
     assert _owned_hook_commands(cursor / "hooks.json") == ["echo alpha"]
 
 
+def test_hook_bundle_preserves_nested_esm_package_json_sidecar(tmp_path: Path) -> None:
+    """Nested package.json module metadata generates a sidecar at the nested boundary.
+
+    Regression test for issue #2950: when a hook package places a JavaScript
+    hook and its module metadata in a nested directory (e.g. hooks/esm/), APM
+    must deploy a module-type sidecar at that nested boundary so Node executes
+    the file with the correct semantics.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    package_path = tmp_path / "esmhooks"
+    hooks_dir = package_path / "hooks"
+    hooks_dir.mkdir(parents=True)
+
+    # Nested ESM subdirectory with its own module type
+    esm_dir = hooks_dir / "esm"
+    esm_dir.mkdir()
+    (esm_dir / "entry.js").write_text(
+        'import { writeFileSync } from "node:fs";\nwriteFileSync(process.argv[2], "ok\\n");\n',
+        encoding="utf-8",
+    )
+    (esm_dir / "package.json").write_text(
+        json.dumps({"type": "module"}),
+        encoding="utf-8",
+    )
+
+    # Hook references the nested script
+    (hooks_dir / "hooks.json").write_text(
+        json.dumps(
+            _session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/esm/entry.js")
+        ),
+        encoding="utf-8",
+    )
+
+    # Project declares ESM at root to prove root isolation is preserved
+    (project / "package.json").write_text(
+        json.dumps({"type": "module"}),
+        encoding="utf-8",
+    )
+
+    pkg_info = _package_info(package_path, "esmhooks")
+    result = HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
+
+    # The nested script is deployed
+    deployed_script = project / ".claude" / "hooks" / "esmhooks" / "hooks" / "esm" / "entry.js"
+    assert deployed_script.exists(), "Nested entry.js must be deployed"
+
+    # A module-type sidecar is generated at the nested boundary
+    deployed_nested_pkg = project / ".claude" / "hooks" / "esmhooks" / "hooks" / "esm" / "package.json"
+    assert deployed_nested_pkg.exists(), (
+        "Nested package.json sidecar must be generated at the esm/ boundary"
+    )
+    nested_type = json.loads(deployed_nested_pkg.read_text(encoding="utf-8")).get("type")
+    assert nested_type == "module", (
+        f"Nested sidecar must declare type=module, got {nested_type!r}"
+    )
+
+    # Root sidecar must still reflect the hook root module type (commonjs by default)
+    root_sidecar = project / ".claude" / "hooks" / "esmhooks" / "hooks" / "package.json"
+    assert root_sidecar.exists()
+    root_type = json.loads(root_sidecar.read_text(encoding="utf-8")).get("type")
+    assert root_type == "commonjs", (
+        f"Root sidecar should default to commonjs, got {root_type!r}"
+    )
+
+
+def test_hook_bundle_preserves_nested_commonjs_package_json_sidecar(tmp_path: Path) -> None:
+    """Nested package.json with commonjs type generates a sidecar at the nested boundary.
+
+    Regression test for issue #2950: nested module metadata must be preserved
+    regardless of whether it declares 'module' or 'commonjs'.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    package_path = tmp_path / "cjsnested"
+    hooks_dir = package_path / "hooks"
+    hooks_dir.mkdir(parents=True)
+
+    # Nested CommonJS subdirectory
+    cjs_dir = hooks_dir / "cjslib"
+    cjs_dir.mkdir()
+    (cjs_dir / "helper.js").write_text(
+        "module.exports = { greet: () => 'hello' };\n",
+        encoding="utf-8",
+    )
+    (cjs_dir / "package.json").write_text(
+        json.dumps({"type": "commonjs"}),
+        encoding="utf-8",
+    )
+
+    # Root hook references the nested script
+    (hooks_dir / "main.js").write_text(
+        "const { greet } = require('./cjslib/helper');\nconsole.log(greet());\n",
+        encoding="utf-8",
+    )
+    (hooks_dir / "hooks.json").write_text(
+        json.dumps(
+            _session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/main.js")
+        ),
+        encoding="utf-8",
+    )
+
+    pkg_info = _package_info(package_path, "cjsnested")
+    result = HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
+
+    # The nested script is deployed
+    deployed_script = project / ".claude" / "hooks" / "cjsnested" / "hooks" / "cjslib" / "helper.js"
+    assert deployed_script.exists(), "Nested helper.js must be deployed"
+
+    # A module-type sidecar is generated at the nested boundary
+    deployed_nested_pkg = project / ".claude" / "hooks" / "cjsnested" / "hooks" / "cjslib" / "package.json"
+    assert deployed_nested_pkg.exists(), (
+        "Nested package.json sidecar must be generated at the cjslib/ boundary"
+    )
+    nested_type = json.loads(deployed_nested_pkg.read_text(encoding="utf-8")).get("type")
+    assert nested_type == "commonjs", (
+        f"Nested sidecar must declare type=commonjs, got {nested_type!r}"
+    )
+
+
+def test_hook_bundle_root_isolation_preserved_with_nested_module_type(tmp_path: Path) -> None:
+    """Root module type is not overridden by consuming project's type.
+
+    Regression test for issue #2950: when the consuming project declares
+    ESM but the hook package root declares CommonJS, the root sidecar must
+    reflect the hook package's own type, not the consumer's.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    package_path = tmp_path / "isolated"
+    hooks_dir = package_path / "hooks"
+    hooks_dir.mkdir(parents=True)
+
+    # Hook package declares CommonJS at root
+    (package_path / "package.json").write_text(
+        json.dumps({"type": "commonjs"}),
+        encoding="utf-8",
+    )
+    (hooks_dir / "entry.js").write_text(
+        "const fs = require('fs');\nfs.writeFileSync(process.argv[2], 'ok');\n",
+        encoding="utf-8",
+    )
+    (hooks_dir / "hooks.json").write_text(
+        json.dumps(
+            _session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/entry.js")
+        ),
+        encoding="utf-8",
+    )
+
+    # Consuming project declares ESM
+    (project / "package.json").write_text(
+        json.dumps({"type": "module"}),
+        encoding="utf-8",
+    )
+
+    pkg_info = _package_info(package_path, "isolated")
+    result = HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
+
+    # Root sidecar must reflect the hook package's type (commonjs), not the consumer's
+    root_sidecar = project / ".claude" / "hooks" / "isolated" / "hooks" / "package.json"
+    assert root_sidecar.exists()
+    root_type = json.loads(root_sidecar.read_text(encoding="utf-8")).get("type")
+    assert root_type == "commonjs", (
+        f"Root sidecar must reflect hook package type=commonjs, got {root_type!r}"
+    )
+
+
 def test_reconcile_validates_survivor_targets_before_destructive_wipe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
