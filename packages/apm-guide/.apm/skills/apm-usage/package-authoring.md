@@ -10,7 +10,7 @@ how to install it:
 | `.apm/` (with or without apm.yml) | Multiple independent primitives | Hoist each primitive into the consumer runtime dirs |
 | `SKILL.md` (alone, or with apm.yml = HYBRID) | One skill bundle | Copy whole tree to `<target>/skills/<name>/` |
 | `skills/<name>/SKILL.md` | Many skills in one repo | Promote each nested skill to `<target>/skills/<name>/` |
-| `hooks/*.json` only | Harness hook package | Deploy hooks to the target's hooks directory |
+| `hooks/*.json` or `.apm/hooks/*.json` only | Harness hook package | Register hooks and referenced resources for the selected targets |
 | `plugin.json` (no `$schema`, or unrecognized `$schema`) / `.claude-plugin/` | Claude plugin collection | Dissect via plugin artifact mapping |
 | `plugin.json` with the recognized Agent Plugins `$schema` | Portable Agent Plugin | Acquired and locked as one opaque unit; registered when effective targets include Copilot and admission gates pass. Excluded targets create no native registration or loose primitive projection. APM does not require the runtime during lifecycle operations; loading requires supported Copilot CLI 1.0.81 or newer |
 
@@ -136,6 +136,7 @@ the locked revision, `apm update` refreshes it, and `apm uninstall` removes
 managed hooks and resources. Malformed hook descriptors or invalid
 replacement packages leave the prior installation, lock, and ownership
 intact. Hook admission does not grant executable approval or run scripts.
+Updating selected packages does not replace unrelated installed hook packages.
 
 APM computes hook reach with one restriction-only intersection:
 

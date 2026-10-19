@@ -45,6 +45,15 @@ def _snapshot(project: Path) -> LifecycleStateSnapshot:
     return LifecycleStateSnapshot.capture(project, targets=_TARGETS, config_paths=_CONFIGS)
 
 
+def _source_bytes(installed: Path) -> dict[str, bytes]:
+    assert installed.is_dir()
+    return {
+        path.relative_to(installed).as_posix(): path.read_bytes()
+        for path in installed.rglob("*")
+        if path.is_file()
+    }
+
+
 def _assert_hooks(
     project: Path, marker: str, configs: tuple[PurePosixPath, ...] = _CONFIGS
 ) -> None:
@@ -152,7 +161,14 @@ def test_hook_path_install_restore_update_remove(
     script.write_text(script.read_text(encoding="utf-8").replace("v1", "v2"), encoding="utf-8")
     resource.write_text("v2", encoding="utf-8")
     second = repositories.commit(repository, message="update hook and sibling resource")
-    _run(runner, consumer.root, environment, _UPDATE, "hook-path-update")
+    updated = _run(
+        runner,
+        consumer.root,
+        environment,
+        _UPDATE,
+        "hook-path-update",
+    )
+    assert "Content hash mismatch" not in updated.stdout + updated.stderr
     _assert_hooks(consumer.root, "v2")
     assert first.sha != second.sha
     assert second.sha in (consumer.root / "apm.lock.yaml").read_text(encoding="utf-8")
@@ -171,11 +187,7 @@ def test_hook_path_install_restore_update_remove(
         ("arbitrary-directory", None),
     ):
         before = _snapshot(consumer.root)
-        source_before = {
-            path.relative_to(installed).as_posix(): path.read_bytes()
-            for path in installed.rglob("*")
-            if path.is_file()
-        }
+        source_before = _source_bytes(installed)
         if replacement is None:
             descriptor.unlink()
         else:
@@ -189,11 +201,7 @@ def test_hook_path_install_restore_update_remove(
         assert after.deployment_records == before.deployment_records
         assert after.files == before.files
         assert installed.exists(), f"{name}: {failed.stdout}\n{failed.stderr}"
-        assert {
-            path.relative_to(installed).as_posix(): path.read_bytes()
-            for path in installed.rglob("*")
-            if path.is_file()
-        } == source_before
+        assert _source_bytes(installed) == source_before
         _assert_hooks(consumer.root, "v2")
 
     descriptor.write_bytes(valid_descriptor)
@@ -256,3 +264,120 @@ def test_hook_path_install_restore_update_remove(
             assert not (control.root / "apm.lock.yaml").exists()
             control_ref = DependencyReference.parse_from_dict(control_dependency)
             assert not control_ref.get_install_path(control.root / "apm_modules").exists()
+
+
+@pytest.mark.parametrize("layout", ["hooks", ".apm/hooks"])
+@pytest.mark.parametrize("unselected_malformed", [False, True])
+@pytest.mark.parametrize("via_parent", [False, True])
+def test_selective_hook_update_preserves_unselected_package(
+    tmp_path: Path,
+    apm_binary_path: Path,
+    layout: str,
+    unselected_malformed: bool,
+    via_parent: bool,
+) -> None:
+    isolated = IsolatedApmEnvironment.create(tmp_path / "selection", base_env=dict(os.environ))
+    environment = isolated.subprocess_env()
+    repositories = LocalGitRepositoryFactory(isolated.repository_root, env=environment)
+    repository = repositories.create("hook-packages")
+    dependencies = []
+    descriptors = []
+    for name in ("selected", "unselected"):
+        descriptor = repository.worktree / name / layout / "lint.json"
+        descriptor.parent.mkdir(parents=True)
+        descriptor.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "PreToolUse": [
+                            {
+                                "hooks": [
+                                    {
+                                        "type": "command",
+                                        "command": f'python "${{CLAUDE_PLUGIN_ROOT}}/{layout}/run.py" {name}-v1',
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (descriptor.parent / "run.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+        descriptors.append(descriptor)
+        dependencies.append({"git": _REMOTE, "type": "gitlab", "path": name, "ref": "main"})
+    selected, unselected = map(DependencyReference.parse_from_dict, dependencies)
+    requested = selected
+    if via_parent:
+        parent = repository.worktree / "parent"
+        parent.mkdir()
+        dump_yaml(
+            {"name": "parent", "version": "1.0.0", "dependencies": {"apm": [dependencies[0]]}},
+            parent / "apm.yml",
+        )
+        dependencies[0] = {**dependencies[0], "path": "parent"}
+        requested = DependencyReference.parse_from_dict(dependencies[0])
+    repositories.commit(repository, message="seed two hook packages")
+    repositories.install_url_rewrite(repository, _REMOTE)
+    consumer = LocalPackageFactory(isolated.work_root).create(
+        "consumer", dependencies=tuple(dependencies), targets=("claude",)
+    )
+    runner = ApmLifecycleRunner((str(apm_binary_path),), scenario_timeout_seconds=120)
+    _run(runner, consumer.root, environment, _INSTALL, "selection-install")
+    installed = unselected.get_install_path(consumer.root / "apm_modules")
+    source_before = _source_bytes(installed)
+    before = LockFile.read(consumer.root / "apm.lock.yaml")
+    locked_unselected = before.get_dependency(unselected.get_unique_key())
+    unselected_before = locked_unselected.to_dict()
+    ownership_before = {
+        key: record
+        for key, record in before.deployment_ledger.records.items()
+        if unselected.get_unique_key() in record.owners
+    }
+    assert ownership_before
+    files_before = {
+        path: (consumer.root / path).read_bytes() for path in locked_unselected.deployed_files
+    }
+    descriptors[0].write_text(
+        descriptors[0].read_text(encoding="utf-8").replace("v1", "v2"), encoding="utf-8"
+    )
+    descriptors[1].write_text(
+        "{" if unselected_malformed else descriptors[1].read_text().replace("v1", "v2"),
+        encoding="utf-8",
+    )
+    advanced = repositories.commit(repository, message="advance both hook sources")
+    _run(
+        runner,
+        consumer.root,
+        environment,
+        ("update", requested.get_display_name(), "--yes", "--parallel-downloads", "0"),
+        "selection-update",
+    )
+    after = LockFile.read(consumer.root / "apm.lock.yaml")
+    assert after.get_dependency(selected.get_unique_key()).resolved_commit == advanced.sha
+    assert after.get_dependency(unselected.get_unique_key()).to_dict() == unselected_before
+    assert {
+        key: record
+        for key, record in after.deployment_ledger.records.items()
+        if unselected.get_unique_key() in record.owners
+    } == ownership_before
+    assert installed.exists()
+    assert _source_bytes(installed) == source_before
+    assert {path: (consumer.root / path).read_bytes() for path in files_before} == files_before
+    selected_path = selected.get_install_path(consumer.root / "apm_modules")
+    selected_source = _source_bytes(selected_path)
+    state_before = _snapshot(consumer.root)
+    descriptors[0].write_text("{", encoding="utf-8")
+    repositories.commit(repository, message="invalidate selected hook source")
+    _run(
+        runner,
+        consumer.root,
+        environment,
+        ("update", requested.get_display_name(), "--yes", "--parallel-downloads", "0"),
+        "selection-invalid-update",
+        success=False,
+    )
+    assert _snapshot(consumer.root).semantic_bytes == state_before.semantic_bytes
+    assert _source_bytes(selected_path) == selected_source
+    assert _source_bytes(installed) == source_before

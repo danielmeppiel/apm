@@ -704,6 +704,8 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
                 "package_type, _ = detect_package_type(install_path)",
                 "PackageType.HOOK_PACKAGE,",
                 "validation = validate_apm_package(",
+                "update_keys=self._update_keys,",
+                "self._update_keys.add(dep_ref.get_unique_key())",
             ),
             "Resolver hook admission must use canonical package classification and validation",
         )
@@ -731,10 +733,34 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
             (
                 "package_type, _ = detect_package_type(package_path)",
                 "if package_type is PackageType.HOOK_PACKAGE:",
+                "if update_keys is not None and dep_ref.get_unique_key() not in update_keys:",
             ),
             "Hook update rechecks must use canonical package classification",
         )
     )
+    for path, snippets in (
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            ("update_keys=update_keys,", "content_hash = compute_package_hash(candidate_path)"),
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            (
+                "receipt[0] == install_path.resolve()",
+                "if verify_package_hash(install_path, receipt[1]):",
+            ),
+        ),
+    ):
+        findings.extend(
+            _require_subs(
+                provider,
+                inv,
+                _RID_FORMAT_PRECEDENCE,
+                path,
+                snippets,
+                "Hook replacement reuse must preserve selected scope and validated path/hash evidence",
+            )
+        )
     findings.extend(
         _forbid_scan(
             provider,

@@ -45,6 +45,36 @@ RULE = "marketplace-integrations-package-format-precedence"
             "package_type, _ = detect_package_type(package_path)",
             "package_type = None",
         ),
+        (
+            "src/apm_cli/drift.py",
+            "if update_keys is not None and dep_ref.get_unique_key() not in update_keys:",
+            "if False:",
+        ),
+        (
+            "src/apm_cli/deps/apm_resolver.py",
+            "update_keys=self._update_keys,",
+            "update_keys=None,",
+        ),
+        (
+            "src/apm_cli/deps/apm_resolver.py",
+            "self._update_keys.add(dep_ref.get_unique_key())",
+            "pass",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "receipt[0] == install_path.resolve()",
+            "True",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "if verify_package_hash(install_path, receipt[1]):",
+            "if True:",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "content_hash = compute_package_hash(candidate_path)",
+            "content_hash = 'unverified'",
+        ),
     ],
 )
 def test_hook_admission_cannot_bypass_canonical_owners(path: str, old: str, new: str) -> None:

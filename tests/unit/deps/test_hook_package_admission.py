@@ -1,15 +1,23 @@
 """Hook-only candidates must pass canonical validation before activation."""
 
 from pathlib import Path
+from threading import Lock
 from unittest.mock import Mock
 
 import pytest
 
 from apm_cli.deps.apm_resolver import APMDependencyResolver, DownloadedPackageError
-from apm_cli.deps.lockfile import LockedDependency
+from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.drift import should_force_ref_recheck
+from apm_cli.install.context import InstallContext
+from apm_cli.install.phases.integrate import _resolve_download_strategy
+from apm_cli.install.phases.resolve import _activate_validated_candidate
+from apm_cli.install.resolution_staging import ResolutionStagingSession
+from apm_cli.install.sources import make_dependency_source
+from apm_cli.models.apm_package import GitReferenceType, ResolvedReference
 from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.validation import PackageType, validate_apm_package
+from apm_cli.utils.content_hash import compute_package_hash
 
 pytestmark = pytest.mark.component
 
@@ -89,3 +97,82 @@ def test_hook_updates_reenter_staged_admission(tmp_path: Path, layout: str) -> N
 
     (tmp_path / "SKILL.md").write_text("---\nname: control\n---\n# Skill\n", encoding="utf-8")
     assert not should_force_ref_recheck(ref, locked, update_refs=True, package_path=tmp_path)
+
+
+@pytest.mark.parametrize("evidence", ["valid", "missing", "wrong-path", "tampered", "stale-sha"])
+def test_published_hook_reuse_requires_bound_integrity(tmp_path: Path, evidence: str) -> None:
+    ref = DependencyReference(repo_url="acme/hooks", reference="main")
+    key = ref.get_unique_key()
+    modules = tmp_path / "apm_modules"
+    installed = ref.get_install_path(modules)
+    hooks = installed / "hooks"
+    hooks.mkdir(parents=True)
+    (hooks / "lint.json").write_text(_VALID_HOOK, encoding="utf-8")
+    locked = LockedDependency(
+        repo_url=ref.repo_url,
+        resolved_ref="main",
+        resolved_commit="a" * 40,
+        content_hash=compute_package_hash(installed),
+    )
+    ctx = InstallContext(project_root=tmp_path, apm_dir=tmp_path, update_refs=True)
+    ctx.apm_modules_dir = modules
+    ctx.existing_lockfile = LockFile()
+    ctx.existing_lockfile.add_dependency(locked)
+    ctx.targets = ["claude"]
+    ctx.logger = Mock()
+    ctx.diagnostics = Mock()
+    ctx.downloader = Mock()
+    ctx.dependency_graph = Mock()
+    ctx.dependency_graph.dependency_tree.get_node.return_value = None
+    ctx.downloader.resolve_git_reference.return_value = ResolvedReference(
+        original_ref="main",
+        ref_type=GitReferenceType.BRANCH,
+        resolved_commit="c" * 40 if evidence == "stale-sha" else "b" * 40,
+        ref_name="main",
+    )
+    session = ResolutionStagingSession(modules)
+    candidate = session.prepare_replacement(installed)
+    (candidate / "hooks").mkdir(parents=True)
+    (candidate / "hooks/lint.json").write_text(
+        _VALID_HOOK.replace("fixture", "updated"), encoding="utf-8"
+    )
+    assert validate_apm_package(candidate).is_valid
+    _activate_validated_candidate(
+        candidate,
+        staging_session=session,
+        pending_downloads={candidate: (key, "b" * 40)},
+        callback_downloaded=ctx.callback_downloaded,
+        callback_content_hashes=ctx.callback_content_hashes,
+        callback_lock=Lock(),
+        tui=None,
+    )
+    if evidence == "missing":
+        ctx.callback_content_hashes.clear()
+    elif evidence == "wrong-path":
+        ctx.callback_content_hashes[key] = (tmp_path, ctx.callback_content_hashes[key][1])
+    elif evidence == "tampered":
+        (installed / "hooks/lint.json").write_text(_VALID_HOOK + "\n", encoding="utf-8")
+
+    resolved, skip, locked_check, changed = _resolve_download_strategy(ctx, ref, installed)
+
+    assert skip is (evidence == "valid")
+    if skip:
+        source = make_dependency_source(
+            ctx,
+            ref,
+            installed,
+            key,
+            resolved_ref=resolved,
+            dep_locked_chk=locked_check,
+            ref_changed=changed,
+            skip_download=skip,
+            fetched_this_run=True,
+        )
+        assert source.acquire() is not None
+        ctx.downloader.download_package.assert_not_called()
+        ctx.logger.download_complete.assert_called_once_with(
+            ref.repo_url, ref="main", sha="bbbbbbbb", cached=False
+        )
+        ctx.diagnostics.warn.assert_not_called()
+    assert session.rollback() == []
+    assert compute_package_hash(installed) == locked.content_hash

@@ -107,6 +107,7 @@ class APMDependencyResolver:
         cache_validation_callback: Callable[[Path, str], Path | None] | None = None,
         reference_resolver: ReferenceResolver | None = None,
         frozen: bool = False,
+        update_keys: set[str] | None = None,
     ):
         """Initialize the resolver with maximum recursion depth.
 
@@ -130,6 +131,8 @@ class APMDependencyResolver:
                 install path already exists, at any depth -- see that
                 method's docstring for why this can't be scoped to direct
                 deps only.
+            update_keys: Shared selected-package keys for scoped updates.
+                Selected descendants are added before download callbacks run.
             existing_lockfile: Existing resolved dependency state used by the
                 canonical ref-drift owner to decide whether a plain install
                 must re-enter the download callback.
@@ -145,6 +148,7 @@ class APMDependencyResolver:
         self._activation_callback = activation_callback
         self._cache_validation_callback = cache_validation_callback
         self._update_refs = update_refs
+        self._update_keys = update_keys
         self._existing_lockfile = existing_lockfile
         self._reference_resolver = reference_resolver
         self._frozen = frozen
@@ -1045,6 +1049,14 @@ class APMDependencyResolver:
         loop-iteration variable.
         """
         node, dep_ref, parent_node, _is_dev = item
+        if self._update_keys is not None:
+            ancestor = parent_node
+            while ancestor is not None:
+                if ancestor.dependency_ref.get_unique_key() in self._update_keys:
+                    with self._download_lock:
+                        self._update_keys.add(dep_ref.get_unique_key())
+                    break
+                ancestor = ancestor.parent
         # Compute breadcrumb chain from this node's ancestry so download
         # errors can report "root > mid > failing-dep" context.
         parent_chain = node.get_ancestor_chain()
@@ -1085,6 +1097,7 @@ class APMDependencyResolver:
             dep_ref,
             locked_dep,
             update_refs=self._update_refs,
+            update_keys=self._update_keys,
             package_path=(
                 dep_ref.get_install_path(self._apm_modules_dir)
                 if self._apm_modules_dir is not None

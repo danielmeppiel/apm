@@ -203,6 +203,7 @@ def should_force_ref_recheck(
     *,
     update_refs: bool,
     package_path: Path | None = None,
+    update_keys: set[str] | None = None,
 ) -> bool:
     """Return whether an existing install path must reach the download owner.
 
@@ -216,13 +217,17 @@ def should_force_ref_recheck(
     if locked_dep is None:
         return True
     if update_refs:
+        if update_keys is not None and dep_ref.get_unique_key() not in update_keys:
+            return False
+        if getattr(dep_ref, "ref_kind", None) == "semver":
+            return True
         if package_path is not None:
             from apm_cli.models.validation import PackageType, detect_package_type
 
             package_type, _ = detect_package_type(package_path)
             if package_type is PackageType.HOOK_PACKAGE:
                 return True
-        return getattr(dep_ref, "ref_kind", None) == "semver"
+        return False
     return detect_ref_change(dep_ref, locked_dep, update_refs=False)
 
 
