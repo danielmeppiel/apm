@@ -575,6 +575,13 @@ The output binary is at `./dist/apm-{platform}-{arch}/apm`.
 apm --version
 ```
 
+The optional commit SHA comes from the build or the source checkout that
+contains the loaded APM package. A pip or Homebrew installation without an
+embedded SHA shows only the version, even when installed inside a Git
+repository. Source and editable checkouts, including forks and worktrees,
+retain their own revision.
+Standalone `apm --version` also works when Git is not installed.
+
 ## Troubleshooting
 
 ### `apm: command not found` (macOS / Linux)

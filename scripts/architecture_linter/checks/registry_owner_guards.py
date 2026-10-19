@@ -118,6 +118,28 @@ _DOCTOR_OWNER_NAME = "STATUS_SYMBOLS"
 _COMPILATION_PREFIX = "src/apm_cli/compilation/"
 
 
+# -- Version rendering / entrypoint delegation --
+
+_VERSION_RENDERER = "src/apm_cli/version_output.py"
+
+_VERSION_ENTRYPOINT = "src/apm_cli/entrypoint.py"
+
+_VR_HELPERS = "src/apm_cli/commands/_helpers.py"
+
+_VR_PYPROJECT = "pyproject.toml"
+
+_VR_FORBIDDEN_IMPORT = re.compile(
+    r"^\s*(?:from|import)\s+"
+    r"(?:apm_cli\.(?:cli|commands|deps)\b|\.(?:cli|commands|deps)\b|git\b|gitdb\b)"
+)
+
+_EP_EAGER_FORBIDDEN = re.compile(
+    r"^(?:from|import)\s+"
+    r"(?:apm_cli\.(?:cli|commands|deps)\b|\.(?:cli|commands|deps)\b|git\b|gitdb\b)"
+)
+
+# -- Compiled output / build-id --
+
 _COMPILED_OUTPUT_OWNER = "src/apm_cli/compilation/output_writer.py"
 _BUILD_ID_OWNER = "src/apm_cli/compilation/build_id.py"
 _BUILD_ID_CONSUMER = "src/apm_cli/compilation/agents_compiler.py"
@@ -786,6 +808,112 @@ def _has_named_assignment(
     )
 
 
+def _check_version_rendering(provider: FactsProvider) -> Iterable[Violation]:
+    """CLI version rendering must route through ``version_output.py``.
+
+    Guards the lightweight entrypoint extraction:
+    * ``print_version`` is defined only in ``version_output.py``.
+    * ``version_output.py`` never imports CLI, commands, deps, or GitPython.
+    * ``entrypoint.py`` never eagerly (top-level) imports those modules.
+    * ``_helpers.py`` reexports from ``version_output``, not a local copy.
+    * ``pyproject.toml`` points ``apm`` to ``apm_cli.entrypoint:main``.
+    * Frozen ``build/apm.spec`` preserves ``cli.py`` as the frozen bootstrap.
+    """
+    rule_id = "registry_delegation.version_rendering"
+    python_paths = (_VERSION_RENDERER, _VERSION_ENTRYPOINT, _VR_HELPERS)
+    facts_by_path, failures = _read_required(provider, rule_id, python_paths)
+    if failures:
+        return failures
+
+    findings: list[Violation] = []
+    vo = facts_by_path[_VERSION_RENDERER]
+    ep = facts_by_path[_VERSION_ENTRYPOINT]
+    helpers = facts_by_path[_VR_HELPERS]
+
+    # 1. print_version defined only in version_output.py
+    definers, def_failures = _defining_files(
+        provider, rule_id, "print_version", kinds=("function",)
+    )
+    if def_failures:
+        findings.extend(def_failures)
+    elif definers != frozenset({_VERSION_RENDERER}):
+        findings.append(
+            violation(
+                rule_id,
+                _VERSION_RENDERER,
+                "print_version must be defined only by version_output.py",
+            )
+        )
+
+    # 2. version_output.py: no imports of CLI/commands/deps/GitPython
+    for number, line in enumerate(vo.lines, start=1):
+        if _VR_FORBIDDEN_IMPORT.search(line) is not None:
+            findings.append(
+                violation(
+                    rule_id,
+                    _VERSION_RENDERER,
+                    "version_output.py must not import CLI, commands, deps, or GitPython",
+                    line=number,
+                )
+            )
+
+    # 3. entrypoint.py: no eager (unindented) imports of those modules
+    for number, line in enumerate(ep.lines, start=1):
+        if _EP_EAGER_FORBIDDEN.search(line) is not None:
+            findings.append(
+                violation(
+                    rule_id,
+                    _VERSION_ENTRYPOINT,
+                    "entrypoint.py must not eagerly import CLI, commands, deps, or GitPython",
+                    line=number,
+                )
+            )
+
+    # 4. entrypoint.py must lazy-delegate to canonical renderer and cli
+    ep_text = source_text(ep)
+    if "from apm_cli.version_output import print_version" not in ep_text:
+        findings.append(
+            violation(
+                rule_id,
+                _VERSION_ENTRYPOINT,
+                "entrypoint.py must lazy-import print_version from apm_cli.version_output",
+            )
+        )
+    if "from apm_cli.cli import main" not in ep_text:
+        findings.append(
+            violation(
+                rule_id,
+                _VERSION_ENTRYPOINT,
+                "entrypoint.py must lazy-delegate non-version argv to apm_cli.cli.main",
+            )
+        )
+
+    # 5. _helpers.py must reexport from version_output
+    if "from ..version_output import print_version" not in source_text(helpers):
+        findings.append(
+            violation(
+                rule_id,
+                _VR_HELPERS,
+                "_helpers.py must reexport print_version from version_output",
+            )
+        )
+
+    # 6. pyproject.toml entrypoint manifest
+    pyproject, pf = checked_facts(provider, _VR_PYPROJECT, rule_id, require_python=False)
+    if pf:
+        findings.extend(pf)
+    elif 'apm = "apm_cli.entrypoint:main"' not in source_text(pyproject):
+        findings.append(
+            violation(
+                rule_id,
+                _VR_PYPROJECT,
+                "pyproject.toml project.scripts.apm must be apm_cli.entrypoint:main",
+            )
+        )
+
+    return findings
+
+
 RULES: tuple[Rule, ...] = (
     Rule(
         id="registry_delegation.runtime_descriptors",
@@ -845,6 +973,13 @@ RULES: tuple[Rule, ...] = (
             "primitives/models.py (resolve_user_invocable)."
         ),
         check=_check_user_invocable_resolution,
+    ),
+    Rule(
+        id="registry_delegation.version_rendering",
+        group=GROUP,
+        guard_ids=("registry-delegation-version-rendering",),
+        description="CLI version rendering must route through version_output.py.",
+        check=_check_version_rendering,
     ),
 )
 

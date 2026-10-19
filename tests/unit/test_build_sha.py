@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import apm_cli.version as version_mod
 from apm_cli.version import get_build_sha
 
 
@@ -26,14 +27,15 @@ class TestGetBuildSha(unittest.TestCase):
     @patch("subprocess.run")
     def test_falls_back_to_git_in_development(self, mock_run):
         """In development, queries git rev-parse."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="d1630d1\n")
+        root = Path(version_mod.__file__).resolve().parents[2]
+        mock_run.return_value = MagicMock(returncode=0, stdout=f"{root}\nd1630d1\n")
         with patch("sys.frozen", False, create=True):
             result = get_build_sha()
         assert result == "d1630d1"
         mock_run.assert_called_once()
         args = mock_run.call_args
         assert Path(args[0][0][0]).stem == "git"
-        assert args[0][0][1:] == ["rev-parse", "--short", "HEAD"]
+        assert args[0][0][1:] == ["rev-parse", "--show-toplevel", "--short", "HEAD"]
 
     @patch("apm_cli.version.__BUILD_SHA__", None)
     @patch("subprocess.run", side_effect=FileNotFoundError("git not found"))

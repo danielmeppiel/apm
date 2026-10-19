@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from apm_cli.utils.git_env import get_git_executable
+from apm_cli.utils.git_env import get_git_executable, git_subprocess_env
 
 # Build-time constants (will be injected during build)
 # This avoids TOML parsing overhead during runtime
@@ -73,7 +73,7 @@ def get_build_sha() -> str:
     """Get the short git commit SHA for the current build.
 
     Uses the build-time constant when available (shipped binaries),
-    otherwise falls back to querying git at runtime (development).
+    otherwise queries git only for the checkout containing the loaded source.
     """
     if __BUILD_SHA__:
         return __BUILD_SHA__
@@ -83,18 +83,25 @@ def get_build_sha() -> str:
         import subprocess
 
         try:
-            repo_root = Path(__file__).parent.parent.parent
+            module_path = Path(__file__).resolve()
+            repo_root = module_path.parent.parent.parent
+            if module_path != repo_root / "src" / "apm_cli" / "version.py":
+                return ""
+
             result = subprocess.run(
-                [get_git_executable(), "rev-parse", "--short", "HEAD"],
+                [get_git_executable(), "rev-parse", "--show-toplevel", "--short", "HEAD"],
                 cwd=repo_root,
+                env=git_subprocess_env(),
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
                 timeout=5,
             )
             if result.returncode == 0:
-                return result.stdout.strip()
-        except Exception:
+                toplevel, sha = result.stdout.strip().splitlines()
+                if Path(toplevel).resolve() == repo_root:
+                    return sha
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
             pass
     return ""
 
