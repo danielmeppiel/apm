@@ -111,6 +111,11 @@ lowercase before constructing the package-registry path.
 
 ### Install validation chain (virtual subdirectory packages)
 
+Marketplace installation supports versioned directories produced by `apm pack`,
+such as `plugins/my-plugin-1.2.3`, including positional `--dry-run` previews.
+Directory content and path validation still apply. Git directory probes reject
+files, symbolic links, and submodules.
+
 `apm install` validates subdirectory packages (`owner/repo/path#ref`) before writing to `apm.yml` using the same credential chain as the actual install. Git-source semver ranges (for example, `owner/repo/path#^1.2.0`) defer raw-ref validation to semver tag resolution; registry-routed dependencies retain registry version validation. See [Authentication > Install validation chain](../authentication/) for the full probe sequence and troubleshooting.
 
 When a default registry is configured, plain shorthand deps (`owner/repo#<ref>`) bypass the GitHub probe. `apm install` requires a version selector before writing to `apm.yml`; deps with no `#<ref>` at all are rejected. Semver selectors (`1.0.0`, `^1.2.3`) use range matching; non-semver selectors (`stable`, `v1.4.2`, any opaque label) are matched exactly against the registry's published versions.
@@ -127,6 +132,16 @@ Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
 lock state may skip the write, so repeating that install is not a migration.
+
+Codex keeps APM registry identity in TOML comments instead of an unsupported
+native `id` setting. After upgrading, `apm install --only mcp --target codex`
+reports and repairs recorded APM-owned entries; add `--global` for user scope.
+Unchanged self-defined entries matching an older lockfile's saved configuration
+can also be repaired. Unowned or edited legacy entries stay untouched. For an
+entry you maintain yourself, back up the Codex config and remove only its
+unsupported `id = ...` setting. Keep comments such as
+`# apm-registry-id: "registry-uuid"` for duplicate detection. Inline containers
+being written may expand while preserving values and comments.
 
 ### Registry MCP runtime variables
 
