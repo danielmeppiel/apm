@@ -165,11 +165,9 @@ Cursor.
   - hooks: `.cursor/hooks.json`
 - **User scope.** Fully supported. Instructions deploy to
   `~/.cursor/rules/<name>.mdc` (same `cursor_rules` transform as project
-  scope). Cursor loads those file-backed rules in addition to the Settings UI
-  "User Rules" surface. Rule resolution walks upward from the workspace, so
-  `~/.cursor/rules` applies to projects under `$HOME` (the normal local case);
-  Cursor cloud agents whose workspace is not under the home directory are a
-  known Cursor-side gap, not an APM limitation.
+  scope). Cursor 2.1+ includes `~/.cursor/rules` in context
+  ([changelog](https://cursor.com/changelog/2-1)), in addition to the
+  Settings UI "User Rules" surface.
 - **Global compile.** `apm compile -g` can also render global instructions to
   `~/.cursor/AGENTS.md` for root-context readers that honor `AGENTS.md`.
 - **Caveat.** Command files use the shared `claude_command` transformer today; Cursor-specific frontmatter keys (`author`, `mcp`, `parameters`, ...) are dropped at install time and surfaced via diagnostics.
