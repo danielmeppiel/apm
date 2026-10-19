@@ -817,7 +817,6 @@ def _check_version_rendering(provider: FactsProvider) -> Iterable[Violation]:
     * ``entrypoint.py`` never eagerly (top-level) imports those modules.
     * ``_helpers.py`` reexports from ``version_output``, not a local copy.
     * ``pyproject.toml`` points ``apm`` to ``apm_cli.entrypoint:main``.
-    * Frozen ``build/apm.spec`` preserves ``cli.py`` as the frozen bootstrap.
     """
     rule_id = "registry_delegation.version_rendering"
     python_paths = (_VERSION_RENDERER, _VERSION_ENTRYPOINT, _VR_HELPERS)

@@ -81,11 +81,19 @@ def get_build_sha() -> str:
     # Fallback: query git at runtime (development only)
     if not getattr(sys, "frozen", False):
         import subprocess
+        from importlib.metadata import distributions
 
         try:
             module_path = Path(__file__).resolve()
             repo_root = module_path.parent.parent.parent
             if module_path != repo_root / "src" / "apm_cli" / "version.py":
+                return ""
+            # A wheel can overwrite tracked source via --target <checkout>/src.
+            if any(
+                distribution.metadata.get("Name", "").lower().replace("_", "-") == "apm-cli"
+                and distribution.read_text("WHEEL") is not None
+                for distribution in distributions(path=[str(module_path.parent.parent)])
+            ):
                 return ""
 
             result = subprocess.run(
@@ -100,7 +108,24 @@ def get_build_sha() -> str:
             if result.returncode == 0:
                 toplevel, sha = result.stdout.strip().splitlines()
                 if Path(toplevel).resolve() == repo_root:
-                    return sha
+                    tracked = subprocess.run(
+                        [
+                            get_git_executable(),
+                            "ls-files",
+                            "--error-unmatch",
+                            "--",
+                            "src/apm_cli/version.py",
+                            "pyproject.toml",
+                        ],
+                        cwd=repo_root,
+                        env=git_subprocess_env(),
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=5,
+                    )
+                    if tracked.returncode == 0:
+                        return sha
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
             pass
     return ""

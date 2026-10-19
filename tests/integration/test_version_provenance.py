@@ -135,17 +135,23 @@ def wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return next(out.glob("*.whl"))
 
 
-@pytest.mark.parametrize("ancestor", ["unrelated", "apm", "none", "missing-git"])
+@pytest.mark.parametrize(
+    "ancestor", ["unrelated", "apm", "none", "missing-git", "target-unrelated", "target-apm"]
+)
 def test_installed_wheel_does_not_borrow_ancestor_sha(
     tmp_path: Path, wheel: Path, ancestor: str
 ) -> None:
     root = tmp_path / ancestor
     root.mkdir()
-    if ancestor == "apm":
+    if ancestor in {"apm", "target-apm"}:
         _copy_source(root)
     if ancestor not in {"none", "missing-git"}:
         _init_repo(root)
-    site = root / "lib" / "python3" / "site-packages"
+    site = (
+        root / "src"
+        if ancestor.startswith("target-")
+        else root / "lib" / "python3" / "site-packages"
+    )
     uv = shutil.which("uv")
     assert uv is not None
     result = subprocess.run(
@@ -195,10 +201,11 @@ def test_source_checkout_uses_its_own_revision(tmp_path: Path, layout: str) -> N
     )
 
 
-def test_unversioned_source_under_unrelated_checkout(tmp_path: Path) -> None:
+@pytest.mark.parametrize("layout", ["nested", "direct"])
+def test_unversioned_source_under_unrelated_checkout(tmp_path: Path, layout: str) -> None:
     root = tmp_path / "unrelated"
     _init_repo(root)
-    import_root = _copy_source(root / "untracked-apm")
+    import_root = _copy_source(root / "untracked-apm" if layout == "nested" else root)
     assert _version_output(import_root, root) == (
         f"Agent Package Manager (APM) CLI version {get_version()}"
     )
