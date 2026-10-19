@@ -51,7 +51,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-lk-003](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-003) | MUST | 5.2 | consumer | active | 9 | - |
 | [req-lk-004](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-004) | MUST | 5.4 | consumer | active | 1 | - |
 | [req-lk-005](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-005) | MUST | 5.5 | consumer | active | 2 | - |
-| [req-lk-006](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-006) | MUST | 5.5 | consumer | active | 6 | - |
+| [req-lk-006](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-006) | MUST | 5.5 | consumer | active | 10 | - |
 | [req-lk-007](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-007) | SHOULD | 5.5 | consumer | active | 1 | - |
 | [req-lk-008](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-008) | MUST | 5.6 | consumer | active | 1 | - |
 | [req-lk-009](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-009) | MUST | 5.6 | consumer | active | 1 | - |
@@ -75,7 +75,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-mf-005](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-005) | MUST | 4.2.1 | producer | active | 1 | - |
 | [req-mf-006](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-006) | MUST | 4.1 | consumer | active | 1 | - |
 | [req-mf-007](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-007) | MUST | 4.3.1 | consumer | active | 1 | - |
-| [req-mf-008](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-008) | MUST | 4.3.3 | consumer | active | 1 | - |
+| [req-mf-008](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-008) | MUST | 4.3.3 | consumer | active | 3 | - |
 | [req-mf-009](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-009) | MUST | 4.3.4 | consumer | active | 1 | - |
 | [req-mf-010](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-010) | MUST | 4.3.2 | consumer | active | 1 | - |
 | [req-mf-011](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-011) | MUST | 4.3.2 | consumer | active | 1 | - |
