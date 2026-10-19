@@ -418,49 +418,38 @@ def _build_package_info(
                 "; ".join(validation.errors) or "Agent Plugin validation produced no package"
             )
         pkg = validation.package
-        if not pkg.source:
-            pkg.source = lock_dep.repo_url
-        return PackageInfo(
-            package=pkg,
-            install_path=install_path,
-            resolved_reference=resolved_ref,
-            dependency_ref=lock_dep.to_dependency_ref(),
-            package_type=PackageType.AGENT_PLUGIN,
-        )
-
-    apm_yml = install_path / "apm.yml"
-    if apm_yml.exists():
-        try:
-            pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
-        except Exception:
+        package_type = PackageType.AGENT_PLUGIN
+    else:
+        apm_yml = install_path / "apm.yml"
+        pkg = None
+        if apm_yml.exists():
+            try:
+                pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
+            except Exception:
+                pkg = None
+        if pkg is None:
             pkg = APMPackage(
                 name=install_path.name,
                 version=lock_dep.version or "unknown",
                 package_path=install_path,
                 source=lock_dep.repo_url,
             )
-        if not pkg.source:
-            pkg.source = lock_dep.repo_url
-    else:
-        pkg = APMPackage(
-            name=install_path.name,
-            version=lock_dep.version or "unknown",
-            package_path=install_path,
-            source=lock_dep.repo_url,
-        )
+        try:
+            package_type = PackageType(
+                lock_dep.package_type or detect_package_type(install_path)[0].value
+            )
+        except Exception:
+            package_type = None
+    if not pkg.source:
+        pkg.source = lock_dep.repo_url
 
-    info = PackageInfo(
+    return PackageInfo(
         package=pkg,
         install_path=install_path,
         resolved_reference=resolved_ref,
         dependency_ref=lock_dep.to_dependency_ref(),
+        package_type=package_type,
     )
-    try:
-        package_type = lock_dep.package_type or detect_package_type(install_path)[0].value
-        info.package_type = PackageType(package_type)
-    except Exception:
-        info.package_type = None
-    return info
 
 
 # ---------------------------------------------------------------------------

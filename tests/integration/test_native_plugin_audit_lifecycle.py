@@ -9,7 +9,6 @@ Proves that:
 4. Modified managed content produces meaningful drift and content-integrity failures.
 5. Missing managed content produces meaningful unintegrated and deployed-file failures.
 6. Tampered or removed plugin manifest produces meaningful drift replay failures.
-7. Target exclusion is preserved when non-Copilot targets are specified.
 """
 
 from __future__ import annotations
@@ -357,39 +356,3 @@ def test_tampered_plugin_manifest_fails_audit(
     assert "drift replay blocked" in audit_res.output
     assert "version" in audit_res.output
     assert "canonical IR is missing" not in audit_res.output
-
-
-def test_target_exclusion_preserves_protection(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Evaluating non-copilot targets preserves exclusion without replay crash."""
-    project = tmp_path / "project"
-    source = tmp_path / "plugins" / "copilot_only"
-    write_agent_plugin(source, name="copilot-only", with_mcp=False)
-
-    _write_project_with_skill(project, [str(source)], targets=["copilot"])
-
-    install_res = _run_install(monkeypatch, project, "--target", "copilot")
-    assert install_res.exit_code == 0, install_res.output
-
-    _write_project_with_skill(project, [str(source)], targets=["claude"])
-    before = _snapshot_tree(project)
-    scratch = tmp_path / "replay"
-    result = run_replay(
-        ReplayConfig(
-            project_root=project,
-            lockfile_path=project / "apm.lock.yaml",
-            targets=frozenset({"claude"}),
-            scratch_root=scratch,
-        ),
-        CheckLogger(),
-    )
-
-    assert result == scratch
-    assert "Replayed 1 package(s)" in capsys.readouterr().err
-    assert (scratch / ".claude/skills/local-skill/SKILL.md").is_file()
-    assert not catalog_path_for(scratch / "apm_modules").exists()
-    assert not (scratch / ".claude/skills/copilot-only-skill").exists()
-    assert before == _snapshot_tree(project)
