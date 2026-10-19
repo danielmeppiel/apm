@@ -46,7 +46,7 @@ def only_packages_from_validation(
 
 
 def selected_dependency_keys(packages: list[str]) -> set[str]:
-    """Normalize selected specs while retaining the existing raw-selector fallback."""
+    """Delegate to DependencyReference.parse/get_unique_key, retaining raw selectors on failure."""
     from apm_cli.models.dependency.reference import DependencyReference
 
     keys: set[str] = set()
