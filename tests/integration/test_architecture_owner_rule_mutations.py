@@ -68,6 +68,26 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
             "selected_dependency_identity(package, all_apm_dependencies)",
             "DependencyReference.parse(package).get_identity()",
         ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "selected_dependency_keys(ctx.only_packages, ctx.all_apm_deps)",
+            "selected_dependency_keys(ctx.only_packages)",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "for dependency in dependencies:",
+            "for dependency in ():",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "_selected_dependency_reference(spec, dependencies).get_unique_key()",
+            "DependencyReference.parse(spec).get_unique_key()",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "return _selected_dependency_reference(package, dependencies).get_identity()",
+            "return DependencyReference.parse(package).get_identity()",
+        ),
     ],
 )
 def test_package_selector_identity_cannot_bypass_interpreted_references(

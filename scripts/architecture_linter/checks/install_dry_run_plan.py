@@ -58,7 +58,14 @@ def check_prospective_dry_run_plan(provider: FactsProvider) -> tuple[Violation, 
     command, command_fail = _facts_for(provider, _COMMAND, rule_id)
     renderer, renderer_fail = _facts_for(provider, _RENDERER, rule_id)
     selection, selection_fail = _facts_for(provider, _SELECTION_OWNER, rule_id)
-    failures = list(owner_fail) + list(command_fail) + list(renderer_fail) + list(selection_fail)
+    resolve, resolve_fail = _facts_for(provider, _RESOLVE, rule_id)
+    failures = (
+        list(owner_fail)
+        + list(command_fail)
+        + list(renderer_fail)
+        + list(selection_fail)
+        + list(resolve_fail)
+    )
     if failures:
         return tuple(failures)
 
@@ -86,6 +93,20 @@ def check_prospective_dry_run_plan(provider: FactsProvider) -> tuple[Violation, 
         _count_re(owner, class_pattern) == 1
         and _count_re(selection, identity_pattern) == 1
         and _selection_uses_interpreted_identity(provider)
+        and _present(selection, "for dependency in dependencies:")
+        and _present(selection, "if dependency.to_canonical() == package:")
+        and _present(
+            selection,
+            "return _selected_dependency_reference(package, dependencies).get_identity()",
+        )
+        and _present(
+            selection,
+            "_selected_dependency_reference(spec, dependencies).get_unique_key()",
+        )
+        and _present(
+            resolve,
+            "selected_dependency_keys(ctx.only_packages, ctx.all_apm_deps)",
+        )
         and _present(owner, "def from_apm_package(")
         and _present(owner, "def with_allowed_lsp_dependencies(")
         and _present(owner, "selected_apm_dependencies=selected_apm_dependencies")

@@ -11,14 +11,21 @@ if TYPE_CHECKING:
     from apm_cli.core.command_logger import _ValidationOutcome
 
 
-def selected_dependency_identity(package: str, dependencies: Sequence[DependencyReference]) -> str:
-    """Resolve a selector using interpreted references before shorthand parsing."""
+def _selected_dependency_reference(
+    package: str, dependencies: Sequence[DependencyReference]
+) -> DependencyReference:
+    """Preserve interpreted coordinates before falling back to shorthand parsing."""
     for dependency in dependencies:
         # Explicit git+path coordinates can contain dotted bundle directories
         # whose canonical display is not a valid shorthand file reference.
         if dependency.to_canonical() == package:
-            return dependency.get_identity()
-    return DependencyReference.parse(package).get_identity()
+            return dependency
+    return DependencyReference.parse(package)
+
+
+def selected_dependency_identity(package: str, dependencies: Sequence[DependencyReference]) -> str:
+    """Resolve a selector using interpreted references before shorthand parsing."""
+    return _selected_dependency_reference(package, dependencies).get_identity()
 
 
 def existing_dependency_identities(current_dependencies: list[object]) -> set[str]:
@@ -54,3 +61,16 @@ def only_packages_from_validation(
             seen.add(canonical)
             selected.append(canonical)
     return selected
+
+
+def selected_dependency_keys(
+    packages: list[str], dependencies: Sequence[DependencyReference] = ()
+) -> set[str]:
+    """Use the shared interpreted selector owner, retaining raw selectors on failure."""
+    keys: set[str] = set()
+    for spec in packages:
+        try:
+            keys.add(_selected_dependency_reference(spec, dependencies).get_unique_key())
+        except (ValueError, TypeError):
+            keys.add(spec)
+    return keys
