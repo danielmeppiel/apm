@@ -728,6 +728,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Bootstrap project-name owner drifts off its pinned fallback value.",
     ),
     MutationCase(
+        guard_id="registry-delegation-build-id-verification",
+        rule_id="registry_delegation.build_id_verification",
+        path="src/apm_cli/compilation/build_id.py",
+        old="def has_valid_build_id(content: str) -> bool:",
+        new="def _has_valid_build_id_removed(content: str) -> bool:",
+        intent="The Build ID owner loses its canonical verification entry point.",
+    ),
+    MutationCase(
         guard_id="registry-delegation-compiled-output-writes",
         rule_id="registry_delegation.compiled_output_writes",
         path="src/apm_cli/compilation/context_optimizer.py",
