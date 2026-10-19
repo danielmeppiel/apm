@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `apm install` and `apm update` no longer fail with `Object of type mappingproxy is not JSON serializable` when a hook carries nested metadata such as `env`; Claude, Codex, Gemini and Antigravity hook files keep that metadata as plain JSON. (by @abhishekacharya200, with regression coverage from @MohammedAlkindi in #3199, closes #3167) (#3211)
 - `apm install` now writes untyped flat command hooks as Claude `"type": "command"` handlers, including alongside Claude-shaped hook files. Explicit types and other targets are unchanged; reinstall to refresh existing entries. -- by @Parth-Vasave (#3153, closes #3130)
 
 ## [0.34.0] - 2026-10-16
