@@ -54,6 +54,7 @@ def plan_batch(data: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]
         if scheduled:
             if existing & SCHEDULED_DECIDED_LABELS:
                 continue
+            # Exclusions above precede this check: skipped records have no scope evidence.
             if type(issue.get("has_scope_record")) is not bool:
                 raise ValueError(f"Scheduled issue #{number} needs complete scope evidence")
             if issue["has_scope_record"]:
