@@ -127,6 +127,7 @@ def _user_owned_entry(target: str) -> dict:
     }
 
 
+@pytest.mark.lifecycle_smoke
 @pytest.mark.parametrize("target, settings_rel, sidecar_rel, event_key", _HARNESS_CASES)
 def test_root_hook_source_drift_heals_on_reinstall(
     tmp_path: Path,

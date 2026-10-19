@@ -691,6 +691,7 @@ def test_cached_content_rebinds_attribution_without_reparsing(
     assert second.findings_by_file["second"][0].file == "second"
 
 
+@pytest.mark.lifecycle_smoke
 @pytest.mark.parametrize("target", ["cursor", "windsurf"])
 @pytest.mark.parametrize("nested", [False, True])
 def test_preserved_nested_command_layout_is_visible_non_prompt(
