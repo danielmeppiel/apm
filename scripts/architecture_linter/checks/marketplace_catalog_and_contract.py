@@ -705,7 +705,8 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
                 "PackageType.HOOK_PACKAGE,",
                 "validation = validate_apm_package(",
                 "update_keys=self._update_keys,",
-                "self._update_keys.add(dep_ref.get_unique_key())",
+                "self._update_keys.add(sub_dep.get_unique_key())",
+                "and dep_ref.get_unique_key() not in self._scoped_rechecked",
             ),
             "Resolver hook admission must use canonical package classification and validation",
         )

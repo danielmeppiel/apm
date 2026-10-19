@@ -149,6 +149,7 @@ class APMDependencyResolver:
         self._cache_validation_callback = cache_validation_callback
         self._update_refs = update_refs
         self._update_keys = update_keys
+        self._scoped_rechecked: set[str] = set()
         self._existing_lockfile = existing_lockfile
         self._reference_resolver = reference_resolver
         self._frozen = frozen
@@ -775,6 +776,12 @@ class APMDependencyResolver:
                         child is not existing_node for child in parent_node.children
                     ):
                         parent_node.children.append(existing_node)
+                    if (
+                        self._update_keys is not None
+                        and dep_ref.get_unique_key() in self._update_keys
+                        and dep_ref.get_unique_key() not in self._scoped_rechecked
+                    ):
+                        work_items.append((existing_node, dep_ref, parent_node, is_dev))
                     continue
 
                 # Create a new node for this dependency
@@ -921,6 +928,11 @@ class APMDependencyResolver:
                                 continue
                         # Avoid infinite recursion by checking if we're already processing this dep
                         # Use O(1) set lookup instead of O(n) list comprehension
+                        if (
+                            self._update_keys is not None
+                            and node.dependency_ref.get_unique_key() in self._update_keys
+                        ):
+                            self._update_keys.add(sub_dep.get_unique_key())
                         queue_key = sub_dep.get_resolution_key()
                         if queue_key not in queued_keys:
                             processing_queue.append((sub_dep, node.depth + 1, node, is_dev))
@@ -1049,14 +1061,9 @@ class APMDependencyResolver:
         loop-iteration variable.
         """
         node, dep_ref, parent_node, _is_dev = item
-        if self._update_keys is not None:
-            ancestor = parent_node
-            while ancestor is not None:
-                if ancestor.dependency_ref.get_unique_key() in self._update_keys:
-                    with self._download_lock:
-                        self._update_keys.add(dep_ref.get_unique_key())
-                    break
-                ancestor = ancestor.parent
+        if self._update_keys is not None and dep_ref.get_unique_key() in self._update_keys:
+            with self._download_lock:
+                self._scoped_rechecked.add(dep_ref.get_unique_key())
         # Compute breadcrumb chain from this node's ancestry so download
         # errors can report "root > mid > failing-dep" context.
         parent_chain = node.get_ancestor_chain()

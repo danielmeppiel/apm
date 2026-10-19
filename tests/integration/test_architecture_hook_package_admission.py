@@ -57,8 +57,13 @@ RULE = "marketplace-integrations-package-format-precedence"
         ),
         (
             "src/apm_cli/deps/apm_resolver.py",
-            "self._update_keys.add(dep_ref.get_unique_key())",
+            "self._update_keys.add(sub_dep.get_unique_key())",
             "pass",
+        ),
+        (
+            "src/apm_cli/deps/apm_resolver.py",
+            "and dep_ref.get_unique_key() not in self._scoped_rechecked",
+            "and False",
         ),
         (
             "src/apm_cli/install/phases/integrate.py",

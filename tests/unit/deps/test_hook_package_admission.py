@@ -94,6 +94,12 @@ def test_hook_updates_reenter_staged_admission(tmp_path: Path, layout: str) -> N
 
     assert should_force_ref_recheck(ref, locked, update_refs=True, package_path=tmp_path)
     assert not should_force_ref_recheck(ref, locked, update_refs=False, package_path=tmp_path)
+    assert not should_force_ref_recheck(
+        ref, locked, update_refs=True, package_path=tmp_path, update_keys={"other/package"}
+    )
+    assert should_force_ref_recheck(
+        ref, locked, update_refs=True, package_path=tmp_path, update_keys={ref.get_unique_key()}
+    )
 
     (tmp_path / "SKILL.md").write_text("---\nname: control\n---\n# Skill\n", encoding="utf-8")
     assert not should_force_ref_recheck(ref, locked, update_refs=True, package_path=tmp_path)

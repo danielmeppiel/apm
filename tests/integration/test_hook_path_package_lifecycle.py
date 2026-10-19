@@ -268,13 +268,13 @@ def test_hook_path_install_restore_update_remove(
 
 @pytest.mark.parametrize("layout", ["hooks", ".apm/hooks"])
 @pytest.mark.parametrize("unselected_malformed", [False, True])
-@pytest.mark.parametrize("via_parent", [False, True])
+@pytest.mark.parametrize("selection_route", ["direct", "parent", "shared-child"])
 def test_selective_hook_update_preserves_unselected_package(
     tmp_path: Path,
     apm_binary_path: Path,
     layout: str,
     unselected_malformed: bool,
-    via_parent: bool,
+    selection_route: str,
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "selection", base_env=dict(os.environ))
     environment = isolated.subprocess_env()
@@ -309,15 +309,19 @@ def test_selective_hook_update_preserves_unselected_package(
         dependencies.append({"git": _REMOTE, "type": "gitlab", "path": name, "ref": "main"})
     selected, unselected = map(DependencyReference.parse_from_dict, dependencies)
     requested = selected
-    if via_parent:
+    if selection_route != "direct":
         parent = repository.worktree / "parent"
         parent.mkdir()
         dump_yaml(
             {"name": "parent", "version": "1.0.0", "dependencies": {"apm": [dependencies[0]]}},
             parent / "apm.yml",
         )
-        dependencies[0] = {**dependencies[0], "path": "parent"}
-        requested = DependencyReference.parse_from_dict(dependencies[0])
+        parent_dependency = {**dependencies[0], "path": "parent"}
+        if selection_route == "shared-child":
+            dependencies.insert(1, parent_dependency)
+        else:
+            dependencies[0] = parent_dependency
+        requested = DependencyReference.parse_from_dict(parent_dependency)
     repositories.commit(repository, message="seed two hook packages")
     repositories.install_url_rewrite(repository, _REMOTE)
     consumer = LocalPackageFactory(isolated.work_root).create(
