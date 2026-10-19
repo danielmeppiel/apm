@@ -829,6 +829,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="The user-invocable owner loses its single interpretation entry point.",
     ),
     MutationCase(
+        guard_id="registry-delegation-version-rendering",
+        rule_id="registry_delegation.version_rendering",
+        path="src/apm_cli/version_output.py",
+        old="def print_version(ctx: click.Context, param: click.Parameter | None, value: bool) -> None:",
+        new="def _print_version_removed(ctx: click.Context, param: click.Parameter | None, value: bool) -> None:",
+        intent="The version renderer loses its canonical print_version definition.",
+    ),
+    MutationCase(
         guard_id="transport-platform-ado-validation-bearer-fallback",
         rule_id="transport-platform-host-credential-resolution",
         path="src/apm_cli/install/validation.py",
@@ -1794,3 +1802,113 @@ def test_owner_rule_catches_its_guard_mutation(
         f"({case.intent}) -- the guard has no teeth for this owner. "
         f"failures={[(f.stage, f.message) for f in report.failures]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Targeted version-rendering / entrypoint guard mutations
+# ---------------------------------------------------------------------------
+
+_VR_RULE = "registry_delegation.version_rendering"
+
+
+def test_version_rendering_guard_rejects_eager_entrypoint_import() -> None:
+    """entrypoint.py must not eagerly import apm_cli.cli at top level."""
+    path = "src/apm_cli/entrypoint.py"
+    source = _source(path)
+    old = "import sys"
+    new = "import sys\nfrom apm_cli.cli import main as cli_main"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_forbidden_import_in_renderer() -> None:
+    """version_output.py must not import from apm_cli.commands."""
+    path = "src/apm_cli/version_output.py"
+    source = _source(path)
+    old = "from .version import get_build_sha, get_version"
+    new = "from .version import get_build_sha, get_version\nfrom .commands import install"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_gitpython_in_renderer() -> None:
+    """version_output.py must not import GitPython."""
+    path = "src/apm_cli/version_output.py"
+    source = _source(path)
+    old = "import click"
+    new = "import click\nimport git"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_dropped_helpers_reexport() -> None:
+    """_helpers.py must maintain its reexport from version_output."""
+    path = "src/apm_cli/commands/_helpers.py"
+    source = _source(path)
+    old = "from ..version_output import print_version  # noqa: F401 -- compatibility re-export"
+    new = "# print_version reexport removed"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_entrypoint_manifest_bypass() -> None:
+    """pyproject.toml must point apm to apm_cli.entrypoint:main."""
+    path = "pyproject.toml"
+    source = _source(path)
+    old = 'apm = "apm_cli.entrypoint:main"'
+    new = 'apm = "apm_cli.cli:main"'
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_dropped_lazy_delegation() -> None:
+    """entrypoint.py must preserve lazy delegation to apm_cli.cli.main."""
+    path = "src/apm_cli/entrypoint.py"
+    source = _source(path)
+    old = "from apm_cli.cli import main as cli_main\n\n    cli_main()"
+    new = "import apm_cli.commands.install  # bypass"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_second_renderer_in_helpers() -> None:
+    """A second print_version definition in _helpers.py must be caught."""
+    path = "src/apm_cli/commands/_helpers.py"
+    source = _source(path)
+    old = "from ..version_output import print_version  # noqa: F401 -- compatibility re-export"
+    new = (
+        "from ..version_output import print_version as _canonical_print_version"
+        "  # noqa: F401\n\n\n"
+        "def print_version(ctx, param, value):\n"
+        '    """Local override."""\n'
+        "    _canonical_print_version(ctx, param, value)\n"
+    )
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)

@@ -1,5 +1,12 @@
 # CLI Command Reference
 
+`apm --version` shows an optional commit SHA only when embedded at build time
+or verified against the source checkout containing the loaded APM package.
+Installed wheels do not borrow an enclosing repository's SHA. Source/editable
+checkouts, including forks and worktrees, show their revision when Git can
+verify it; otherwise the SHA is omitted.
+Standalone `apm --version` does not require Git to be installed.
+
 ## Project setup
 
 | Command | Purpose | Key flags |
