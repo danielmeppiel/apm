@@ -694,6 +694,58 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
             "Agent Plugin ingress must delegate package-format precedence to the planner",
         )
     )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_FORMAT_PRECEDENCE,
+            "src/apm_cli/deps/apm_resolver.py",
+            (
+                "package_type, _ = detect_package_type(install_path)",
+                "PackageType.HOOK_PACKAGE,",
+                "validation = validate_apm_package(",
+            ),
+            "Resolver hook admission must use canonical package classification and validation",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_FORMAT_PRECEDENCE,
+            _VALIDATION,
+            (
+                "hook_files = HookIntegrator().find_hook_files(package_path)",
+                "parse_hook_source(json.load(handle))",
+                "_validate_hook_descriptors(package_path, result)",
+            ),
+            "Hook-only validation must reuse hook discovery and the neutral source grammar",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_FORMAT_PRECEDENCE,
+            "src/apm_cli/drift.py",
+            (
+                "package_type, _ = detect_package_type(package_path)",
+                "if package_type is PackageType.HOOK_PACKAGE:",
+            ),
+            "Hook update rechecks must use canonical package classification",
+        )
+    )
+    findings.extend(
+        _forbid_scan(
+            provider,
+            inv,
+            _RID_FORMAT_PRECEDENCE,
+            ("src/apm_cli/deps/apm_resolver.py",),
+            re.compile(r"\.(?:rglob|glob)\("),
+            "Resolver must not discover hook layouts independently of package classification",
+            exempt=False,
+        )
+    )
     return tuple(findings)
 
 

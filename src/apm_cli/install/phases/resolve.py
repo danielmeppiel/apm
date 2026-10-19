@@ -467,6 +467,7 @@ def _resolve_dependencies(
                     dep_ref,
                     _locked_for_recheck,
                     update_refs=update_refs,
+                    package_path=install_path,
                 ):
                     return install_path
             replacement_path = staging_session.prepare_replacement(install_path)

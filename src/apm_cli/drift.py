@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import builtins
 from dataclasses import replace as _dataclass_replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from apm_cli.core.host_providers import effective_host_provider_identity
@@ -201,19 +202,26 @@ def should_force_ref_recheck(
     locked_dep: LockedDependency | None,
     *,
     update_refs: bool,
+    package_path: Path | None = None,
 ) -> bool:
     """Return whether an existing install path must reach the download owner.
 
     This is the single gate shared by the dependency resolver and its download
     callback. A normal install rechecks only manifest/lock drift. An explicit
-    update rechecks semver ranges so they can discover a newer matching tag,
-    while literal revision pins retain their dedicated update semantics.
+    update rechecks semver ranges and hook-only packages. Hook replacements
+    must pass staged admission before any live content is replaced.
     """
     if dep_ref.is_local or getattr(dep_ref, "artifactory_prefix", None):
         return False
     if locked_dep is None:
         return True
     if update_refs:
+        if package_path is not None:
+            from apm_cli.models.validation import PackageType, detect_package_type
+
+            package_type, _ = detect_package_type(package_path)
+            if package_type is PackageType.HOOK_PACKAGE:
+                return True
         return getattr(dep_ref, "ref_kind", None) == "semver"
     return detect_ref_change(dep_ref, locked_dep, update_refs=False)
 

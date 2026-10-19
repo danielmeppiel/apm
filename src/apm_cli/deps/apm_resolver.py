@@ -1085,6 +1085,11 @@ class APMDependencyResolver:
             dep_ref,
             locked_dep,
             update_refs=self._update_refs,
+            package_path=(
+                dep_ref.get_install_path(self._apm_modules_dir)
+                if self._apm_modules_dir is not None
+                else None
+            ),
         )
 
     def _try_load_dependency_package(
@@ -1265,7 +1270,11 @@ class APMDependencyResolver:
             )
 
         package_type, _ = detect_package_type(install_path)
-        if package_type in (PackageType.MARKETPLACE_PLUGIN, PackageType.SKILL_BUNDLE):
+        if package_type in (
+            PackageType.MARKETPLACE_PLUGIN,
+            PackageType.SKILL_BUNDLE,
+            PackageType.HOOK_PACKAGE,
+        ):
             validation = validate_apm_package(
                 install_path,
                 source_path=dep_source_path,
@@ -1281,7 +1290,7 @@ class APMDependencyResolver:
                 self._raise_downloaded_package_error(
                     downloaded_candidate,
                     dep_ref,
-                    f"Marketplace Plugin validation produced no package metadata: {install_path}",
+                    f"Package validation produced no package metadata: {install_path}",
                     had_existing_install,
                 )
             if not validation.package.source:

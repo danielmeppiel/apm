@@ -129,6 +129,14 @@ Packages can ship hooks (pre/post tool-use scripts) by placing JSON
 files under `hooks/` or `.apm/hooks/`. Filename-based hook routing
 (`*-<harness>-hooks.json` and `hooks-<harness>.json`) is deprecated.
 
+Hook-only Git dependencies need neither `apm.yml` nor `SKILL.md`. Set
+`path` to the directory containing `hooks/` or `.apm/hooks/`, not the
+inner hooks directory. Discovery is non-recursive. `apm install` restores
+the locked revision, `apm update` refreshes it, and `apm uninstall` removes
+managed hooks and resources. Malformed hook descriptors or invalid
+replacement packages leave the prior installation, lock, and ownership
+intact. Hook admission does not grant executable approval or run scripts.
+
 APM computes hook reach with one restriction-only intersection:
 
 `effective hook targets = project active targets INTERSECT consumer
