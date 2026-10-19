@@ -82,6 +82,35 @@ def test_skipped_first_page_and_author_quota_do_not_starve_later_issues() -> Non
     assert result["batch_full"] is True
 
 
+def test_scheduled_profile_preserves_default_and_explicit_selection() -> None:
+    """Only the workflow's opt-in scheduled issue sweep changes."""
+    issues = [
+        {**_issue(n, ["status/accepted"], author=f"author-{n}"), "has_scope_record": True}
+        for n in range(1, 12)
+    ]
+    data = {"mode": "sweep", "issues": issues, "repository_labels": ["triage/recommended"]}
+    assert len(PLAN_BATCH(data, CONTRACT)["selected"]) == 10
+    assert PLAN_BATCH({**data, "scheduled_sweep": True}, CONTRACT)["selected"] == []
+    for mode in ("dispatch", "label-event"):
+        assert _plan([issues[0]], mode)["selected"][0]["number"] == 1
+
+
+def test_scheduled_profile_requires_scope_evidence_and_keeps_author_quota() -> None:
+    """Missing evidence fails closed, and skipped decisions spend no author slots."""
+    data = {
+        "mode": "sweep",
+        "scheduled_sweep": True,
+        "repository_labels": ["triage/recommended"],
+        "issues": [_issue(1)],
+    }
+    with pytest.raises(ValueError, match="scope"):
+        PLAN_BATCH(data, CONTRACT)
+    data["issues"] = [{**_issue(n), "has_scope_record": n == 1} for n in range(1, 6)]
+    assert [item["number"] for item in PLAN_BATCH(data, CONTRACT)["selected"]] == [2, 3]
+    with pytest.raises(ValueError, match="sweep"):
+        PLAN_BATCH({**data, "mode": "dispatch", "issues": data["issues"][:1]}, CONTRACT)
+
+
 def test_compatibility_needs_no_new_labels_and_never_writes_human_state() -> None:
     """Unknown/new labels and human decisions cannot enter a write plan."""
     issue = _issue(1, ["status/needs-triage", "status/accepted", "help wanted", "bug"])
@@ -197,6 +226,12 @@ def test_installed_skill_files_and_recorded_hashes_match_sources(tmp_path: Path)
     for name, source in [
         ("autopilot-issue-triage-worker", WORKER),
         ("autopilot-issue-delivery-worker", WORKER_CODE),
+        ("autopilot-issue-triage-scheduler", PACKAGE),
+        (
+            "autopilot-pr-triage-scheduler",
+            ROOT
+            / "packages/autopilot/autopilot-pr-triage-scheduler/.apm/skills/autopilot-pr-triage-scheduler",
+        ),
     ]:
         dep = next(item for item in lock["dependencies"] if item["name"] == name)
         for relative, expected in dep["deployed_file_hashes"].items():
