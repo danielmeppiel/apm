@@ -211,6 +211,8 @@ for command paths, resource selection, and target restrictions.
 installed hook packages, despite invalid upstream descriptors.
 Malformed hook JSON or an invalid replacement package fails before activation,
 leaving the previous installation, lockfile, and deployment ownership intact.
+This also applies to `apm install plugin@marketplace --refresh` when a catalog
+selects a versioned hook-package directory, such as `plugins/hooks-1.2.3`.
 `apm uninstall` removes the package's managed hooks and resources.
 
 **When to choose:** you ship a set of harness hooks with no other

@@ -54,6 +54,116 @@ def _source_bytes(installed: Path) -> dict[str, bytes]:
     }
 
 
+@pytest.mark.parametrize("layout", ["hooks", ".apm/hooks"])
+def test_versioned_marketplace_hook_refresh_preserves_invalid_replacement(
+    tmp_path: Path, apm_engine_command: tuple[str, ...], layout: str
+) -> None:
+    """Interpreted versioned selectors must stage replacements before publication."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "scenario", base_env=dict(os.environ))
+    repositories = LocalGitRepositoryFactory(
+        isolated.repository_root, env=isolated.subprocess_env()
+    )
+    repository = repositories.create("versioned-hook-marketplace")
+    remote = "https://github.com/acme/versioned-hook-marketplace"
+    virtual_path = "plugins/hook-bundle-1.2.3"
+    descriptor = repository.worktree / virtual_path / layout / "lint.json"
+    descriptor.parent.mkdir(parents=True)
+    descriptor.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": f'python "${{CLAUDE_PLUGIN_ROOT}}/{layout}/run.py" v1',
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (descriptor.parent / "run.py").write_text(
+        'from pathlib import Path\nPath("hook-ran.txt").write_text("unexpected")\n',
+        encoding="utf-8",
+    )
+    (descriptor.parent / "resource.txt").write_text("hook resource", encoding="utf-8")
+    catalog = repository.worktree / ".claude-plugin/marketplace.json"
+    catalog.parent.mkdir()
+    catalog.write_text(
+        json.dumps(
+            {
+                "name": "hook-catalog",
+                "owner": {"name": "Fixture"},
+                "plugins": [
+                    {
+                        "name": "hook-bundle",
+                        "source": {
+                            "source": "github",
+                            "repo": "acme/versioned-hook-marketplace",
+                            "path": virtual_path,
+                            "ref": "main",
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    repositories.commit(repository, message="seed versioned hook marketplace")
+    environment = repositories.url_rewrite_subprocess_env(repository, remote)
+    consumer = LocalPackageFactory(isolated.work_root).create("consumer", targets=("claude",))
+    # Only the catalog transport changes; package validation and acquisition remain real.
+    runner = ApmLifecycleRunner(
+        (
+            apm_engine_command[0],
+            "-c",
+            "from apm_cli.marketplace import client\n"
+            "client._FETCHERS['github'] = client._fetch_git\n"
+            "from apm_cli.cli import cli\ncli()\n",
+        )
+    )
+    _run(
+        runner,
+        consumer.root,
+        environment,
+        ("marketplace", "add", remote, "--name", "hook-catalog", "--ref", "main"),
+        "versioned-hook-register",
+    )
+    install = ("install", "hook-bundle@hook-catalog", "--target", "claude", "--no-policy")
+    _run(runner, consumer.root, environment, install, "versioned-hook-install")
+    ref = DependencyReference.parse_from_dict({"git": remote, "path": virtual_path, "ref": "main"})
+    installed = ref.get_install_path(consumer.root / "apm_modules")
+    assert (installed / layout / "lint.json").is_file()
+    descriptor.write_text(
+        descriptor.read_text(encoding="utf-8").replace("v1", "v2"), encoding="utf-8"
+    )
+    repositories.commit(repository, message="advance versioned hook")
+    _run(runner, consumer.root, environment, (*install, "--refresh"), "versioned-hook-refresh")
+    assert "v2" in (installed / layout / "lint.json").read_text(encoding="utf-8")
+    before_source = _source_bytes(installed)
+    before_state = _snapshot(consumer.root)
+    assert before_state.deployment_records
+    assert any("hook-sidecar" in state.roles and state.content for state in before_state.files)
+    descriptor.write_text("{", encoding="utf-8")
+    repositories.commit(repository, message="invalidate versioned hook")
+    _run(
+        runner,
+        consumer.root,
+        environment,
+        (*install, "--refresh"),
+        "versioned-hook-reject-invalid",
+        success=False,
+    )
+    assert _snapshot(consumer.root) == before_state
+    assert _source_bytes(installed) == before_source
+    assert not (consumer.root / "hook-ran.txt").exists()
+
+
 def _assert_hooks(
     project: Path, marker: str, configs: tuple[PurePosixPath, ...] = _CONFIGS
 ) -> None:

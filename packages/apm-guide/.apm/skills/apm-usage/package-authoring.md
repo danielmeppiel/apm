@@ -138,6 +138,9 @@ replacement packages leave the prior installation, lock, and ownership
 intact. Hook admission neither grants executable approval nor runs scripts.
 `apm update <package>` and `apm install <package> --refresh` preserve unrelated
 installed hook packages.
+For marketplace-selected versioned hook directories, use
+`apm install plugin@marketplace --refresh`; a rejected replacement also preserves
+the installed source bytes, lock, and deployment ownership.
 
 APM computes hook reach with one restriction-only intersection:
 
