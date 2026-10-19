@@ -1155,8 +1155,16 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 1,
+      "test_count": 9,
       "tests": [
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[direct-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[direct-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[parent-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[parent-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[refresh-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[refresh-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[shared-child-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[shared-child-hooks]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_records_resolved_ref_in_lockfile"
       ]
     },

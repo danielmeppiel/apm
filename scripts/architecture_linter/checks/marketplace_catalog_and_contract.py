@@ -745,8 +745,12 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
             (
                 "update_keys=update_keys,",
                 "content_hash = compute_package_hash(candidate_path)",
-                "DependencyReference.parse(p).get_unique_key()",
+                "selected_dependency_keys(ctx.only_packages)",
             ),
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            ("DependencyReference.parse(spec).get_unique_key()",),
         ),
         (
             "src/apm_cli/install/phases/integrate.py",

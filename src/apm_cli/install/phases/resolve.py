@@ -1,8 +1,4 @@
-"""Dependency resolution phase.
-
-Loads inputs and populates resolution state consumed by later phases.
-
-The first install phase loads the lockfile, initializes downloads, and resolves
+"""Load the lockfile, initialize downloads, and resolve
 the selected dependency tree before integration.
 """
 
@@ -368,8 +364,8 @@ def _resolve_dependencies(
         _guard_transitive_insecure_dependencies,
         _warn_insecure_dependencies,
     )
+    from apm_cli.install.package_selection import selected_dependency_keys
     from apm_cli.install.phases.local_content import _copy_local_package
-    from apm_cli.models.dependency.reference import DependencyReference
 
     # 3b. Dedicated registry resolver (design §3.1, §8)
     # Built when:
@@ -422,9 +418,7 @@ def _resolve_dependencies(
     # which may restructure the whole graph).
     update_refs = _requires_remote_ref_resolution(ctx)
     update_keys = (
-        {DependencyReference.parse(p).get_unique_key() for p in ctx.only_packages}
-        if update_refs and ctx.only_packages
-        else None
+        selected_dependency_keys(ctx.only_packages) if update_refs and ctx.only_packages else None
     )
     if ctx.refresh and ctx.logger:
         ctx.logger.verbose_detail("[*] --refresh: bypassing cached package content")

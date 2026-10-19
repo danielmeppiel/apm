@@ -87,8 +87,13 @@ RULE = "marketplace-integrations-package-format-precedence"
         ),
         (
             "src/apm_cli/install/phases/resolve.py",
-            "DependencyReference.parse(p).get_unique_key()",
-            "p",
+            "selected_dependency_keys(ctx.only_packages)",
+            "set(ctx.only_packages)",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "DependencyReference.parse(spec).get_unique_key()",
+            "spec",
         ),
     ],
 )

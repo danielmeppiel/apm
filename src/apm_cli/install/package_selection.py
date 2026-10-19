@@ -43,3 +43,16 @@ def only_packages_from_validation(
             seen.add(canonical)
             selected.append(canonical)
     return selected
+
+
+def selected_dependency_keys(packages: list[str]) -> set[str]:
+    """Normalize selected specs while retaining the existing raw-selector fallback."""
+    from apm_cli.models.dependency.reference import DependencyReference
+
+    keys: set[str] = set()
+    for spec in packages:
+        try:
+            keys.add(DependencyReference.parse(spec).get_unique_key())
+        except (ValueError, TypeError):
+            keys.add(spec)
+    return keys
