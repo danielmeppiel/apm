@@ -21,6 +21,8 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+import apm_cli.config as apm_config
+from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.cli import cli
 from apm_cli.copilot_plugins.constants import ENABLED_PLUGINS_KEY, EXTRA_MARKETPLACES_KEY
 from apm_cli.copilot_plugins.registrar import catalog_path_for
@@ -215,6 +217,9 @@ def test_audit_strictly_preserves_project_and_lockfile(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("COPILOT_HOME", str(copilot_home))
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    monkeypatch.setattr(apm_config, "CONFIG_DIR", str(home / ".apm"))
+    monkeypatch.setattr(apm_config, "CONFIG_FILE", str(home / ".apm/config.json"))
+    monkeypatch.setattr(apm_config, "_config_cache", None)
 
     _write_project_with_skill(project, [str(source)], targets=["copilot"])
 
@@ -235,6 +240,47 @@ def test_audit_strictly_preserves_project_and_lockfile(
     assert before_project_snap == after_project_snap
     assert before_source_snap == after_source_snap
     assert before_home_snap == _snapshot_tree(home)
+
+
+def test_native_replay_does_not_bootstrap_registry_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rejected native configuration must not create user config during replay."""
+    project = tmp_path / "project"
+    source = write_agent_plugin(tmp_path / "plugin", name="registry-plugin", with_mcp=False)
+    _write_project_with_skill(project, [str(source)], targets=["copilot"])
+    install = _run_install(monkeypatch, project, "--target", "copilot")
+    assert install.exit_code == 0, install.output
+    (source / "apm.yml").write_text(
+        json.dumps(
+            {
+                "name": "registry-plugin",
+                "version": "1.0.0",
+                "registries": {"example": {"url": "https://registry.example.test"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "fresh-home" / ".apm" / "config.json"
+    monkeypatch.setattr(apm_config, "CONFIG_DIR", str(config.parent))
+    monkeypatch.setattr(apm_config, "CONFIG_FILE", str(config))
+    monkeypatch.setattr(apm_config, "_config_cache", None)
+    before_project = _snapshot_tree(project)
+    before_source = _snapshot_tree(source)
+
+    with pytest.raises(AgentPluginDeploymentBoundaryError, match="experimental registries"):
+        run_replay(
+            ReplayConfig(
+                project_root=project,
+                lockfile_path=project / "apm.lock.yaml",
+                scratch_root=tmp_path / "replay",
+            ),
+            CheckLogger(),
+        )
+
+    assert not config.exists()
+    assert before_project == _snapshot_tree(project)
+    assert before_source == _snapshot_tree(source)
 
 
 def test_modified_managed_content_fails_audit(
