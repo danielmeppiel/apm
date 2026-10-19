@@ -268,7 +268,7 @@ def test_hook_path_install_restore_update_remove(
 
 @pytest.mark.parametrize("layout", ["hooks", ".apm/hooks"])
 @pytest.mark.parametrize("unselected_malformed", [False, True])
-@pytest.mark.parametrize("selection_route", ["direct", "parent", "shared-child"])
+@pytest.mark.parametrize("selection_route", ["direct", "parent", "shared-child", "refresh"])
 def test_selective_hook_update_preserves_unselected_package(
     tmp_path: Path,
     apm_binary_path: Path,
@@ -278,6 +278,8 @@ def test_selective_hook_update_preserves_unselected_package(
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "selection", base_env=dict(os.environ))
     environment = isolated.subprocess_env()
+    if selection_route == "refresh":
+        environment["GITLAB_HOST"] = "gitlab.example.invalid"
     repositories = LocalGitRepositoryFactory(isolated.repository_root, env=environment)
     repository = repositories.create("hook-packages")
     dependencies = []
@@ -309,7 +311,7 @@ def test_selective_hook_update_preserves_unselected_package(
         dependencies.append({"git": _REMOTE, "type": "gitlab", "path": name, "ref": "main"})
     selected, unselected = map(DependencyReference.parse_from_dict, dependencies)
     requested = selected
-    if selection_route != "direct":
+    if selection_route not in ("direct", "refresh"):
         parent = repository.worktree / "parent"
         parent.mkdir()
         dump_yaml(
@@ -322,6 +324,11 @@ def test_selective_hook_update_preserves_unselected_package(
         else:
             dependencies[0] = parent_dependency
         requested = DependencyReference.parse_from_dict(parent_dependency)
+    update_args = (
+        ("install", requested.to_canonical(), "--refresh", "--no-policy")
+        if selection_route == "refresh"
+        else ("update", requested.get_display_name(), "--yes")
+    ) + ("--parallel-downloads", "0")
     repositories.commit(repository, message="seed two hook packages")
     repositories.install_url_rewrite(repository, _REMOTE)
     consumer = LocalPackageFactory(isolated.work_root).create(
@@ -355,7 +362,7 @@ def test_selective_hook_update_preserves_unselected_package(
         runner,
         consumer.root,
         environment,
-        ("update", requested.get_display_name(), "--yes", "--parallel-downloads", "0"),
+        update_args,
         "selection-update",
     )
     after = LockFile.read(consumer.root / "apm.lock.yaml")
@@ -378,7 +385,7 @@ def test_selective_hook_update_preserves_unselected_package(
         runner,
         consumer.root,
         environment,
-        ("update", requested.get_display_name(), "--yes", "--parallel-downloads", "0"),
+        update_args,
         "selection-invalid-update",
         success=False,
     )

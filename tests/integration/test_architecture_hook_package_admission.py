@@ -76,9 +76,19 @@ RULE = "marketplace-integrations-package-format-precedence"
             "if True:",
         ),
         (
+            "src/apm_cli/install/phases/integrate.py",
+            "already_resolved\n        and bool(resolved_ref)",
+            "already_resolved\n        and update_refs\n        and bool(resolved_ref)",
+        ),
+        (
             "src/apm_cli/install/phases/resolve.py",
             "content_hash = compute_package_hash(candidate_path)",
             "content_hash = 'unverified'",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "DependencyReference.parse(p).get_unique_key()",
+            "p",
         ),
     ],
 )

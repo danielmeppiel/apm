@@ -230,7 +230,6 @@ def _resolve_download_strategy(
     _callback_sha = ctx.callback_downloaded.get(dep_key)
     _already_resolved_sha_match = (
         already_resolved
-        and update_refs
         and bool(resolved_ref)
         and bool(_callback_sha)
         and getattr(resolved_ref, "resolved_commit", None) not in (None, "cached")

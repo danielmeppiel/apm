@@ -742,13 +742,18 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
     for path, snippets in (
         (
             "src/apm_cli/install/phases/resolve.py",
-            ("update_keys=update_keys,", "content_hash = compute_package_hash(candidate_path)"),
+            (
+                "update_keys=update_keys,",
+                "content_hash = compute_package_hash(candidate_path)",
+                "DependencyReference.parse(p).get_unique_key()",
+            ),
         ),
         (
             "src/apm_cli/install/phases/integrate.py",
             (
                 "receipt[0] == install_path.resolve()",
                 "if verify_package_hash(install_path, receipt[1]):",
+                "already_resolved\n        and bool(resolved_ref)",
             ),
         ),
     ):

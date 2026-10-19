@@ -207,8 +207,8 @@ Installation does not execute the hooks. See
 for command paths, resource selection, and target restrictions.
 
 `apm install` restores the locked revision; `apm update` refreshes it.
-Updating selected packages leaves unrelated installed hook packages unchanged,
-even when their upstream descriptors have become invalid.
+`apm update <package>` and `apm install <package> --refresh` preserve unrelated
+installed hook packages, despite invalid upstream descriptors.
 Malformed hook JSON or an invalid replacement package fails before activation,
 leaving the previous installation, lockfile, and deployment ownership intact.
 `apm uninstall` removes the package's managed hooks and resources.

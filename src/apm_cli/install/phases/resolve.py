@@ -2,12 +2,8 @@
 
 Loads inputs and populates resolution state consumed by later phases.
 
-This is the first phase of the install pipeline.  It covers:
-
-1. Lockfile loading (``apm.lock.yaml``)
-2. ``apm_modules/`` directory creation
-3. Auth resolver defaulting + downloader construction
-4. Dependency resolution, ``--only`` filtering, and intended-key computation
+The first install phase loads the lockfile, initializes downloads, and resolves
+the selected dependency tree before integration.
 """
 
 from __future__ import annotations
@@ -373,6 +369,7 @@ def _resolve_dependencies(
         _warn_insecure_dependencies,
     )
     from apm_cli.install.phases.local_content import _copy_local_package
+    from apm_cli.models.dependency.reference import DependencyReference
 
     # 3b. Dedicated registry resolver (design §3.1, §8)
     # Built when:
@@ -424,7 +421,11 @@ def _resolve_dependencies(
     # lockfile entries for packages not in the manifest, unlike --update
     # which may restructure the whole graph).
     update_refs = _requires_remote_ref_resolution(ctx)
-    update_keys = set(ctx.only_packages) if update_refs and ctx.only_packages else None
+    update_keys = (
+        {DependencyReference.parse(p).get_unique_key() for p in ctx.only_packages}
+        if update_refs and ctx.only_packages
+        else None
+    )
     if ctx.refresh and ctx.logger:
         ctx.logger.verbose_detail("[*] --refresh: bypassing cached package content")
     logger = ctx.logger

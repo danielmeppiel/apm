@@ -132,11 +132,12 @@ files under `hooks/` or `.apm/hooks/`. Filename-based hook routing
 Hook-only Git dependencies need neither `apm.yml` nor `SKILL.md`. Set
 `path` to the directory containing `hooks/` or `.apm/hooks/`, not the
 inner hooks directory. Discovery is non-recursive. `apm install` restores
-the locked revision, `apm update` refreshes it, and `apm uninstall` removes
+locked revisions; `apm update` refreshes them; `apm uninstall` removes
 managed hooks and resources. Malformed hook descriptors or invalid
 replacement packages leave the prior installation, lock, and ownership
-intact. Hook admission does not grant executable approval or run scripts.
-Updating selected packages does not replace unrelated installed hook packages.
+intact. Hook admission neither grants executable approval nor runs scripts.
+`apm update <package>` and `apm install <package> --refresh` preserve unrelated
+installed hook packages.
 
 APM computes hook reach with one restriction-only intersection:
 

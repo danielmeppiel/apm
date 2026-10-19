@@ -106,7 +106,10 @@ def test_hook_updates_reenter_staged_admission(tmp_path: Path, layout: str) -> N
 
 
 @pytest.mark.parametrize("evidence", ["valid", "missing", "wrong-path", "tampered", "stale-sha"])
-def test_published_hook_reuse_requires_bound_integrity(tmp_path: Path, evidence: str) -> None:
+@pytest.mark.parametrize("mode", ["update", "refresh"])
+def test_published_hook_reuse_requires_bound_integrity(
+    tmp_path: Path, evidence: str, mode: str
+) -> None:
     ref = DependencyReference(repo_url="acme/hooks", reference="main")
     key = ref.get_unique_key()
     modules = tmp_path / "apm_modules"
@@ -120,7 +123,12 @@ def test_published_hook_reuse_requires_bound_integrity(tmp_path: Path, evidence:
         resolved_commit="a" * 40,
         content_hash=compute_package_hash(installed),
     )
-    ctx = InstallContext(project_root=tmp_path, apm_dir=tmp_path, update_refs=True)
+    ctx = InstallContext(
+        project_root=tmp_path,
+        apm_dir=tmp_path,
+        update_refs=mode == "update",
+        refresh=mode == "refresh",
+    )
     ctx.apm_modules_dir = modules
     ctx.existing_lockfile = LockFile()
     ctx.existing_lockfile.add_dependency(locked)
