@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **128 normative statements (123 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **129 normative statements (124 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -368,8 +368,8 @@ registered **auto-detectable** target (see
 **auto-detectable** when the OpenAPM Target Registry publishes at
 least one detection predicate for it; a target registered without a
 detection predicate is **explicit-only** and MUST be selected
-explicitly. At v0.1 the explicit-only targets are `agent-skills` and
-`antigravity`, so `all` excludes them.
+explicitly. At v0.1 the explicit-only targets are `agent-skills`,
+`antigravity`, `hermes`, and `grok-bot`, so `all` excludes them.
 
 Concrete per-target detection signals and deploy roots are documented
 in the non-normative companion **"OpenAPM Target Registry v0.1"**
@@ -591,9 +591,10 @@ from that dependency because no selected name matches an available
 skill MUST emit a default-visible diagnostic before the install
 operation returns. The diagnostic MUST identify the dependency, the
 requested skill names, and the available skill names (or state that
-none are available). The consumer MAY complete the overall install
-successfully when no other error exists; this requirement does not turn
-a stale persisted subset into an install failure.
+none are available). The consumer MUST fail the install operation with
+a nonzero status and MUST preserve previously deployed skill files and
+their ownership records for that dependency. It MUST NOT interpret an
+unsatisfied selection as an intentional request to remove those files.
 
 <a id="req-mf-010"></a>
 **[req-mf-010]** A conforming **consumer** implementation MUST treat
@@ -761,12 +762,37 @@ Key shape is `x-[a-z][a-z0-9-]*`. Vendors SHOULD further namespace
 their keys as `x-<vendor>-<name>` (for example
 `x-acme-telemetry`) to avoid collision between independent vendors.
 
-[req-ext-001](#req-ext-001) and [req-ext-002](#req-ext-002) govern
-reader and writer behaviour for this namespace. Round-trip
-preservation is the load-bearing guarantee: a manifest authored
-with `x-acme-telemetry:` MUST survive a `read -> mutate -> write`
-cycle through any conforming consumer byte-equivalent, even if the
-consumer ascribes no semantics to the key.
+[req-ext-001](#req-ext-001), [req-ext-002](#req-ext-002), and
+[req-ext-003](#req-ext-003) govern reader and writer behaviour for
+this namespace. Round-trip preservation is the load-bearing
+guarantee: a manifest authored with `x-acme-telemetry:` MUST
+survive a `read -> mutate -> write` cycle through any conforming
+consumer byte-equivalent, even if the consumer ascribes no
+semantics to the key.
+
+<a id="req-ext-003"></a>
+**[req-ext-003]** A conforming **consumer** implementation MUST
+treat every top-level manifest key whose name matches `x-[a-z][a-z0-9-]*`
+as a vendor extension, as defined by [req-ext-001](#req-ext-001). The consumer MUST preserve
+each such key and its value on the parsed package in declaration
+order, MUST NOT validate or interpret the value, and MUST NOT
+fail parse because of it. When the consumer records a dependency
+resolved from that manifest, it MUST copy those keys onto that
+dependency's lockfile entry under the optional `extensions`
+mapping, preserving declaration order, and MUST omit
+`extensions` when the mapping is empty so an entry that declares
+no extensions stays byte-identical to one written without the
+field. YAML mapping key order is normative for this field: the
+serialized `extensions` mapping follows the source declaration order.
+For any other top-level key it does not recognise, the consumer
+MUST produce a non-failing warning naming that key and MUST NOT
+fail parse or install solely because that key is unknown. This warning
+does not waive independent validation, policy, or security failures.
+This warning does not relax
+[req-mf-006](#req-mf-006): a writer that rewrites the manifest
+MUST still preserve unknown top-level keys. Recorded extension
+values are not a trust anchor and MUST NOT change
+`lockfile_version`.
 
 ### 4.7 Marketplace authoring block (normative input)
 
@@ -824,6 +850,7 @@ This section's normative statements are:
   [req-mf-025](#req-mf-025),
   [req-ext-001](#req-ext-001),
   [req-ext-002](#req-ext-002),
+  [req-ext-003](#req-ext-003),
   [req-tg-004](#req-tg-004), [req-sc-006](#req-sc-006).
 
 ---
@@ -906,6 +933,7 @@ unknown fields on round-trip. Field availability is **monotonic** in
 | `resolved_tag`            | git-semver selected tag, or advisory tag provenance for a full-SHA git-literal update under [req-rs-017](#req-rs-017). |
 | `resolved_at`             | git-semver: ISO 8601 UTC timestamp; advisory (see [Section 7.3](#73-git-semver-resolution)). |
 | `name`                    | Self-asserted display/inventory name; non-identity (see [req-lk-019](#req-lk-019)). |
+| `extensions`              | Optional mapping of top-level keys matching `x-[a-z][a-z0-9-]*` from the dependency manifest, in declaration order. Omitted when empty. Values are not interpreted (see [req-ext-003](#req-ext-003)). Manifest-origin metadata, distinct from per-entry `x-<name>` keys. |
 | `attestations`            | Reserved for v0.2 (publisher provenance).                                       |
 | `x-<name>`                | Vendor extension (per [req-ext-001](#req-ext-001)).                             |
 
@@ -2558,9 +2586,9 @@ A target registered without a detection predicate
 MUST NOT be auto-detected and MUST be excluded from the expansion of
 `all`; such an **explicit-only** target MUST be selected explicitly
 via `--target <name>` or via the manifest's `target:` field. At v0.1
-the explicit-only targets are `agent-skills` and `antigravity`. When
-no detection signal fires, the consumer MAY fall back to a `minimal`
-profile that emits `AGENTS.md` only.
+the explicit-only targets are `agent-skills`, `antigravity`, `hermes`,
+and `grok-bot`. When no detection signal fires, the consumer MAY fall
+back to a `minimal` profile that emits `AGENTS.md` only.
 
 ### 8.5 Deploy directory contract (normative)
 
@@ -3712,7 +3740,7 @@ conformance statement identifying:
 [req-mf-021](#req-mf-021), [req-mf-022](#req-mf-022),
 [req-mf-023](#req-mf-023), [req-mf-024](#req-mf-024),
 [req-mf-025](#req-mf-025),
-[req-ext-001](#req-ext-001),
+[req-ext-001](#req-ext-001), [req-ext-003](#req-ext-003),
 [req-lk-001](#req-lk-001), [req-lk-002](#req-lk-002),
 [req-lk-003](#req-lk-003), [req-lk-004](#req-lk-004),
 [req-lk-005](#req-lk-005), [req-lk-006](#req-lk-006),
@@ -4038,22 +4066,27 @@ amendment's distinct resources.
 
 The schemas below define this specification's normative structural contract.
 
-> **Planned.** Amendment 0.1.41 selects new, independent manifest and lockfile resources
-> with distinct `$id` URLs. Human approval and the public comment period under
+> **Planned.** Amendment 0.1.41 selects an independent manifest resource;
+> amendment 0.1.46 selects an independent lockfile resource that adds manifest
+> extensions to the 0.1.41 lockfile contract. Both use distinct `$id` URLs.
+> The earlier 0.1.41 lockfile resource remains available with unchanged bytes.
+> Human approval and the public comment period under
 > [Section 9.3](#93-amendment-process) remain pending; listing these URLs does
 > not establish approval or publication.
 
 | Schema                | Authoritative source (in-tree)                                                                       |
 |-----------------------|------------------------------------------------------------------------------------------------------|
 | Manifest (`apm.yml`)  | [`schemas/manifest-v0.1.41.schema.json`](/apm/specs/schemas/manifest-v0.1.41.schema.json) (JSON Schema 2020-12).    |
-| Lockfile (`apm.lock.yaml`) | [`schemas/lockfile-v0.1.41.schema.json`](/apm/specs/schemas/lockfile-v0.1.41.schema.json) (JSON Schema 2020-12). |
+| Lockfile (`apm.lock.yaml`) | [`schemas/lockfile-v0.1.46.schema.json`](/apm/specs/schemas/lockfile-v0.1.46.schema.json) (JSON Schema 2020-12). |
 | Policy (`apm-policy.yml`) | [`schemas/policy-v0.1.schema.json`](/apm/specs/schemas/policy-v0.1.schema.json) (JSON Schema 2020-12).   |
 | Claude-Code marketplace (informational, emitted output) | `tests/fixtures/schemas/claude-code-marketplace.schema.json`         |
 | Claude-Code plugin (informational, emitted output)      | `tests/fixtures/schemas/claude-code-plugin.schema.json`              |
 
 Consumers checking the structural constraints for [req-mf-025](#req-mf-025)
-choose the distinct 0.1.41 `$id` URLs above. Validation against the older
-structural schemas does not waive newer prose or runtime requirements.
+can use the 0.1.41 resources. The selected 0.1.46 lockfile schema additionally
+checks the `extensions` mapping's key names for [req-ext-003](#req-ext-003);
+its values remain unconstrained. Validation against older structural schemas
+does not waive newer prose or runtime requirements.
 
 `src/apm_cli/policy/schema.py` is a **non-normative cross-reference**;
 the policy JSON Schema is authoritative. Manifest and lockfile validation
@@ -4126,6 +4159,7 @@ renumbering of conformance classes.
 | [req-mf-025](#req-mf-025)                | MUST    | 4.3.2   | consumer    |
 | [req-ext-001](#req-ext-001)              | MUST    | 4.1     | consumer    |
 | [req-ext-002](#req-ext-002)              | MUST    | 4.1     | producer    |
+| [req-ext-003](#req-ext-003)              | MUST    | 4.6.2   | consumer    |
 | [req-lk-001](#req-lk-001)                | MUST    | 5.1     | consumer    |
 | [req-lk-002](#req-lk-002)                | MUST    | 5.4     | consumer    |
 | [req-lk-003](#req-lk-003)                | MUST    | 5.2     | consumer    |
@@ -4228,7 +4262,7 @@ renumbering of conformance classes.
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
 
-**Total normative statements: 128** (123 MUST, 5 SHOULD).
+**Total normative statements: 129** (124 MUST, 5 SHOULD).
 
 ---
 
@@ -4282,6 +4316,9 @@ renumbering of conformance classes.
 | 0.1.42 (proposed) | 2026-09-30 | Optional deployed-prompt audit capability for PR #2962. Added conditional governance [req-pl-019] and [req-pl-020] in Section 6.8.1, both enumerations, Appendix C, requirements manifest and behavioral conformance coverage. Under Section 9.2 this is a new opt-in conformance capability, not behavior-neutral errata or a reinterpretation of an existing obligation: implementations not claiming it acquire no new required feature. APM claims it; newly discovered prompt findings and incomplete native coverage can newly fail default and CI audits, command-only content remains non-failing, and protected remediation is refused before writes. No schema, lockfile version, existing mandatory feature, drift-policy or ownership rule changes. Section 9.3 reviewer approvals and public comment period remain pending; this proposal is not evidence of adoption. Statement count: 123 -> 125 (120 MUST, 5 SHOULD). |
 | 0.1.43 (proposed) | 2026-10-03 | Codex-native agent model preservation and bounded dropped-metadata diagnostic for PR #3150 (closes #3126). Added [req-tg-015] (Section 8.5.1, consumer MUST): a conforming consumer providing the Codex-native agent conversion capability MUST preserve a source-declared `model` or `model_reasoning_effort` string value in its native top-level placement, MUST leave either field absent when absent from the source, MUST diagnose a non-string value by field name without including that value, and MUST emit a diagnostic bounded on both dropped-field count and per-field name length (never the value) for any other dropped, non-capability-restriction frontmatter field. Under Section 9.2 this is a new opt-in conformance capability scoped to consumers providing the Codex-native agent conversion capability, not behavior-neutral errata: it does not require or imply preservation of any other `config.toml`-native key and does not define behavior for any other conversion target. Implementations not providing Codex-native agent conversion acquire no new required feature. No schema, lockfile version, existing mandatory feature, drift-policy or ownership rule changes. Section 9.3 reviewer approvals and public comment period remain pending; this proposal is not evidence of adoption. Section 8.7, Section 11.3.2, and Appendix C updated. Statement count: 125 -> 126 (121 MUST, 5 SHOULD). |
 | 0.1.44 (proposed) | 2026-10-03 | PR #3149 adds two consumer MUSTs in Section 8.5.9: [req-tg-016](#req-tg-016) rejects unsupported Cursor hook vocabulary; [req-tg-017](#req-tg-017) detects overlap with Claude imports before either install order writes, preserving import settings. These cite the accepted Cursor capability, not universal translation or a new mandatory feature (Section 9.2). Section 8.7, Section 11.3.2 and Appendix C are updated. Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. Statement count: 126 -> 128 (123 MUST, 5 SHOULD). |
+| 0.1.45 (proposed) | 2026-10-09 | Editorial fold for PR #3106 (closes #3083 Mode-B silent-extension gate; no new normative statement, count remains 128 (123 MUST, 5 SHOULD)). Section 4.2.1 and [req-tg-001] (Section 8.4): the explicit-only target enumeration now names `agent-skills`, `antigravity`, `hermes`, and `grok-bot`, reflecting the already-registered `hermes` target and the new stable explicit-only `grok-bot` target (skills deploy to `agent-data/workflows/`, per the OpenAPM Target Registry v0.1 companion). |
+| 0.1.46 (proposed) | 2026-10-13 | Spec-citation fold for manifest extension keys (closes #3219 Mode-B silent-extension gate). Added [req-ext-003] (Section 4.6.2, consumer MUST): top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions preserved on the parsed package in declaration order without validating or interpreting values; a dependency lock entry records them under optional `extensions` and omits that field when empty; any other unrecognised top-level key produces a non-failing warning without failing parse or install solely because it is unknown. Independent validation, policy, and security failures still apply. The warning does not relax [req-mf-006] (writers still preserve unknown top-level keys on rewrite). Additive optional lockfile field under Section 9.2: previously silent unknown keys now warn. `extensions` added to the Section 5.2 field table and selected through the distinct proposed `lockfile-v0.1.46.schema.json`; earlier schema bytes and `lockfile_version` are unchanged. Sections 1.3, 4.9, and 11.3.2, and Appendices A and C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. |
+| 0.1.47 (proposed) | 2026-10-15 | Amendment for accepted issue #3204. Revised [req-mf-022] to require a nonzero install result and preservation of previously deployed skill files and ownership records for an unmatched non-empty persisted selection. This intentionally replaces permitted warning-only success; it is not behavior-neutral errata. Section 9.3 review and public-comment requirements remain pending; issue-scope acceptance is not specification adoption. Statement count remains 129 (124 MUST, 5 SHOULD). |
 
 Errata (none at publication).
 

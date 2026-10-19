@@ -55,6 +55,45 @@ ROOT = Path(__file__).resolve().parents[2]
 OWNERS_DIR = ROOT / ".apm/architecture/owners"
 
 
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/integration/hook_ownership.py",
+            "def canonicalize_hook_sidecar(",
+            "def canonicalize_hook_sidecar_disabled(",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "s_bytes = canonicalize_hook_sidecar(s_bytes)",
+            "s_bytes = s_bytes",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "p_bytes = canonicalize_hook_sidecar(p_bytes)",
+            "p_bytes = p_bytes",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "def diff_scratch_against_project(",
+            "def canonicalize_hook_sidecar(data):\n    return data\n\n\ndef diff_scratch_against_project(",
+        ),
+    ],
+)
+def test_hook_sidecar_comparison_must_use_canonical_owner(path: str, old: str, new: str) -> None:
+    """Both drift inputs must use the single sidecar comparison authority."""
+    rule_id = "mutation_writes.neutral_hook_contract"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 @dataclass(frozen=True)
 class MutationCase:
     """One guard's minimal source mutation and the rule that must catch it.
@@ -252,6 +291,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def _hand_authored_root_context_blocks_write(",
         new="def _hand_authored_root_context_blocks_write_disabled(",
         intent="Root context writes lose the canonical hand-authored ownership gate.",
+    ),
+    MutationCase(
+        guard_id="hooks-integrations-claude-mcp-paths",
+        rule_id="mutation_writes.claude_mcp_paths",
+        path="src/apm_cli/integration/mcp_integrator.py",
+        old="claude_cfg = ClaudeClientAdapter.resolve_user_claude_json_path(unresolved_cfg)",
+        new='claude_cfg = Path.home() / ".claude.json"',
+        intent="Claude user cleanup bypasses the adapter-selected profile path.",
     ),
     MutationCase(
         guard_id="hooks-integrations-copilot-cli-mcp-paths",
@@ -502,6 +549,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
     ),
     MutationCase(
+        guard_id="install-deployment-skills-root-derivation",
+        rule_id="install-deployment-skills-root-derivation",
+        path="src/apm_cli/integration/skill_integrator.py",
+        old="target_skills_root = project_root / target.skills_rel_root",
+        new='target_skills_root = project_root / target.root_dir / "skills"',
+        intent="Skill integration re-derives the skills root instead of using the target profile.",
+    ),
+    MutationCase(
         guard_id="install-deployment-source-plan",
         rule_id="install-deployment-source-plan",
         path="src/apm_cli/install/services.py",
@@ -673,6 +728,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Bootstrap project-name owner drifts off its pinned fallback value.",
     ),
     MutationCase(
+        guard_id="registry-delegation-build-id-verification",
+        rule_id="registry_delegation.build_id_verification",
+        path="src/apm_cli/compilation/build_id.py",
+        old="def has_valid_build_id(content: str) -> bool:",
+        new="def _has_valid_build_id_removed(content: str) -> bool:",
+        intent="The Build ID owner loses its canonical verification entry point.",
+    ),
+    MutationCase(
         guard_id="registry-delegation-compiled-output-writes",
         rule_id="registry_delegation.compiled_output_writes",
         path="src/apm_cli/compilation/context_optimizer.py",
@@ -729,6 +792,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="config_target = list(apm_package.canonical_targets)",
         new="config_target = list(apm_package.targets)",
         intent="A manifest consumer reads raw targets instead of canonical_targets.",
+    ),
+    MutationCase(
+        guard_id="registry-delegation-user-invocable-resolution",
+        rule_id="registry_delegation.user_invocable_resolution",
+        path="src/apm_cli/primitives/models.py",
+        old="def resolve_user_invocable(metadata: dict) -> bool:",
+        new="def _resolve_user_invocable_removed(metadata: dict) -> bool:",
+        intent="The user-invocable owner loses its single interpretation entry point.",
     ),
     MutationCase(
         guard_id="transport-platform-ado-validation-bearer-fallback",
@@ -1054,6 +1125,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Host-qualified reference parsing loses its canonical coordinate owner.",
     ),
     MutationCase(
+        guard_id="transport-platform-ls-remote-tag-commits",
+        rule_id="transport-platform-ls-remote-tag-commits",
+        path="src/apm_cli/marketplace/ref_resolver.py",
+        old="            if refname not in commits:",
+        new='            if refname.endswith("^{}"):',
+        intent="The marketplace parser interprets peeled ^{} records outside tag_commit_shas.",
+    ),
+    MutationCase(
         guard_id="transport-platform-marketplace-package-remote",
         rule_id="transport-platform-marketplace-package-remote",
         path="src/apm_cli/marketplace/resolver.py",
@@ -1108,6 +1187,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="            return _repair(env)\n",
         new="            return True\n",
         intent="Downloader skips the dangling-cone-symlink repair owner.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-tls-trust-injection",
+        rule_id="transport-platform-tls-trust-injection",
+        path="src/apm_cli/core/tls_trust.py",
+        old="if has_explicit_ca_override(environ):",
+        new="if False:",
+        intent="Additive trust bypasses the explicit replacement authority.",
     ),
     MutationCase(
         guard_id="transport-platform-unix-install-ownership",
@@ -1371,6 +1458,24 @@ def test_owner_rules_report_nothing_before_mutation(
     assert baseline_violated_rule_ids == frozenset()
 
 
+def test_claude_cleanup_guard_preserves_unresolved_path_check() -> None:
+    """The profile-path guard catches normalization before symlink inspection."""
+    path = "src/apm_cli/integration/mcp_integrator.py"
+    source = _source(path)
+    old = "unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_unresolved_path()"
+    new = "unresolved_cfg = ClaudeClientAdapter.resolve_user_claude_json_path()"
+    assert source.count(old) == 1
+    report = run_selected_rules(
+        ROOT,
+        ("mutation_writes.claude_mcp_paths",),
+        source_overrides={path: source.replace(old, new)},
+    )
+    assert report.failures == ()
+    assert any(
+        violation.rule_id == "mutation_writes.claude_mcp_paths" for violation in report.violations
+    )
+
+
 def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     """The shared-selector rule protects warnings as well as destructive pruning."""
     path = "src/apm_cli/commands/_helpers.py"
@@ -1380,6 +1485,37 @@ def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     mutated = source.replace(old, "return sorted(set(installed) - expected)", 1)
     ast.parse(mutated, filename=path)
     rule_id = "install-deployment-orphan-selection"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "rule_id", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "mutation_writes.opencode_enabled_intent",
+            "opencode_enabled_matches(existing[name], expected)",
+            "True",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator_install.py",
+            "mutation_writes.mcp_target_selection",
+            "_raise_strict_config_failures(unsafe_runtimes, console=console, logger=logger)",
+            "_raise_strict_config_failures([], console=console, logger=logger)",
+        ),
+    ],
+)
+def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str) -> None:
+    """Global consumers cannot bypass native type or selected-target safety owners."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.failures == ()
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
     report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
     assert report.failures == ()
     assert any(violation.rule_id == rule_id for violation in report.violations)

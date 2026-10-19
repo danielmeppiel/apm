@@ -68,7 +68,7 @@ If you operate multiple GitLab instances, list them in `APM_GITLAB_HOSTS` (comma
 Azure DevOps Services hosts (`dev.azure.com` and `*.visualstudio.com`) use:
 
 ```text
-ADO_APM_PAT   ->   AAD bearer (via az cli)   ->   none
+ADO_APM_PAT   ->   AAD bearer (via az cli)   ->   git credential fill
 ```
 
 ```bash
@@ -85,10 +85,10 @@ az login
 apm install
 ```
 
-Azure DevOps Server is PAT-only:
+Azure DevOps Server uses PAT then git credential fill:
 
 ```text
-ADO_APM_PAT   ->   none
+ADO_APM_PAT   ->   git credential fill
 ```
 
 ```bash
@@ -100,8 +100,9 @@ Use `APM_ADO_HOSTS` for multiple Server instances. A configured ADO host wins
 when `GITHUB_HOST` names the same host. Host variables accept FQDNs only,
 without a scheme, port, or path; put a non-default HTTPS port in the
 dependency URL. Use a root-hosted collection path. APM rejects `/tfs/`
-prefixes. If the PAT is rejected, rotate it -- Azure CLI bearer auth does
-not apply to Server.
+prefixes. If the PAT is rejected, APM retries path-scoped `git credential fill`
+(Git Credential Manager). Azure CLI bearer auth does not apply to Server.
+If fill also fails, rotate the PAT or store a repository credential in GCM.
 
 ### Test your token
 
@@ -139,7 +140,7 @@ For end-to-end auth setup see [Authentication](../../getting-started/authenticat
 [!] TLS verification failed
 ```
 
-APM verifies HTTPS against the OS trust store by default. Behind a corporate proxy, install your org's CA into the OS trust store; for a per-shell override, set `REQUESTS_CA_BUNDLE` to a readable PEM bundle. Full walkthrough: [SSL / TLS issues](../ssl-issues/).
+APM verifies HTTPS against the OS trust store by default. Behind a corporate proxy, install your org's CA into the OS trust store; for a per-shell additive setting that retains public trust, set `APM_EXTRA_CA_BUNDLE` to a readable PEM bundle. Use `REQUESTS_CA_BUNDLE` only when you intend to replace the complete Requests trust set. Full walkthrough: [SSL / TLS issues](../ssl-issues/).
 
 ### Timeouts and proxies
 

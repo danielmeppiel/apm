@@ -38,10 +38,12 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
-from apm_cli.core.command_logger import CommandLogger
 from apm_cli.deps.path_anchoring import build_local_parent_index, resolve_local_dep_dir
 from apm_cli.install.drift_render import (
     _INLINE_DIFF_BYTE_CAP as _INLINE_DIFF_BYTE_CAP,
+)
+from apm_cli.install.drift_render import (
+    CheckLogger as CheckLogger,
 )
 from apm_cli.install.drift_render import (
     _inline_diff_for,
@@ -180,55 +182,6 @@ def _copy_install_tree(source: Path, target: Path) -> None:
     _clear_path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target, symlinks=True)
-
-
-# ---------------------------------------------------------------------------
-# Stderr-only logger for audit phases (CommandLogger writes to stdout)
-# ---------------------------------------------------------------------------
-
-
-class CheckLogger(CommandLogger):
-    """CheckLogger emits drift phase markers to stderr.
-
-    ``CommandLogger._rich_*`` writes to stdout (intended for human
-    install output).  Audit/drift output must stay on stderr so that
-    machine-parseable JSON/SARIF on stdout is never polluted.
-    """
-
-    def __init__(self, verbose: bool = False) -> None:
-        super().__init__("audit-drift", verbose=verbose)
-
-    def _emit(self, symbol_key: str, msg: str) -> None:
-        click.echo(f"{STATUS_SYMBOLS[symbol_key]} {msg}", err=True)
-
-    def replay_start(self) -> None:
-        self._emit("running", "Replaying install (cache-only)...")
-
-    def scratch_root(self, path: Path) -> None:
-        """Verbose-only: announce the scratch tmpdir to stderr.
-
-        Stays on stderr so JSON/SARIF stdout payloads remain
-        machine-parseable. Self-gates on ``self.verbose`` so the
-        normal-mode user never sees it.
-        """
-        if not self.verbose:
-            return
-        click.echo(
-            f"{STATUS_SYMBOLS['info']} drift scratch root: {path}",
-            err=True,
-        )
-
-    def diff_start(self) -> None:
-        self._emit("running", "Diffing scratch vs working tree...")
-
-    def replay_complete(self, n: int) -> None:
-        self._emit("check", f"Replayed {n} package(s)")
-
-    def clean(self) -> None:
-        self._emit("check", "No drift detected")
-
-    def findings(self, n: int) -> None:
-        self._emit("warning", f"Drift detected: {n} file(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -555,6 +508,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     """
     from apm_cli.deps.lockfile import _SELF_KEY, LockFile
     from apm_cli.install.audit_target_roots import replay_target
+    from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
     from apm_cli.integration.targets import resolve_targets
     from apm_cli.utils.diagnostics import DiagnosticCollector
@@ -672,11 +626,12 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             apm_modules_dir,
                         )
 
-                package_info = _build_package_info(lock_dep, install_path)
                 if lock_dep.local_path == _SELF_KEY:
+                    package_info = build_project_local_package_info(install_path)
                     package_info.root_local_project_root = project_root
                     package_info.deployment_package_root = scratch_root
                 else:
+                    package_info = _build_package_info(lock_dep, install_path)
                     package_info.deployment_package_root = (
                         lock_dep.to_dependency_ref().get_install_path(scratch_root / "apm_modules")
                     )
@@ -700,7 +655,11 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     package_name=dep_key,
                     logger=None,
                     scope=None,
-                    skill_subset=tuple(package_info.dependency_ref.skill_subset or ()) or None,
+                    skill_subset=(
+                        tuple(package_info.dependency_ref.skill_subset or ()) or None
+                        if package_info.dependency_ref
+                        else None
+                    ),
                     ctx=None,
                     scratch_root=scratch_root,
                     # Honor per-dependency 'targets:' narrowing from apm.yml so the
@@ -901,13 +860,13 @@ def diff_scratch_against_project(
     )
     # Hook merge targets are shared with the user and never claimed in
     # deployed_files, so they can never be "unrecorded". Their APM-owned slice
-    # is compared through hook_ownership; sidecars remain byte-for-byte owned.
+    # is compared through hook_ownership; sidecars compare all owned content
+    # while ignoring JSON object-key ordering from the live merge.
     from apm_cli.install.manifest_reconcile import merge_hook_config_projection_specs
 
     merge_config_specs = merge_hook_config_projection_specs(targets)
-    merge_config_paths = set(merge_config_specs) | {
-        sidecar_path for sidecar_path, _ in merge_config_specs.values()
-    }
+    merge_sidecar_paths = {sidecar_path for sidecar_path, _ in merge_config_specs.values()}
+    merge_config_paths = set(merge_config_specs) | merge_sidecar_paths
 
     # Imperative local bundles have no authored source tree for replay. Their
     # deployed bytes are already bound by local_deployed_file_hashes and the
@@ -976,6 +935,11 @@ def diff_scratch_against_project(
                     _normalize((project_root / sidecar_rel).read_bytes()),
                     event_container_key,
                 )
+            elif rel in merge_sidecar_paths:
+                from apm_cli.integration.hook_ownership import canonicalize_hook_sidecar
+
+                s_bytes = canonicalize_hook_sidecar(s_bytes)
+                p_bytes = canonicalize_hook_sidecar(p_bytes)
         except (OSError, ValueError) as exc:
             findings.append(
                 DriftFinding(

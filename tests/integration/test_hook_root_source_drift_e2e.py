@@ -68,17 +68,6 @@ _HARNESS_CASES = [
     ),
 ]
 
-# Cursor's native schema accepts only flat handlers, so a nested user entry
-# would make the second install reject the config instead of preserving it.
-_FLAT_HANDLER_TARGETS = frozenset({"cursor"})
-
-
-def _user_owned_entry(target: str) -> dict:
-    command = {"type": "command", "command": "echo user-owned"}
-    if target in _FLAT_HANDLER_TARGETS:
-        return command
-    return {"matcher": "Bash", "hooks": [command]}
-
 
 def _load_sources(
     project: Path,
@@ -125,6 +114,17 @@ def _rewrite_source(
         if isinstance(entry, dict) and entry.get("_apm_source") == old:
             entry["_apm_source"] = new
     target.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _user_owned_entry(target: str) -> dict:
+    """Return a user-owned hook entry in the target's native handler shape."""
+    if target == "cursor":
+        # Cursor-native v1 hooks use flat handlers.
+        return {"type": "command", "command": "echo user-owned", "matcher": "Shell"}
+    return {
+        "matcher": "Bash",
+        "hooks": [{"type": "command", "command": "echo user-owned"}],
+    }
 
 
 @pytest.mark.parametrize("target, settings_rel, sidecar_rel, event_key", _HARNESS_CASES)

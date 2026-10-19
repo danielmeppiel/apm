@@ -51,6 +51,17 @@ def _profiles_by_name(
     return by_name
 
 
+def _is_manifest_target(name: str) -> bool:
+    """Return whether *name* can be declared in ``apm.yml`` ``targets:``.
+
+    Every other profile in the declared universe is supplemental, included
+    only so its rows are not dropped as ghosts.
+    """
+    from apm_cli.core.apm_yml import CANONICAL_TARGETS
+
+    return name in CANONICAL_TARGETS
+
+
 def _has_gated_resolver(profile: TargetProfile) -> bool:
     """Return whether an inactive supplemental target must not resolve."""
     return profile.requires_flag is not None and profile.user_root_resolver is not None
@@ -208,8 +219,8 @@ def merge_hook_config_paths(targets: list[TargetProfile]) -> set[str]:
     tracking -- the same state ``reconcile_dropped_merge_hook_targets`` below
     exists to reconcile. A membership-driven check must therefore exempt them,
     or it reports every hooks-using project as under-recording. Content
-    coverage is unaffected: the drift replay reproduces these files and
-    compares them byte-for-byte.
+    coverage is unaffected: the drift replay compares APM-owned native hook
+    entries and the complete JSON content of their ownership sidecars.
 
     Lives here rather than beside ``_MERGE_HOOK_TARGETS`` because
     ``hook_integrator.py`` is at its CI line-count budget, the same reason
@@ -285,8 +296,14 @@ def union_preserving(
     ``--target``-only consumers -- no declared universe to check against), the
     legacy preserve-all behaviour is kept so a genuine multi-target deploy is
     never clobbered (issue #1716).
+
+    Unattributed historical rows are preserved unless the caller supplies
+    explicit ``generic_governed_values``. A path partition and saved hash
+    cannot distinguish old project-local output from imperative bundles.
+    Local installation persists its concrete locators instead of expanding
+    this compatibility cleanup policy (#3179).
     """
-    from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
+    from apm_cli.core.deployment_ledger import UNATTRIBUTED_TARGET, DeploymentLedgerCodec
     from apm_cli.core.deployment_state import (
         DeploymentIntent,
         DeploymentLedger,
@@ -311,7 +328,7 @@ def union_preserving(
         if declared_targets is not None
         else None
     )
-    active_prefixes, active_schemes = install_governance(targets)
+    manifest_declared = {name for name in declared_by_name or () if _is_manifest_target(name)}
     cleanup_retained_hashes = cleanup_retained_hashes or {}
 
     def _target_for(path: str) -> str:
@@ -328,7 +345,7 @@ def union_preserving(
             prefixes, schemes = install_governance([profile])
             if is_governed_by_install(path, prefixes, schemes):
                 return profile.name
-        return "legacy"
+        return UNATTRIBUTED_TARGET
 
     def _locator(path: str) -> DeploymentLocator:
         return DeploymentLocator(
@@ -357,6 +374,17 @@ def union_preserving(
             content_hash=prior_hashes.get(path),
         )
         prior_record_values.add(path)
+    sweep = generic_governed_values
+    if sweep and prior_ledger is not None:
+        # Imperative bundle output is never re-produced by an install, so its
+        # absence from this run is not evidence that a generic row is stale.
+        sweep -= DeploymentLedgerCodec.local_bundle_scope(
+            sweep, DeploymentLedgerCodec.local_bundle_values(prior_ledger)
+        )
+    unprocessed = [
+        declared_by_name[name] for name in sorted(manifest_declared - set(active_by_name))
+    ]
+    unprocessed_prefixes, unprocessed_schemes = install_governance(unprocessed)
     current_results = [
         MaterializationResult(
             locator=_locator(path),
@@ -393,19 +421,15 @@ def union_preserving(
             ),
             desired_owners=desired_owners,
             authoritative_targets=current_run_trusted,
-            generic_governed_values=(
+            generic_governed_values=sweep or None,
+            unprocessed_claims=(
                 frozenset(
                     path
                     for path in prior_values
-                    if is_governed_by_install(path, active_prefixes, active_schemes)
+                    if is_governed_by_install(path, unprocessed_prefixes, unprocessed_schemes)
                 )
-                | generic_governed_values
-                if (
-                    current_run_trusted
-                    and declared_by_name is not None
-                    and set(active_by_name) == set(declared_by_name)
-                )
-                else generic_governed_values or None
+                if unprocessed
+                else frozenset()
             ),
         ),
     )
@@ -443,8 +467,9 @@ def declared_target_profiles(
     diagnostics: DiagnosticCollector | None = None,
 ) -> list[TargetProfile] | None:
     """Resolve the target universe declared by a project manifest."""
-    from apm_cli.core.apm_yml import CANONICAL_TARGETS, parse_targets_field
+    from apm_cli.core.apm_yml import parse_targets_field
     from apm_cli.core.errors import TargetResolutionError
+    from apm_cli.core.target_catalog import normalize_target_name
     from apm_cli.integration.targets import KNOWN_TARGETS
     from apm_cli.utils.yaml_io import load_yaml
 
@@ -464,7 +489,7 @@ def declared_target_profiles(
 
     profiles: list[TargetProfile] = []
     if names:
-        for name in dict.fromkeys(names):
+        for name in dict.fromkeys(normalize_target_name(name) for name in names):
             profile = KNOWN_TARGETS.get(name)
             if profile is None:
                 continue
@@ -472,7 +497,7 @@ def declared_target_profiles(
             if scoped is not None:
                 profiles.append(scoped)
     for name, profile in KNOWN_TARGETS.items():
-        if name in CANONICAL_TARGETS:
+        if _is_manifest_target(name):
             continue
         active_profile = active_by_name.get(name)
         if _has_gated_resolver(profile):
