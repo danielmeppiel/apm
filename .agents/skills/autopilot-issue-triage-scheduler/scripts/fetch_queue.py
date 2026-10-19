@@ -434,7 +434,7 @@ def scheduled_records(
             )
             record["context"] = {**raw, "comments": comments}
             yield record
-        if page * PAGE_SIZE >= result["total_count"]:
+        if (page - 1) * PAGE_SIZE + len(result["items"]) >= result["total_count"]:
             return
         if len(result["items"]) < PAGE_SIZE:
             raise ValueError("Scheduled issue search ended early; retry the sweep")
@@ -452,18 +452,24 @@ def accumulate_for_plan(
     """Keep oldest-first records until `plan_batch` is full or input ends."""
     chosen: list[dict[str, Any]] = []
     last_batch: dict[str, Any] | None = None
+    last_plan: dict[str, Any] | None = None
     for record in records:
         chosen.append(record)
         last_batch = build_batch(chosen, mode, repository_labels, scheduled_sweep=scheduled_sweep)
-        if mode == "sweep" and plan_batch(last_batch, contract)["batch_full"]:
-            break
+        if mode == "sweep":
+            last_plan = plan_batch(last_batch, contract)
+            if last_plan["batch_full"]:
+                break
     if last_batch is None:
         last_batch = build_batch([], mode, repository_labels, scheduled_sweep=scheduled_sweep)
     if scheduled_sweep:
-        selected = {item["number"] for item in plan_batch(last_batch, contract)["selected"]}
+        if last_plan is None:
+            last_plan = plan_batch(last_batch, contract)
+        selected = {item["number"] for item in last_plan["selected"]}
         last_batch["contexts"] = [
             record["context"] for record in chosen if record["number"] in selected
         ]
+        last_batch["selection_counts"] = {"scanned": len(chosen), "selected": len(selected)}
     return last_batch
 
 

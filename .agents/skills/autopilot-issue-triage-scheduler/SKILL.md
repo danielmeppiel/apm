@@ -123,9 +123,12 @@ and complete comments before selection, excludes `status/accepted`,
 `status/declined`, and any `apm-scope:v1` marker in bodies/comments, and
 caps selection at five. Its batch includes selected `contexts` for the
 worker, so initial evidence need not be fetched again. Incomplete evidence
-fails the sweep. The planner retains `scheduled_sweep: true` and requires
-verified `has_scope_record` evidence. Default local sweeps, explicit issue
-requests, and PR selection keep their existing behavior.
+fails the sweep. When rebuilding planner input, preserve `scheduled_sweep:
+true` from `batch.json` and supply verified `has_scope_record` evidence;
+`plan.json` does not retain these fields. The batch's `selection_counts`
+records scanned and selected candidates; the five-item cap limits selection,
+not the evidence reads needed to find eligible issues. Default local sweeps,
+explicit issue requests, and PR selection keep their existing behavior.
 
 Do not implement. Do not open PRs. Do not fill delivery or review
 slots from this pool. Do not comment on issues. Do not add or

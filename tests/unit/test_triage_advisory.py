@@ -13,6 +13,8 @@ import jsonschema
 import pytest
 import yaml
 
+from apm_cli.deps.lockfile import LockFile
+from apm_cli.policy.ci_checks import _check_content_integrity
 from apm_cli.utils.content_hash import compute_file_hash
 
 pytestmark = pytest.mark.component
@@ -246,3 +248,11 @@ def test_installed_skill_files_and_recorded_hashes_match_sources(tmp_path: Path)
             assert compute_file_hash(checkout) == expected
             checkout.write_bytes(checkout.read_bytes() + b"\nchanged content\n")
             assert compute_file_hash(checkout) != expected
+
+
+def test_installed_triage_content_passes_canonical_integrity_audit() -> None:
+    """Legacy hash parity must not hide stale canonical deployment records."""
+    lock = LockFile.read(ROOT / "apm.lock.yaml")
+    assert lock is not None
+    result = _check_content_integrity(ROOT, lock)
+    assert result.passed, result.details

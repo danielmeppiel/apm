@@ -77,6 +77,7 @@ pre-agent-steps:
       uv run --frozen --no-dev python "$helper/triage_state.py" \
         < /tmp/gh-aw/triage-sweep/batch.json > /tmp/gh-aw/triage-sweep/plan.json
       cat /tmp/gh-aw/triage-sweep/plan.json
+      jq '.selection_counts' /tmp/gh-aw/triage-sweep/batch.json
 
 tools:
   github:
@@ -236,8 +237,8 @@ operation and label allowlists, not this dynamically selected target set.
 
 For sweeps, use each selected issue's `contexts` entry in the prefetched
 batch: it includes current labels and the complete ordered comment history.
-Do not spend the run fetching that initial evidence again. For explicit
-requests, paginate each selected issue's complete comment history in
+Do not spend the run fetching that initial evidence again. For each issue
+in an explicit request, paginate its complete comment history in
 chronological order and read current labels. Include prior
 `apm-triage-advisory` receipts and every later human reply. If any
 comment page cannot be read, or the complete enumerated history cannot

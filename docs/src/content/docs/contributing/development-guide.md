@@ -68,6 +68,8 @@ turning incomplete evidence into an empty queue. Explicit `triage/requested`
 and numbered dispatches retain their existing behavior. Deterministic
 selection tests do not establish model reliability: acceptance of this
 repair still requires a week of real scheduled outcomes after deployment.
+Run logs include scanned and selected counts: the five-item cap limits
+selection, not the evidence reads needed to find eligible issues.
 
 PR review is the same shape: `panel-review` requests a fresh
 advisory pass (`autopilot-pr-review-worker`). `status/accepted`

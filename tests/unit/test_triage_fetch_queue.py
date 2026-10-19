@@ -472,3 +472,54 @@ def test_scheduled_cli_fetches_labels_and_complete_selected_contexts(
     assert batch["repository_labels"] == ["triage/recommended", "type/bug"]
     assert batch["scheduled_sweep"] is True
     assert batch["contexts"] == [{**_raw(1), "comments": []}]
+
+
+@pytest.mark.parametrize("payload", [[], [{}], [[{}]], [[{"name": ""}]], [[{"name": 1}]]])
+def test_scheduled_label_fetch_fails_closed_on_incomplete_pages(payload: list) -> None:
+    """Malformed page or label evidence cannot become a valid inventory."""
+    with pytest.raises(ValueError, match="incomplete"):
+        FETCH["list_repo_labels"]("microsoft/apm", runner=lambda _: payload, complete=True)
+
+
+@pytest.mark.parametrize("overflow", [False, True])
+def test_scheduled_search_fails_closed_on_truncated_results(overflow: bool) -> None:
+    """A short page or search-window ceiling cannot report queue exhaustion."""
+
+    def runner(args: list[str]) -> Any:
+        parsed = urlparse(args[-1])
+        if parsed.path == "/search/issues":
+            page = int(parse_qs(parsed.query)["page"][0])
+            numbers = range((page - 1) * 100 + 1, page * 100 + 1) if overflow else range(1, 2)
+            return {
+                "items": [_raw(n, labels=["status/accepted"]) for n in numbers],
+                "incomplete_results": False,
+                "total_count": 1001 if overflow else 2,
+            }
+        return _raw(int(parsed.path.split("/")[5]), labels=["status/accepted"])
+
+    with pytest.raises(ValueError, match="1000-result window" if overflow else "ended early"):
+        list(FETCH["scheduled_records"]("microsoft/apm", CONTRACT, runner=runner))
+
+
+def test_scheduled_counts_and_plan_reuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Telemetry counts skipped candidates without recomputing the final plan."""
+    original = FETCH["plan_batch"]
+    plans: list[dict] = []
+
+    def planner(batch: dict, contract: dict) -> dict:
+        plans.append(batch)
+        return original(batch, contract)
+
+    monkeypatch.setitem(FETCH["accumulate_for_plan"].__globals__, "plan_batch", planner)
+    batch = _scheduled_batch({1: _raw(1, labels=["status/accepted"]), 2: _raw(2)}, {}, [])
+    assert batch["selection_counts"] == {"scanned": 2, "selected": 1}
+    assert len(plans) == 2
+
+
+def test_empty_scheduled_batch_has_zero_counts() -> None:
+    """An empty complete search remains distinguishable from a failed read."""
+    batch = FETCH["accumulate_for_plan"](
+        [], "sweep", ["triage/recommended"], CONTRACT, scheduled_sweep=True
+    )
+    assert batch["selection_counts"] == {"scanned": 0, "selected": 0}
+    assert batch["contexts"] == []
