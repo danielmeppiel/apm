@@ -110,6 +110,7 @@ def find_plugin_json(plugin_path: Path) -> Path | None:
       2. <root>/.github/plugin/plugin.json
       3. <root>/.claude-plugin/plugin.json
       4. <root>/.cursor-plugin/plugin.json
+      5. <root>/.codex-plugin/plugin.json
 
     Args:
         plugin_path: Path to the plugin directory
@@ -122,6 +123,7 @@ def find_plugin_json(plugin_path: Path) -> Path | None:
         plugin_path / ".github" / "plugin" / "plugin.json",
         plugin_path / ".claude-plugin" / "plugin.json",
         plugin_path / ".cursor-plugin" / "plugin.json",
+        plugin_path / ".codex-plugin" / "plugin.json",
     ]
     for candidate in candidates:
         if candidate.exists():
