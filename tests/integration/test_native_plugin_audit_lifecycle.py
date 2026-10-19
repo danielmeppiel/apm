@@ -22,9 +22,30 @@ import pytest
 from click.testing import CliRunner
 
 from apm_cli.cli import cli
+from apm_cli.copilot_plugins.constants import ENABLED_PLUGINS_KEY, EXTRA_MARKETPLACES_KEY
+from apm_cli.copilot_plugins.registrar import catalog_path_for
+from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
 from tests.unit.copilot_plugins._builders import write_agent_plugin
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.component, pytest.mark.integration]
+
+
+def _assert_native_registration(project: Path, source: Path, name: str) -> None:
+    """Verify the real native catalog, cache, and settings without legacy projection."""
+    modules = project / "apm_modules"
+    catalog = json.loads(catalog_path_for(modules).read_text(encoding="utf-8"))
+    (entry,) = catalog["plugins"]
+    assert entry["name"] == name
+    materialized = modules / entry["source"]
+    assert (materialized / "plugin.json").read_bytes() == (source / "plugin.json").read_bytes()
+    skill = Path("skills") / f"{name}-skill" / "SKILL.md"
+    assert (materialized / skill).read_bytes() == (source / skill).read_bytes()
+    settings = json.loads(
+        (project / ".github/copilot/settings.local.json").read_text(encoding="utf-8")
+    )
+    assert settings[ENABLED_PLUGINS_KEY] == {f"{name}@apm": True}
+    assert settings[EXTRA_MARKETPLACES_KEY]["apm"]["source"]["path"] == "apm_modules"
+    assert not (project / ".agents/skills" / f"{name}-skill").exists()
 
 
 def _write_project_with_skill(
@@ -74,7 +95,7 @@ def _run_audit(
     monkeypatch.chdir(project)
     return CliRunner().invoke(
         cli,
-        ["audit", *args],
+        ["audit", "--no-policy", *args],
         catch_exceptions=False,
     )
 
@@ -105,21 +126,25 @@ def test_native_plugin_without_apm_yml_and_skill_audit_lifecycle(
     # 1. Clean install
     install_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert install_res.exit_code == 0, install_res.output
+    _assert_native_registration(project, source, "hello")
 
     # 2. Audit --ci must pass with all checks clean (including drift and config-consistency)
     audit_res = _run_audit(monkeypatch, project, "--ci")
     assert audit_res.exit_code == 0, audit_res.output
     assert "All 10 check(s) passed" in audit_res.output
+    assert "Replayed 2 package(s)" in audit_res.output
     assert "no drift detected against lockfile" in audit_res.output
     assert "No MCP configs to check" in audit_res.output
 
     # 3. Idempotent reinstall followed by audit remains clean
     reinstall_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert reinstall_res.exit_code == 0, reinstall_res.output
+    _assert_native_registration(project, source, "hello")
 
     reaudit_res = _run_audit(monkeypatch, project, "--ci")
     assert reaudit_res.exit_code == 0, reaudit_res.output
     assert "All 10 check(s) passed" in reaudit_res.output
+    assert "Replayed 2 package(s)" in reaudit_res.output
     assert "no drift detected against lockfile" in reaudit_res.output
 
 
@@ -147,38 +172,59 @@ def test_native_plugin_with_accompanying_apm_yml_and_skill_audit_lifecycle(
 
     install_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert install_res.exit_code == 0, install_res.output
+    _assert_native_registration(project, source, "hello-with-yml")
 
     audit_res = _run_audit(monkeypatch, project, "--ci")
     assert audit_res.exit_code == 0, audit_res.output
     assert "All 10 check(s) passed" in audit_res.output
+    assert "Replayed 2 package(s)" in audit_res.output
     assert "no drift detected against lockfile" in audit_res.output
 
     # Reinstall and re-audit
     reinstall_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert reinstall_res.exit_code == 0, reinstall_res.output
+    _assert_native_registration(project, source, "hello-with-yml")
 
     reaudit_res = _run_audit(monkeypatch, project, "--ci")
     assert reaudit_res.exit_code == 0, reaudit_res.output
     assert "All 10 check(s) passed" in reaudit_res.output
+    assert "Replayed 2 package(s)" in reaudit_res.output
     assert "no drift detected against lockfile" in reaudit_res.output
 
 
+@pytest.mark.parametrize("with_manifest", [False, True])
 def test_audit_strictly_preserves_project_and_lockfile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    with_manifest: bool,
 ) -> None:
-    """Audit is strictly read-only and leaves project, lockfile, and sources untouched."""
+    """Audit leaves source, project, live cache and harness state untouched."""
     project = tmp_path / "project"
     source = tmp_path / "plugins" / "immutable_plugin"
-    write_agent_plugin(source, name="immutable-plugin", with_mcp=True)
+    write_agent_plugin(source, name="immutable-plugin", with_mcp=False)
+    if with_manifest:
+        (source / "apm.yml").write_text(
+            '{"name": "immutable-plugin", "version": "1.0.0"}', encoding="utf-8"
+        )
+    home = tmp_path / "home"
+    copilot_home = home / ".copilot"
+    cache = home / ".apm" / "cache"
+    for root in (copilot_home, cache):
+        root.mkdir(parents=True)
+        (root / "sentinel.json").write_text('{"preserve": true}', encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("COPILOT_HOME", str(copilot_home))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
 
     _write_project_with_skill(project, [str(source)], targets=["copilot"])
 
     install_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert install_res.exit_code == 0, install_res.output
+    _assert_native_registration(project, source, "immutable-plugin")
 
     before_project_snap = _snapshot_tree(project)
     before_source_snap = _snapshot_tree(source)
+    before_home_snap = _snapshot_tree(home)
 
     audit_res = _run_audit(monkeypatch, project, "--ci")
     assert audit_res.exit_code == 0, audit_res.output
@@ -188,6 +234,7 @@ def test_audit_strictly_preserves_project_and_lockfile(
 
     assert before_project_snap == after_project_snap
     assert before_source_snap == after_source_snap
+    assert before_home_snap == _snapshot_tree(home)
 
 
 def test_modified_managed_content_fails_audit(
@@ -254,17 +301,22 @@ def test_tampered_plugin_manifest_fails_audit(
     install_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert install_res.exit_code == 0, install_res.output
 
-    # Tamper with plugin.json
-    (source / "plugin.json").write_text('{"name": "tampered", "version": "bad"}', encoding="utf-8")
+    manifest_path = source / "plugin.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["version"] = 123
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     audit_res = _run_audit(monkeypatch, project, "--ci")
     assert audit_res.exit_code != 0, "Audit must fail when plugin manifest is tampered"
     assert "drift replay blocked" in audit_res.output
+    assert "version" in audit_res.output
+    assert "canonical IR is missing" not in audit_res.output
 
 
 def test_target_exclusion_preserves_protection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Evaluating non-copilot targets preserves exclusion without replay crash."""
     project = tmp_path / "project"
@@ -276,7 +328,22 @@ def test_target_exclusion_preserves_protection(
     install_res = _run_install(monkeypatch, project, "--target", "copilot")
     assert install_res.exit_code == 0, install_res.output
 
-    # Auditing explicitly with --target claude (which excludes copilot)
-    audit_res = _run_audit(monkeypatch, project, "--ci", "--target", "claude")
-    # Drift check succeeds without crashing because target exclusion is handled cleanly
-    assert "drift replay blocked" not in audit_res.output
+    _write_project_with_skill(project, [str(source)], targets=["claude"])
+    before = _snapshot_tree(project)
+    scratch = tmp_path / "replay"
+    result = run_replay(
+        ReplayConfig(
+            project_root=project,
+            lockfile_path=project / "apm.lock.yaml",
+            targets=frozenset({"claude"}),
+            scratch_root=scratch,
+        ),
+        CheckLogger(),
+    )
+
+    assert result == scratch
+    assert "Replayed 1 package(s)" in capsys.readouterr().err
+    assert (scratch / ".claude/skills/local-skill/SKILL.md").is_file()
+    assert not catalog_path_for(scratch / "apm_modules").exists()
+    assert not (scratch / ".claude/skills/copilot-only-skill").exists()
+    assert before == _snapshot_tree(project)

@@ -29,11 +29,11 @@ Design constraints (see ``WIP/drift/06-final-plan.md``):
 from __future__ import annotations
 
 import atexit
-import shutil
 import tempfile
 import tracemalloc
 from dataclasses import dataclass
 from pathlib import Path
+from shutil import copytree, rmtree
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -156,7 +156,7 @@ def _make_scratch_root(project_root: Path) -> Path:
 
     def _cleanup() -> None:
         try:
-            shutil.rmtree(scratch, ignore_errors=False)
+            rmtree(scratch, ignore_errors=False)
         except OSError as exc:
             click.echo(
                 f"{STATUS_SYMBOLS['warning']} failed to clean drift scratch dir {scratch}: {exc}",
@@ -172,7 +172,7 @@ def _clear_path(path: Path) -> None:
     if not path.exists():
         return
     if path.is_dir():
-        shutil.rmtree(path)
+        rmtree(path)
         return
     path.unlink()
 
@@ -181,7 +181,7 @@ def _copy_install_tree(source: Path, target: Path) -> None:
     """Clone one materialized package tree into the scratch modules root."""
     _clear_path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, target, symlinks=True)
+    copytree(source, target, symlinks=True)
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +378,10 @@ def _build_package_info(
     Loads ``apm.yml`` when present so integrators that read
     ``package_info.package.name`` see the right package identity.
     """
+    from apm_cli.agent_plugins.errors import (
+        AgentPluginDeploymentBoundaryError,
+        AgentPluginError,
+    )
     from apm_cli.bundle.local_bundle import route_agent_plugin_package
     from apm_cli.models.apm_package import (
         APMPackage,
@@ -400,8 +404,8 @@ def _build_package_info(
 
     try:
         native_detection = route_agent_plugin_package(install_path)
-    except Exception:
-        native_detection = None
+    except AgentPluginError as exc:
+        raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
 
     if native_detection is not None:
         validation = validate_apm_package(
@@ -409,18 +413,20 @@ def _build_package_info(
             agent_plugin_detection=native_detection,
             read_only=True,
         )
-        if validation.is_valid and validation.package is not None:
-            pkg = validation.package
-            if not pkg.source:
-                pkg.source = lock_dep.repo_url
-            info = PackageInfo(
-                package=pkg,
-                install_path=install_path,
-                resolved_reference=resolved_ref,
-                dependency_ref=lock_dep.to_dependency_ref(),
-                package_type=PackageType.AGENT_PLUGIN,
+        if not validation.is_valid or validation.package is None:
+            raise AgentPluginDeploymentBoundaryError(
+                "; ".join(validation.errors) or "Agent Plugin validation produced no package"
             )
-            return info
+        pkg = validation.package
+        if not pkg.source:
+            pkg.source = lock_dep.repo_url
+        return PackageInfo(
+            package=pkg,
+            install_path=install_path,
+            resolved_reference=resolved_ref,
+            dependency_ref=lock_dep.to_dependency_ref(),
+            package_type=PackageType.AGENT_PLUGIN,
+        )
 
     apm_yml = install_path / "apm.yml"
     if apm_yml.exists():

@@ -169,6 +169,21 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
 
     # Directory normalization may not be re-invoked outside its owner and reuses.
     findings.extend(_scan_normalization_callers(provider, inv))
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_PROJECTION,
+            "src/apm_cli/install/drift.py",
+            (
+                "native_detection = route_agent_plugin_package(install_path)",
+                "agent_plugin_detection=native_detection",
+                "read_only=True",
+                "with native_registration_scope(targets):",
+            ),
+            "Native replay must use canonical read-only package projection and target admission",
+        )
+    )
     return tuple(findings)
 
 
