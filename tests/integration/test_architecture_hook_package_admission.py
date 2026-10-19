@@ -77,8 +77,13 @@ RULE = "marketplace-integrations-package-format-precedence"
         ),
         (
             "src/apm_cli/install/phases/integrate.py",
-            "already_resolved\n        and bool(resolved_ref)",
-            "already_resolved\n        and update_refs\n        and bool(resolved_ref)",
+            "and (update_refs or ctx.refresh)",
+            "and update_refs",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "and (update_refs or ctx.refresh)",
+            "and True",
         ),
         (
             "src/apm_cli/install/phases/resolve.py",

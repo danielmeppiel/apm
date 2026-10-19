@@ -106,7 +106,7 @@ def test_hook_updates_reenter_staged_admission(tmp_path: Path, layout: str) -> N
 
 
 @pytest.mark.parametrize("evidence", ["valid", "missing", "wrong-path", "tampered", "stale-sha"])
-@pytest.mark.parametrize("mode", ["update", "refresh"])
+@pytest.mark.parametrize("mode", ["update", "refresh", "install"])
 def test_published_hook_reuse_requires_bound_integrity(
     tmp_path: Path, evidence: str, mode: str
 ) -> None:
@@ -169,7 +169,8 @@ def test_published_hook_reuse_requires_bound_integrity(
 
     resolved, skip, locked_check, changed = _resolve_download_strategy(ctx, ref, installed)
 
-    assert skip is (evidence == "valid")
+    # Ordinary installs check the locked hash, not the fresh callback receipt.
+    assert skip is (evidence == "valid" and mode != "install")
     if skip:
         source = make_dependency_source(
             ctx,

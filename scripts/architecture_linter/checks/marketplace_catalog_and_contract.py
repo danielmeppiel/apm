@@ -757,7 +757,7 @@ def _check_package_format_precedence(provider: FactsProvider) -> tuple[Violation
             (
                 "receipt[0] == install_path.resolve()",
                 "if verify_package_hash(install_path, receipt[1]):",
-                "already_resolved\n        and bool(resolved_ref)",
+                "and (update_refs or ctx.refresh)",
             ),
         ),
     ):
