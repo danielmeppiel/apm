@@ -1,254 +1,180 @@
-"""Unit tests for replacement binding: projection and graph integration.
+"""Pure complete-source projections and typed replacement lock evidence."""
 
-Tests ``project_effective_reference`` projection from original to effective
-source, edge provenance preservation, and the interaction between replacement
-rules and dependency identity.
-"""
+from copy import deepcopy
+from urllib.parse import urlparse
 
+import pytest
+
+from apm_cli.deps.lockfile import LockedDependency, LockFile, LockfileFormatError
 from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.dependency.replacement import (
-    GitReplacementSource,
-    LocalReplacementSource,
-    ReplacementRule,
-    ReplacementSelector,
-    build_replacement_index,
+    ReplacementBinding,
+    ReplacementConfigError,
+    parse_replace_block,
     project_effective_reference,
+    replacement_rule_to_dict,
 )
 
-# ---------------------------------------------------------------------------
-# Projection: original -> effective reference
-# ---------------------------------------------------------------------------
+pytestmark = pytest.mark.unit
+
+_UPSTREAM = "https://github.com/owner/upstream"
+_FORK = "https://github.com/fork/upstream"
 
 
-class TestProjectEffectiveReference:
-    """project_effective_reference preserves identity and applies source."""
-
-    def _local_rule(self, repo="owner/repo", subpath=None, local_path="./local"):
-        sel = ReplacementSelector(host="github.com", port=None, repo_url=repo, subpath=subpath)
-        src = LocalReplacementSource(path=local_path)
-        return ReplacementRule(selector=sel, source=src)
-
-    def _git_rule(
-        self,
-        repo="owner/repo",
-        subpath=None,
-        fork_repo="fork/repo",
-        fork_host="github.com",
-        fork_subpath=None,
-        ref="main",
-    ):
-        sel = ReplacementSelector(host="github.com", port=None, repo_url=repo, subpath=subpath)
-        src = GitReplacementSource(
-            git=f"https://{fork_host}/{fork_repo}.git",
-            host=fork_host,
-            port=None,
-            repo_url=fork_repo,
-            subpath=fork_subpath,
-            ref=ref,
-        )
-        return ReplacementRule(selector=sel, source=src)
-
-    def test_local_projection_is_local(self):
-        """Local replacement produces a local-path dependency."""
-        dep = DependencyReference(repo_url="owner/repo", host="github.com", reference="v1.0")
-        rule = self._local_rule(local_path="../checkout")
-        effective = project_effective_reference(dep, rule)
-        assert effective.is_local is True
-        assert effective.local_path == "../checkout"
-        assert effective.source == "local"
-        # Original repo_url is preserved for identity
-        assert effective.repo_url == "owner/repo"
-
-    def test_git_projection_carries_fork_coordinates(self):
-        """Git replacement carries fork host, repo, and ref."""
-        dep = DependencyReference(repo_url="owner/repo", host="github.com", reference="v1.0")
-        rule = self._git_rule(
-            fork_repo="my-fork/repo",
-            fork_host="gitlab.com",
-            ref="fix-branch",
-        )
-        effective = project_effective_reference(dep, rule)
-        assert effective.is_local is False
-        assert effective.repo_url == "my-fork/repo"
-        assert effective.host == "gitlab.com"
-        assert effective.reference == "fix-branch"
-        assert effective.source == "git"
-
-    def test_alias_preserved(self):
-        """Original alias is carried through projection."""
-        dep = DependencyReference(repo_url="owner/repo", host="github.com", alias="my-alias")
-        rule = self._local_rule()
-        effective = project_effective_reference(dep, rule)
-        assert effective.alias == "my-alias"
-
-    def test_skill_subset_preserved(self):
-        """Original skill_subset is carried through projection."""
-        dep = DependencyReference(repo_url="owner/repo", host="github.com", skill_subset=["a", "b"])
-        rule = self._local_rule()
-        effective = project_effective_reference(dep, rule)
-        assert effective.skill_subset == ["a", "b"]
-
-    def test_target_subset_preserved(self):
-        """Original target_subset is carried through projection."""
-        dep = DependencyReference(
-            repo_url="owner/repo", host="github.com", target_subset=["claude"]
-        )
-        rule = self._local_rule()
-        effective = project_effective_reference(dep, rule)
-        assert effective.target_subset == ["claude"]
-
-    def test_virtual_path_preserved_for_local(self):
-        """Local replacement preserves original virtual_path."""
-        dep = DependencyReference(
-            repo_url="owner/repo",
-            host="github.com",
-            is_virtual=True,
-            virtual_path="packages/base",
-        )
-        rule = self._local_rule(subpath="packages/base")
-        effective = project_effective_reference(dep, rule)
-        assert effective.is_virtual is True
-        assert effective.virtual_path == "packages/base"
-
-    def test_git_source_subpath_overrides_original(self):
-        """Git source subpath replaces the original virtual_path."""
-        dep = DependencyReference(
-            repo_url="owner/repo",
-            host="github.com",
-            is_virtual=True,
-            virtual_path="packages/base",
-        )
-        rule = self._git_rule(
-            subpath="packages/base",
-            fork_subpath="src/base",
-            ref="v2",
-        )
-        effective = project_effective_reference(dep, rule)
-        assert effective.virtual_path == "src/base"
-
-    def test_git_source_no_subpath_keeps_original(self):
-        """Git source without subpath preserves the original virtual_path."""
-        dep = DependencyReference(
-            repo_url="owner/repo",
-            host="github.com",
-            is_virtual=True,
-            virtual_path="packages/base",
-        )
-        rule = self._git_rule(
-            subpath="packages/base",
-            fork_subpath=None,
-            ref="v2",
-        )
-        effective = project_effective_reference(dep, rule)
-        assert effective.virtual_path == "packages/base"
-
-    def test_original_ref_not_in_effective(self):
-        """Original reference is NOT copied to effective reference."""
-        dep = DependencyReference(repo_url="owner/repo", host="github.com", reference=">=1.4.0")
-        rule = self._local_rule()
-        effective = project_effective_reference(dep, rule)
-        # Local replacement has no git ref
-        assert effective.reference is None
-
-    def test_effective_ref_is_from_source(self):
-        """Effective reference comes from the source, not the original."""
-        dep = DependencyReference(repo_url="owner/repo", host="github.com", reference=">=1.4.0")
-        rule = self._git_rule(ref="patched-v1.5")
-        effective = project_effective_reference(dep, rule)
-        assert effective.reference == "patched-v1.5"
+def _binding(source: dict, *, ref: str = "v1.0") -> tuple[ReplacementBinding, DependencyReference]:
+    original = DependencyReference(
+        repo_url="owner/upstream",
+        host="github.com",
+        reference=ref,
+        alias="chosen",
+        skill_subset=["alpha"],
+        target_subset=[],
+    )
+    rule = parse_replace_block([{"for": {"git": _UPSTREAM}, "with": source}])[0]
+    binding = ReplacementBinding(original, rule)
+    binding.record(original, None, False)
+    effective = project_effective_reference(original, rule)
+    effective.replacement = binding
+    return binding, effective
 
 
-# ---------------------------------------------------------------------------
-# Binding at graph level: once-only match on original identity
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("source", [{"path": "../local"}, {"git": _FORK, "ref": "fixed"}])
+def test_source_projection_preserves_selection_without_mutating_original(source: dict) -> None:
+    binding, effective = _binding(source)
+    assert effective.alias == "chosen"
+    assert effective.skill_subset == ["alpha"]
+    assert effective.target_subset == []
+    assert effective.ownership_reference is binding.original
+    assert effective.get_unique_key() == "owner/upstream"
+    assert effective.source_reference.replacement is None
+    assert effective.source_reference.get_unique_key() != effective.get_unique_key()
+    assert binding.original.reference == "v1.0"
+    assert binding.original.replacement is None
 
 
-class TestReplacementBindingSemantics:
-    """Index lookup uses original identity, not effective identity."""
+@pytest.mark.parametrize("source", [{"path": "../local"}, {"git": _FORK, "ref": "fixed"}])
+def test_source_projection_does_not_inherit_original_subpath(source: dict) -> None:
+    original = DependencyReference.parse_from_dict({"git": _UPSTREAM, "path": "packages/base"})
+    rule = parse_replace_block(
+        [{"for": {"git": _UPSTREAM, "path": "packages/base"}, "with": source}]
+    )[0]
+    effective = project_effective_reference(original, rule)
+    assert not effective.is_virtual
+    assert effective.virtual_path is None
+    assert original.virtual_path == "packages/base"
 
-    def _make_index_with_one_rule(self, repo="owner/upstream"):
-        sel = ReplacementSelector(host="github.com", port=None, repo_url=repo, subpath=None)
-        src = LocalReplacementSource(path="./local")
-        rule = ReplacementRule(selector=sel, source=src)
-        return build_replacement_index([rule]), rule
 
-    def test_once_only_no_chaining(self):
-        """An effective reference does not match replacement rules again.
+@pytest.mark.parametrize(
+    ("git", "expected_scheme", "expected_user", "expected_insecure"),
+    [
+        ("https://github.com/fork/upstream", "https", None, False),
+        ("http://github.com/fork/upstream", "http", None, True),
+        ("ssh://git@github.com:2222/fork/upstream.git", "ssh", "git", False),
+    ],
+)
+def test_source_projection_preserves_transport_without_granting_consent(
+    git: str, expected_scheme: str, expected_user: str | None, expected_insecure: bool
+) -> None:
+    _, effective = _binding({"git": git, "ref": "fixed"})
+    assert effective.explicit_scheme == expected_scheme
+    assert effective.ssh_user == expected_user
+    assert effective.is_insecure is expected_insecure
+    assert not effective.allow_insecure
+    assert effective.port == urlparse(git).port
 
-        Rules apply to original requirements only.  A dependency whose
-        effective source is ``./local`` must not be re-looked-up.
-        """
-        idx, rule = self._make_index_with_one_rule()
-        dep = DependencyReference(repo_url="owner/upstream", host="github.com")
-        effective = project_effective_reference(dep, rule)
-        # Effective is local -- must not match
-        assert idx.lookup(effective) is None
 
-    def test_dependencies_of_source_can_match(self):
-        """Dependencies declared BY the effective package ARE new requirements.
+def test_source_projection_uses_effective_ado_coordinates() -> None:
+    _, effective = _binding(
+        {"git": "https://dev.azure.com/myorg/myproject/_git/myrepo", "ref": "fixed"}
+    )
+    effective.validate_provider_coordinates()
+    assert (effective.ado_organization, effective.ado_project, effective.ado_repo) == (
+        "myorg",
+        "myproject",
+        "myrepo",
+    )
 
-        A fresh ``DependencyReference`` parsed from the replacement source's
-        ``apm.yml`` can match rules (it is a new requirement, not a chained
-        lookup of the replacement itself).
-        """
-        # Rule: replace owner/lib -> ./local-lib
-        # The local-lib's apm.yml declares a dependency on owner/util
-        # There is also a rule: replace owner/util -> ./local-util
-        sel_lib = ReplacementSelector(
-            host="github.com", port=None, repo_url="owner/lib", subpath=None
-        )
-        sel_util = ReplacementSelector(
-            host="github.com", port=None, repo_url="owner/util", subpath=None
-        )
-        src_lib = LocalReplacementSource(path="./local-lib")
-        src_util = LocalReplacementSource(path="./local-util")
-        rule_lib = ReplacementRule(selector=sel_lib, source=src_lib)
-        rule_util = ReplacementRule(selector=sel_util, source=src_util)
-        idx = build_replacement_index([rule_lib, rule_util])
 
-        # A fresh dependency on owner/util (from the local-lib's manifest) matches
-        child_dep = DependencyReference(repo_url="owner/util", host="github.com")
-        assert idx.lookup(child_dep) is rule_util
+@pytest.mark.parametrize("source", [{"path": "../local"}, {"git": _FORK, "ref": "f" * 40}])
+def test_original_lock_identity_with_nested_selected_source_evidence(source: dict) -> None:
+    binding, effective = _binding(source)
+    commit = None if effective.is_local else "f" * 40
+    locked = LockedDependency.from_dependency_ref(effective, commit, 1, None)
+    assert locked.get_unique_key() == "owner/upstream"
+    assert locked.repo_url == "owner/upstream"
+    assert locked.source is None
+    assert locked.local_path is None
+    assert locked.resolved_ref == effective.reference
+    assert locked.to_dict()["replacement"] == {
+        "source": source,
+        "requests": [
+            {"parent": None, "ref": "v1.0", "skills": ["alpha"], "targets": [], "dev": False}
+        ],
+    }
+    lock = LockFile(replacements=[replacement_rule_to_dict(binding.rule)])
+    lock.add_dependency(locked)
+    restored = LockFile.from_yaml(lock.to_yaml())
+    assert restored.lockfile_version == "3"
+    selected = restored.get_dependency("owner/upstream").to_dependency_ref()
+    assert selected.get_unique_key() == "owner/upstream"
+    assert selected.repo_url == effective.repo_url
+    assert selected.reference == effective.reference
+    assert selected.skill_subset == ["alpha"]
+    assert selected.target_subset == []
+    assert selected.alias == "chosen"
 
-    def test_diamond_edges_all_match(self):
-        """Multiple incoming edges for the same identity all match the same rule.
 
-        Diamond: A -> B, A -> C, B -> D, C -> D.  Rule: replace D.
-        Both the B->D and C->D edges match the same rule.
-        """
-        sel = ReplacementSelector(host="github.com", port=None, repo_url="owner/d", subpath=None)
-        src = LocalReplacementSource(path="./local-d")
-        rule = ReplacementRule(selector=sel, source=src)
-        idx = build_replacement_index([rule])
+def test_unreplaced_lock_entry_does_not_emit_evidence() -> None:
+    locked = LockedDependency(repo_url="owner/upstream")
+    assert "replacement" not in locked.to_dict()
 
-        edge_from_b = DependencyReference(repo_url="owner/d", host="github.com", reference="v1.0")
-        edge_from_c = DependencyReference(repo_url="owner/d", host="github.com", reference="v1.1")
-        assert idx.lookup(edge_from_b) is rule
-        assert idx.lookup(edge_from_c) is rule
 
-    def test_non_virtual_dep_does_not_match_virtual_rule(self):
-        """A repo-root dep does not match a rule targeting a subpath."""
-        sel = ReplacementSelector(
-            host="github.com", port=None, repo_url="owner/mono", subpath="packages/a"
-        )
-        src = LocalReplacementSource(path="./local-a")
-        rule = ReplacementRule(selector=sel, source=src)
-        idx = build_replacement_index([rule])
+@pytest.mark.parametrize("change", ["missing-table", "different-source", "missing-evidence"])
+def test_lock_evidence_must_match_root_table(change: str) -> None:
+    binding, effective = _binding({"path": "../local"})
+    lock = LockFile(replacements=[replacement_rule_to_dict(binding.rule)])
+    locked = LockedDependency.from_dependency_ref(effective, None, 1, None)
+    lock.add_dependency(locked)
+    if change == "missing-table":
+        lock.replacements = None
+    elif change == "different-source":
+        lock.replacements[0]["with"] = {"path": "../other"}
+    else:
+        locked.replacement = None
+    with pytest.raises(LockfileFormatError, match="disagrees"):
+        lock.to_yaml()
 
-        dep = DependencyReference(repo_url="owner/mono", host="github.com")
-        assert idx.lookup(dep) is None
 
-    def test_dev_intent_preserved_in_projection(self):
-        """Dev dependency intent is not broadened by replacement.
+@pytest.mark.parametrize(
+    "field", ["source", "requests", "parent", "ref", "skills", "targets", "dev"]
+)
+def test_malformed_evidence_fails_closed(field: str) -> None:
+    binding, _ = _binding({"path": "../local"})
+    evidence = deepcopy(binding.to_dict())
+    if field in {"source", "requests"}:
+        evidence[field] = "invalid"
+    else:
+        evidence["requests"][0][field] = 42
+    with pytest.raises(ReplacementConfigError):
+        ReplacementBinding.from_dict(evidence, binding.original)
 
-        The ``is_dev`` field is on the graph node, not the reference, so
-        projection does not need to carry it.  Verify the projection does
-        not accidentally set a dev flag.
-        """
-        dep = DependencyReference(repo_url="owner/repo", host="github.com")
-        sel = ReplacementSelector(host="github.com", port=None, repo_url="owner/repo", subpath=None)
-        src = LocalReplacementSource(path="./local")
-        rule = ReplacementRule(selector=sel, source=src)
-        effective = project_effective_reference(dep, rule)
-        # DependencyReference has no is_dev; it's a graph-node concept
-        assert not hasattr(effective, "is_dev") or not effective.__dict__.get("is_dev")
+
+def test_local_evidence_rejects_invented_git_pin() -> None:
+    _, effective = _binding({"path": "../local"})
+    raw = LockedDependency.from_dependency_ref(effective, None, 1, None).to_dict()
+    raw["resolved_commit"] = "a" * 40
+    with pytest.raises(LockfileFormatError, match="must not carry"):
+        LockedDependency.from_dict(raw)
+
+
+def test_pin_reuse_distinguishes_changed_removed_and_same_source() -> None:
+    _, effective = _binding({"git": _FORK, "ref": "main"})
+    locked = LockedDependency.from_dependency_ref(effective, "a" * 40, 1, None)
+    assert locked.matches_replacement(effective)
+    _, other = _binding({"git": "https://github.com/other/upstream", "ref": "main"})
+    assert not locked.matches_replacement(other)
+    assert not locked.matches_replacement(effective.ownership_reference)
+    upstream = LockedDependency(
+        repo_url="owner/upstream", resolved_ref="main", resolved_commit="a" * 40
+    )
+    assert not upstream.matches_replacement(effective)

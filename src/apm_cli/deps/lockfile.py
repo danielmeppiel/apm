@@ -27,6 +27,13 @@ from ..models.dependency.reference import (
     build_canonical_dependency_string,
     build_dependency_unique_key,
 )
+from ..models.dependency.replacement import (
+    ReplacementBinding,
+    ReplacementConfigError,
+    build_replacement_index,
+    parse_replace_block,
+    project_effective_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +343,7 @@ class LockedDependency:
     # in declaration order. Omitted from YAML when empty so lockfiles that
     # declare no extensions stay byte-identical. Values are not interpreted.
     extensions: dict[str, Any] = field(default_factory=dict)
+    replacement: ReplacementBinding | None = field(default=None, repr=False)
     # Forward-compat carrier: keys we don't recognise are preserved
     # through a from_dict / to_dict round-trip so an older APM build
     # reading a lockfile written by a newer build doesn't silently drop
@@ -488,6 +496,8 @@ class LockedDependency:
             result["extensions"] = dict(self.extensions)
         if self.exec_status:
             result["exec_status"] = self.exec_status
+        if self.replacement is not None:
+            result["replacement"] = self.replacement.to_dict()
         # Replay forward-compat unknown fields LAST so they never shadow a
         # known field that this build understands.
         for k, v in self._unknown_fields.items():
@@ -570,6 +580,7 @@ class LockedDependency:
             "extensions",
             "exec_status",
             "name",
+            "replacement",
             # legacy migration key handled above
             "deployed_skills",
         }
@@ -579,7 +590,7 @@ class LockedDependency:
             if k not in _known_keys and not DependencyReference.is_transient_provider_field(k)
         }
 
-        return cls(
+        locked = cls(
             repo_url=data["repo_url"],
             materialization_repo_url=data.get("materialization_repo_url"),
             alias=data.get("alias"),
@@ -622,6 +633,18 @@ class LockedDependency:
             extensions=_copy_extension_map(data.get("extensions")),
             _unknown_fields=unknown_fields,
         )
+        if "replacement" in data:
+            try:
+                locked.replacement = ReplacementBinding.from_dict(
+                    data["replacement"], locked.to_dependency_ref()
+                )
+            except ReplacementConfigError as exc:
+                raise LockfileFormatError(f"Invalid replacement evidence: {exc}") from exc
+            if locked.to_dependency_ref().is_local and (
+                locked.resolved_ref or locked.resolved_commit
+            ):
+                raise LockfileFormatError("Local replacement must not carry a Git ref or commit")
+        return locked
 
     @classmethod
     def from_dependency_ref(
@@ -680,6 +703,28 @@ class LockedDependency:
                 "exclusive: a dependency is either registry-sourced or a "
                 "git-source semver resolution, not both."
             )
+        binding = dep_ref.replacement
+        if binding is not None:
+            if registry_resolution is not None or registry_config is not None:
+                raise ValueError("Replacement sources cannot use a registry resolution")
+            locked = cls.from_dependency_ref(
+                dep_ref=binding.original,
+                resolved_commit=resolved_commit,
+                depth=depth,
+                resolved_by=resolved_by,
+                is_dev=is_dev,
+                git_semver_resolution=git_semver_resolution,
+                package_name=package_name,
+                package_version=package_version,
+                extensions=extensions,
+            )
+            locked.replacement = ReplacementBinding.from_dict(binding.to_dict(), binding.original)
+            locked.resolved_ref = (
+                git_semver_resolution.resolved_tag
+                if git_semver_resolution is not None
+                else dep_ref.reference
+            )
+            return locked
         if registry_config is not None:
             host = registry_config.host
             registry_prefix = registry_config.prefix
@@ -777,7 +822,7 @@ class LockedDependency:
             extensions=_copy_extension_map(extensions),
         )
 
-    def to_dependency_ref(self) -> DependencyReference:
+    def to_dependency_ref(self, *, effective: bool = True) -> DependencyReference:
         """Reconstruct a DependencyReference from this locked dependency.
 
         Registry-sourced deps come back with ``source="registry"`` so the
@@ -791,7 +836,7 @@ class LockedDependency:
         # range (e.g. ``^1.2.0`` -> ``1.5.3``).
         is_registry = self.source == "registry"
         ref = self.version if (is_registry and self.version) else self.resolved_ref
-        return DependencyReference(
+        dep = DependencyReference(
             repo_url=self.materialization_repo_url or self.repo_url,
             alias=self.alias,
             host=self.host,
@@ -811,6 +856,20 @@ class LockedDependency:
             skill_subset=sorted(self.skill_subset) if self.skill_subset else None,
             target_subset=sorted(self.target_subset) if self.target_subset else None,
         ).with_derived_provider_coordinates()
+        if not effective or self.replacement is None:
+            return dep
+        selected = project_effective_reference(self.replacement.original, self.replacement.rule)
+        selected.replacement = self.replacement
+        if not selected.is_local:
+            selected.reference = self.resolved_ref or selected.reference
+        return selected
+
+    def matches_replacement(self, dep: DependencyReference) -> bool:
+        """Whether this pin belongs to the same root-selected source contract."""
+        binding = dep.replacement
+        if binding is None or self.replacement is None:
+            return binding is self.replacement
+        return binding.rule == self.replacement.rule
 
 
 @dataclass
@@ -913,10 +972,28 @@ class LockFile:
 
         The version bump is content-driven: only when replacement rules exist
         (including an explicitly empty list) does the lockfile require v3.
-        This ensures old readers (>=v0.33) that do not understand replacements
-        reject the lockfile before replay.
+        Released readers v0.25.0 and later reject this unsupported version.
+        Older readers do not provide that fail-closed guarantee.
         """
-        return self.replacements is not None
+        return self.replacements is not None or any(
+            dep.replacement is not None for dep in self.dependencies.values()
+        )
+
+    def _validate_replacement_evidence(self) -> None:
+        """Keep per-entry source evidence bound to the complete root rule table."""
+        try:
+            index = build_replacement_index(parse_replace_block(self.replacements or []))
+            for dep in self.dependencies.values():
+                rule = index.lookup(dep.to_dependency_ref(effective=False))
+                evidence = dep.replacement
+                if (rule is None) != (evidence is None) or (
+                    evidence is not None and evidence.rule != rule
+                ):
+                    raise ReplacementConfigError(
+                        f"Replacement evidence for {dep.get_unique_key()} disagrees with root replacements"
+                    )
+        except ReplacementConfigError as exc:
+            raise LockfileFormatError(str(exc)) from exc
 
     def _required_lockfile_version(self) -> str:
         """Return the minimum schema version required by current lock state."""
@@ -927,6 +1004,8 @@ class LockFile:
     def to_yaml(self) -> str:
         """Serialize to YAML string."""
         from ..core.deployment_ledger import DeploymentLedgerCodec
+
+        self._validate_replacement_evidence()
 
         if not self.deployment_ledger.records:
             self.deployment_ledger = DeploymentLedgerCodec.from_lockfile(self)
@@ -1038,11 +1117,14 @@ class LockFile:
         # Root replacement rules (issue #3180).  ``None`` = no replacement
         # section in lockfile; ``[]`` = explicitly cleared replacement state.
         raw_replacements = data.get("replacements")
-        if raw_replacements is not None:
+        if "replacements" in data:
             if isinstance(raw_replacements, list):
                 lock.replacements = raw_replacements
             else:
                 raise LockfileFormatError("'replacements' must be a list")
+        if lock._needs_v3() and data.get("lockfile_version", "1") != "3":
+            raise LockfileFormatError("Replacement evidence requires lockfile_version '3'")
+        lock._validate_replacement_evidence()
         # Synthesize a virtual self-entry representing the project's own
         # local content. This unifies traversal across "real" dependencies
         # and the local package, without changing the on-disk YAML shape.
@@ -1253,7 +1335,10 @@ class LockFile:
         Ignores ``generated_at`` and ``apm_version`` so that a no-change
         install does not dirty the lockfile.
         """
-        if self.lockfile_version != other.lockfile_version:
+        if (
+            self.lockfile_version != other.lockfile_version
+            or self.replacements != other.replacements
+        ):
             return False
         self_dependency_keys = set(self.dependencies).difference({_SELF_KEY})
         other_dependency_keys = set(other.dependencies).difference({_SELF_KEY})

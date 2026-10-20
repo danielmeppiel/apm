@@ -259,15 +259,15 @@ class TestParseReplaceBlockErrors:
 
     def test_selector_shorthand_rejected(self):
         """Shorthand (non-URL) git values are rejected."""
-        with pytest.raises(ReplacementConfigError, match="explicit HTTPS URL"):
+        with pytest.raises(ReplacementConfigError, match="explicit supported Git URL"):
             parse_replace_block([{"for": {"git": "owner/repo"}, "with": {"path": "./x"}}])
 
-    def test_selector_ssh_rejected(self):
-        """SSH URLs are rejected in selectors."""
-        with pytest.raises(ReplacementConfigError, match="explicit HTTPS URL"):
-            parse_replace_block(
-                [{"for": {"git": "git@github.com:owner/repo.git"}, "with": {"path": "./x"}}]
-            )
+    def test_selector_ssh_uses_existing_git_parser(self):
+        """An explicit SSH locator identifies the same package as HTTPS."""
+        rules = parse_replace_block(
+            [{"for": {"git": "git@github.com:owner/repo.git"}, "with": {"path": "./x"}}]
+        )
+        assert rules[0].selector.key == ("github.com", None, "owner/repo", None)
 
     def test_source_missing_ref_for_git(self):
         """Git source without ref is rejected."""
@@ -336,7 +336,7 @@ class TestParseReplaceBlockErrors:
 
     def test_selector_invalid_repo_path(self):
         """URL with no valid repo path is rejected."""
-        with pytest.raises(ReplacementConfigError, match="invalid repository path"):
+        with pytest.raises(ReplacementConfigError, match="Invalid repository URL path"):
             parse_replace_block([{"for": {"git": "https://github.com/"}, "with": {"path": "./x"}}])
 
     def test_source_empty_ref(self):
