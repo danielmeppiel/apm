@@ -14,6 +14,7 @@ from ...core.command_logger import CommandLogger
 from ...install.locking import serialized_lifecycle
 from ...models.apm_package import APMPackage
 from ...utils.path_security import PathTraversalError
+from . import lockfile_state
 from .engine import (
     IntegrationCleanupOutcome,
     LocalSurvivorRefreshError,
@@ -681,12 +682,10 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
         remove_empty_lockfile = False
         if lockfile and lockfile_updated and lockfile_ready and mcp_cleanup_error is None:
             try:
-                from .lockfile_state import lockfile_has_persisted_state
-
                 # Keep authoritative empty survivors until native cleanup succeeds,
                 # so an interrupted last-package removal can retry safely.
                 lockfile.write(lockfile_path)
-                remove_empty_lockfile = not lockfile_has_persisted_state(lockfile)
+                remove_empty_lockfile = not lockfile_state.lockfile_has_persisted_state(lockfile)
             except Exception:
                 logger.warning(
                     "Failed to update lockfile -- it may be out of sync with uninstalled packages."
