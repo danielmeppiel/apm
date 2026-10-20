@@ -69,6 +69,19 @@ workspace-only runtimes. If no selected target supports user scope, the command
 exits `2` before creating or changing the user manifest, lockfile, or runtime
 configuration.
 
+For intact Claude plugins, `apm install -g --target claude` requires Claude
+Code 2.1.291 on `PATH` and registers a local `apm-claude` marketplace against
+APM's materialized source. New plugins remain disabled until the user reviews
+and enables them in Claude; updates preserve native activation choices.
+Native command selection and plugin hooks stay intact, without duplicate
+loose Claude projection. Project installs and standalone APM primitives are
+unchanged. This bounded route rejects partial skill selections, symlinks,
+MCP/LSP, bin scripts, and unqualified capabilities rather than activating
+excluded content. Registration is not authenticated runtime proof.
+Global uninstall uses native removal with plugin data retained. If native
+metadata reconciliation fails, repair the reported issue and rerun
+`apm install --global`; APM does not overwrite foreign marketplace ownership.
+
 Cursor and OpenCode user configs are `~/.cursor/mcp.json` and
 `~/.config/opencode/opencode.json`. Global MCP cleanup removes only names
 recorded as APM-owned for that target; personal same-name entries stay intact.
