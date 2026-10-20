@@ -13,6 +13,8 @@ import pytest
 
 from apm_cli.copilot_plugins.registrar import catalog_path_for
 from tests.unit.copilot_plugins._builders import write_agent_plugin
+from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
+from tests.utils.local_git_repository import LocalGitRepositoryFactory
 
 pytestmark = [pytest.mark.e2e, pytest.mark.integration]
 
@@ -36,8 +38,9 @@ def _snapshot(root: Path) -> dict[str, object]:
 
 @pytest.mark.parametrize("with_manifest", [False, True])
 @pytest.mark.parametrize("tamper", ["modified", "missing"])
+@pytest.mark.parametrize("source_kind", ["local", "git"])
 def test_native_cache_tamper_fails_installed_audit(
-    tmp_path: Path, with_manifest: bool, tamper: str
+    tmp_path: Path, with_manifest: bool, tamper: str, source_kind: str
 ) -> None:
     """Clean/reinstall pass; native cache drift fails without changing any input."""
     project, source, home, scratch = (
@@ -51,21 +54,11 @@ def test_native_cache_tamper_fails_installed_audit(
         (source / "apm.yml").write_text(
             json.dumps({"name": name, "version": "1.0.0"}), encoding="ascii"
         )
-    (project / "apm.yml").write_text(
-        json.dumps(
-            {
-                "name": "consumer",
-                "version": "1.0.0",
-                "targets": ["copilot"],
-                "dependencies": {"apm": [str(source)]},
-            }
-        ),
-        encoding="ascii",
-    )
     executable = Path(sysconfig.get_path("scripts")) / ("apm.exe" if os.name == "nt" else "apm")
     assert executable.is_file(), "The test requires the installed project CLI"
+    isolated = IsolatedApmEnvironment.create(tmp_path / "isolated", base_env=dict(os.environ))
     env = {
-        **os.environ,
+        **isolated.subprocess_env(),
         "HOME": str(home),
         "USERPROFILE": str(home),
         "COPILOT_HOME": str(home / ".copilot"),
@@ -75,6 +68,25 @@ def test_native_cache_tamper_fails_installed_audit(
         "TEMP": str(scratch),
         "PYTHONDONTWRITEBYTECODE": "1",
     }
+    dependency: str | dict[str, str] = str(source)
+    if source_kind == "git":
+        repositories = LocalGitRepositoryFactory(tmp_path / "repositories", env=env)
+        repository = repositories.create("native-witness", source_tree=source)
+        commit = repositories.commit(repository, message="Seed harmless native fixture")
+        remote_url = "https://github.com/test/native-witness.git"
+        env = repositories.url_rewrite_subprocess_env(repository, remote_url)
+        dependency = {"git": remote_url, "ref": commit.sha}
+    (project / "apm.yml").write_text(
+        json.dumps(
+            {
+                "name": "consumer",
+                "version": "1.0.0",
+                "targets": ["copilot"],
+                "dependencies": {"apm": [dependency]},
+            }
+        ),
+        encoding="ascii",
+    )
 
     def run(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
