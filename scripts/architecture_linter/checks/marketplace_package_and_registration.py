@@ -180,8 +180,12 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
                 "agent_plugin_detection=native_detection",
                 "read_only=True",
                 "with native_registration_scope(targets):",
+                'if result.get("native_plugin"):',
+                "_verify_native_plugin_cache(",
+                "_copy_tree_dereferencing_validated(source, replay_path, source)",
+                "verify_package_hash(candidate, expected_hash)",
             ),
-            "Native replay must use canonical read-only package projection and target admission",
+            "Native replay must use canonical read-only projection, admission, copy and integrity",
         )
     )
     return tuple(findings)
