@@ -715,6 +715,7 @@ class MCPIntegrator:
         logger=None,
         scope=None,
         fail_on_write_error: bool = False,
+        stored_configs: builtins.dict | None = None,
     ) -> None:
         """Remove MCP server entries that are no longer required by any dependency.
 
@@ -746,9 +747,18 @@ class MCPIntegrator:
         if exclude:
             target_runtimes.discard(exclude)
 
-        # Scope filtering: at USER scope, only clean global-capable runtimes.
         from apm_cli.core.scope import InstallScope
+        from apm_cli.install.mcp.ownership import require_removable_mcp_connections
 
+        for protected_runtime in sorted(target_runtimes & {"claude", "codex"}):
+            client = ClientFactory.create_client(
+                protected_runtime,
+                project_root=project_root,
+                user_scope=user_scope or scope is InstallScope.USER,
+            )
+            require_removable_mcp_connections(client, stale_names, stored_configs or {})
+
+        # Scope filtering: at USER scope, only clean global-capable runtimes.
         if scope is InstallScope.USER:
             from apm_cli.factory import ClientFactory as _CF
 

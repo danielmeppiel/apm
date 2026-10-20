@@ -380,6 +380,10 @@ class MCPClientAdapter(ABC):
             raise ValueError("Adapter did not produce a native MCP server mapping")
         return rendered
 
+    def matches_managed_server_config(self, native: object, expected: dict) -> bool:
+        """Compare the native connection with the adapter's rendered baseline."""
+        return native == expected
+
     @abstractmethod
     def get_config_path(self):
         """Get the path to the MCP configuration file."""

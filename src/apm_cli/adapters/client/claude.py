@@ -83,6 +83,16 @@ class ClaudeClientAdapter(CopilotClientAdapter):
             config["command"] = self._rewrite_self_defined_skill_command(config["command"])
         return config
 
+    def render_server_config(self, server_info: dict) -> dict:
+        """Compare against the normalized shape actually written to Claude."""
+        return self._normalize_mcp_entry_for_claude_code(super().render_server_config(server_info))
+
+    def matches_managed_server_config(self, native: object, expected: dict) -> bool:
+        """OAuth metadata is runtime-owned, not part of an APM connection declaration."""
+        if not isinstance(native, dict):
+            return False
+        return {key: value for key, value in native.items() if key != "oauthAccount"} == expected
+
     @classmethod
     def _is_remote_mcp_entry(cls, entry: dict) -> bool:
         """Return whether *entry* describes a remote (URL-addressed) server."""
