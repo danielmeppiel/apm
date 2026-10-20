@@ -438,6 +438,14 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
         # rather than claiming that already-deleted files were rolled back.
         refreshed_survivor_keys = builtins.set()
         try:
+            from ...codex_plugins.registrar import remove_codex_plugins
+
+            remove_codex_plugins(
+                modules_dir=modules_dir,
+                dependency_keys=removed_keys | builtins.set(projected_orphans),
+                cwd=manifest_path.parent,
+                scope=scope,
+            )
             removed_from_modules = _remove_packages_from_disk(
                 packages_to_remove,
                 modules_dir,

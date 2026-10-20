@@ -374,16 +374,23 @@ def _build_package_info(
     Loads ``apm.yml`` when present so integrators that read
     ``package_info.package.name`` see the right package identity.
     """
+    from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
     from apm_cli.models.apm_package import (
         APMPackage,
         GitReferenceType,
         PackageInfo,
         ResolvedReference,
     )
-    from apm_cli.models.validation import PackageType, detect_package_type
+    from apm_cli.models.validation import PackageType, detect_package_type, validate_apm_package
 
+    detected_type, selected_manifest = detect_package_type(install_path)
     apm_yml = install_path / "apm.yml"
-    if apm_yml.exists():
+    if is_codex_compatibility_manifest(install_path, selected_manifest):
+        validation = validate_apm_package(install_path, read_only=True)
+        if not validation.is_valid or validation.package is None:
+            raise ValueError("Codex replay source is invalid: " + "; ".join(validation.errors))
+        pkg = validation.package
+    elif apm_yml.exists():
         try:
             pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
         except Exception:
@@ -417,7 +424,7 @@ def _build_package_info(
         dependency_ref=lock_dep.to_dependency_ref(),
     )
     try:
-        package_type = lock_dep.package_type or detect_package_type(install_path)[0].value
+        package_type = lock_dep.package_type or detected_type.value
         info.package_type = PackageType(package_type)
     except Exception:
         info.package_type = None

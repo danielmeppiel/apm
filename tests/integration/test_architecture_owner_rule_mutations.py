@@ -652,6 +652,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Catalog-only marketplace manifest materialization loses its owner.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-codex-native-lifecycle",
+        rule_id="marketplace-integrations-codex-native-lifecycle",
+        path="src/apm_cli/codex_plugins/client.py",
+        old='"expectedVersion": version',
+        new='"unexpectedVersion": version',
+        intent="Codex native configuration loses its public compare-and-swap no-write control.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-copilot-ownership",
         rule_id="marketplace-integrations-copilot-ownership",
         path="src/apm_cli/copilot_plugins/registrar.py",

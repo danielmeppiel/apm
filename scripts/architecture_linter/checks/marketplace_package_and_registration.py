@@ -428,6 +428,101 @@ def _check_copilot_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
     return tuple(findings)
 
 
+_RID_CODEX = "marketplace-integrations-codex-native-lifecycle"
+_CODEX_PREFIX = "src/apm_cli/codex_plugins/"
+
+
+def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Keep opaque native admission, public writes, and lifecycle ownership together."""
+    inv = frozenset(provider.inventory)
+    findings: list[Violation] = []
+    for name, owner in (
+        ("synchronize_codex_plugins", _CODEX_PREFIX + "registrar.py"),
+        ("plan_native_codex_plugin", _CODEX_PREFIX + "admission.py"),
+    ):
+        count = _count_across(
+            provider,
+            inv,
+            _RID_CODEX,
+            _src_python(provider),
+            re.compile(rf"^def {name}\("),
+        )
+        if count != 1:
+            findings.append(violation(_RID_CODEX, owner, f"{name} must have exactly one owner"))
+    required = {
+        _CODEX_PREFIX + "client.py": (
+            '"expectedVersion": version',
+            'QUALIFIED_CODEX_VERSION = "0.163.0"',
+        ),
+        _CODEX_PREFIX + "admission.py": (
+            "record_native_exec_status(",
+            "skill_subset_filter_tokens(skill_subset)",
+            "if any(not approvals.get(kind, False) for kind in types):",
+        ),
+        _CODEX_PREFIX + "registrar.py": (
+            "_preflight(",
+            "_write_records(ledger, records)",
+            "client.upgrade(rpc, marketplace)",
+            'actual_plugin != {"enabled": False}',
+            "prepare_snapshot(",
+        ),
+        _CODEX_PREFIX + "snapshot.py": (
+            "plan.paths",
+            "compute_package_hash(",
+            "git_no_hooks_args()",
+        ),
+        "src/apm_cli/install/services.py": (
+            "plan_native_codex_plugin(",
+            "native_plugin_root=",
+            "CodexNativeDeployment(",
+            "scratch_root is None",
+        ),
+        "src/apm_cli/install/phases/codex_plugins.py": (
+            "candidates_from_lockfile(saved,",
+            "LockFile.read(get_lockfile_path(ctx.apm_dir))",
+            "synchronize_codex_plugins(",
+            "ctx.dry_run or ctx.lockfile_only",
+        ),
+        "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
+    }
+    for path, fragments in required.items():
+        findings.extend(
+            _require_subs(
+                provider,
+                inv,
+                _RID_CODEX,
+                path,
+                fragments,
+                "Codex native lifecycle must retain canonical admission, ownership and public API gates",
+            )
+        )
+    findings.extend(
+        _forbid_scan(
+            provider,
+            inv,
+            _RID_CODEX,
+            tuple(path for path in _src_python(provider) if path != _CODEX_PREFIX + "client.py"),
+            re.compile(
+                r"""["'](?:plugin/(?:read|uninstall)|marketplace/(?:upgrade|remove)|config/batchWrite)["']"""
+            ),
+            "Codex native protocol operations belong only to codex_plugins/client.py",
+            exempt=False,
+        )
+    )
+    findings.extend(
+        _forbid_scan(
+            provider,
+            inv,
+            _RID_CODEX,
+            _subdir_python(provider, _CODEX_PREFIX),
+            re.compile(r"plugins/cache|plugin_registry\.json|forceRefetch"),
+            "Codex lifecycle must not address private native state or perform global refetch",
+            exempt=False,
+        )
+    )
+    return tuple(findings)
+
+
 RULES: tuple[Rule, ...] = (
     Rule(
         id=_RID_CONSTRUCTION,
@@ -463,6 +558,13 @@ RULES: tuple[Rule, ...] = (
         guard_ids=(_RID_NATIVE,),
         description="Native Agent Plugin registration admission stays free of client binary coupling.",
         check=_check_native_registration,
+    ),
+    Rule(
+        id=_RID_CODEX,
+        group=GROUP,
+        guard_ids=(_RID_CODEX,),
+        description="Codex native lifecycle consumes canonical admission and uses only owned public operations.",
+        check=_check_codex_lifecycle,
     ),
     Rule(
         id=_RID_COPILOT,
