@@ -7,8 +7,10 @@ projection and the symmetric comparison with the stored lockfile baseline.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -57,6 +59,9 @@ class CurrentMcpConfigView:
     configs: Mapping[str, Mapping[str, Any]]
     provenance: Mapping[str, str]
     problems: tuple[McpSourceProblem, ...]
+    declaration_fingerprints: Mapping[str, str] = field(default_factory=dict)
+    omissions: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+    refusable_names: frozenset[str] = frozenset()
 
     @classmethod
     def derive(
@@ -69,10 +74,11 @@ class CurrentMcpConfigView:
         diagnostics: DiagnosticCollector | None = None,
         logger: _McpViewLogger | None = None,
         trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
+        include_dependency_mcp: bool = True,
     ) -> CurrentMcpConfigView:
         """Derive current MCP truth without mutating manifests or the lockfile."""
         project_root = root.package_path or Path.cwd()
-        package_deps, problems = _collect_locked_dependencies(
+        package_deps, problems, fingerprints, omissions, refusable = _collect_locked_dependencies(
             lockfile,
             modules_root,
             project_root,
@@ -80,18 +86,78 @@ class CurrentMcpConfigView:
             diagnostics=diagnostics,
             logger=logger,
             trusted_transitive_configs=trusted_transitive_configs,
+            include_dependency_mcp=include_dependency_mcp,
         )
         # Root is the authoring project: both prod and dev MCP are intentionally
         # included here (behaviour introduced in #1780). Transitive package deps
         # are collected prod-only (see _collect_locked_dependencies and
         # _collect_unlocked_compat).
-        dependencies = tuple(_deduplicate(root.get_all_mcp_dependencies() + package_deps))
+        root_deps = root.get_all_mcp_dependencies()
+        root_names = set(_get_server_configs(root_deps))
+        dependencies = tuple(_deduplicate(root_deps + package_deps))
+        configs = _get_server_configs(dependencies)
         return cls(
             dependencies=dependencies,
-            configs=_get_server_configs(dependencies),
+            configs=configs,
             provenance=_get_server_provenance(dependencies),
             problems=tuple(problems),
+            declaration_fingerprints={
+                name: fingerprint
+                for name, fingerprint in fingerprints.items()
+                if name not in root_names
+            },
+            omissions={
+                name: evidence for name, evidence in omissions.items() if name not in configs
+            },
+            refusable_names=frozenset(refusable - root_names),
         )
+
+    def omission_evidence(self, lockfile: LockFile) -> dict[str, dict[str, str]]:
+        """Record explicit omissions without erasing a previously admitted baseline."""
+        admitted = _admitted_names(lockfile)
+        return {
+            name: dict(evidence)
+            for name, evidence in self.omissions.items()
+            if name not in admitted
+        }
+
+    def with_recorded_omissions(self, lockfile: LockFile) -> CurrentMcpConfigView:
+        """Apply exact install evidence for audit, never infer intent from empty state."""
+        configs = dict(self.configs)
+        problems = list(self.problems)
+        admitted = _admitted_names(lockfile)
+        candidates = (set(lockfile.mcp_omissions) & set(configs)) | (
+            set(self.declaration_fingerprints) - admitted
+        )
+        for name in sorted(candidates):
+            evidence = lockfile.mcp_omissions.get(name)
+            fingerprint = self.declaration_fingerprints.get(name)
+            valid = (
+                fingerprint is not None
+                and isinstance(evidence, dict)
+                and evidence.get("reason") in ("only-apm", "untrusted-transitive")
+                and evidence
+                == {
+                    "declaration": fingerprint,
+                    "reason": evidence.get("reason"),
+                }
+                and (evidence["reason"] == "only-apm" or name in self.refusable_names)
+            )
+            if valid and name not in admitted:
+                configs.pop(name, None)
+            elif name not in admitted or evidence is not None:
+                problems.append(
+                    McpSourceProblem(
+                        package_key=name,
+                        manifest_path=Path("apm.lock.yaml"),
+                        message=(
+                            "MCP selection is unknown: omission evidence is missing, damaged "
+                            "or stale. Repeat the intended install selection "
+                            "('--only apm' for skills-only); do not enable MCP just to pass audit"
+                        ),
+                    )
+                )
+        return replace(self, configs=configs, problems=tuple(problems))
 
     def diff(self, stored_configs: Mapping[str, Mapping[str, Any]]) -> McpConfigDiff:
         """Compare this current view with a stored lockfile baseline."""
@@ -131,6 +197,31 @@ class McpConfigDiff:
 def _deduplicate(dependencies: list[Any] | tuple[Any, ...]) -> list[Any]:
     """Return first-wins dependencies using the shared MCP/LSP semantics."""
     return deduplicate_deps(list(dependencies))
+
+
+def _admitted_names(lockfile: LockFile) -> set[str]:
+    """Retain every surviving indication of a previously admitted MCP baseline."""
+    return (
+        set(lockfile.mcp_servers)
+        | set(lockfile.mcp_configs)
+        | set(lockfile.mcp_config_provenance)
+        | {name for names in lockfile.mcp_target_servers.values() for name in names}
+    )
+
+
+def _declaration_fingerprint(dependency: LockedDependency, declaration: MCPDependency) -> str:
+    """Bind intent to canonical package identity, immutable source and exact declaration."""
+    payload = {
+        "dependency": dependency.get_unique_key(),
+        "commit": dependency.resolved_commit,
+        "digest": dependency.resolved_hash,
+        "port": dependency.port,
+        "source": dependency.source,
+        "depth": dependency.depth,
+        "declaration": declaration.to_dict(),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "sha256:" + hashlib.sha256(encoded.encode("ascii")).hexdigest()
 
 
 def _get_server_configs(dependencies: list[Any] | tuple[Any, ...]) -> dict[str, dict[str, Any]]:
@@ -289,13 +380,23 @@ def _collect_locked_dependencies(
     diagnostics: DiagnosticCollector | None,
     logger: _McpViewLogger | None = None,
     trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
-) -> tuple[list[MCPDependency], list[McpSourceProblem]]:
+    include_dependency_mcp: bool = True,
+) -> tuple[
+    list[MCPDependency],
+    list[McpSourceProblem],
+    dict[str, str],
+    dict[str, dict[str, str]],
+    set[str],
+]:
     """Collect MCP declarations from only package manifests named by the lockfile."""
     if lockfile is None:
-        return [], []
+        return [], [], {}, {}, set()
 
     collected: list[MCPDependency] = []
     problems: list[McpSourceProblem] = []
+    fingerprints: dict[str, str] = {}
+    omissions: dict[str, dict[str, str]] = {}
+    refusable: set[str] = set()
     parent_index = build_local_parent_index(lockfile)
     resolved_cache: dict[str, Path] = {}
     native_ownership_cache: dict[Path, frozenset[str]] = {}
@@ -375,6 +476,15 @@ def _collect_locked_dependencies(
         # Only collect prod MCP from transitive packages; devDependencies.mcp
         # are scoped to the package author's own environment (#2340).
         for mcp_dependency in package.get_mcp_dependencies():
+            fingerprint = _declaration_fingerprint(dependency, mcp_dependency)
+            fingerprints.setdefault(mcp_dependency.name, fingerprint)
+            if mcp_dependency.is_self_defined and dependency.depth > 1:
+                refusable.add(mcp_dependency.name)
+            if not include_dependency_mcp:
+                omissions.setdefault(
+                    mcp_dependency.name, {"declaration": fingerprint, "reason": "only-apm"}
+                )
+                continue
             if mcp_dependency.is_self_defined:
                 if dependency.depth == 1:
                     if logger is not None:
@@ -399,6 +509,10 @@ def _collect_locked_dependencies(
                             f"'{mcp_dependency.name}' from '{declarer}'"
                         )
                 else:
+                    omissions.setdefault(
+                        mcp_dependency.name,
+                        {"declaration": fingerprint, "reason": "untrusted-transitive"},
+                    )
                     message = (
                         f"Transitive package '{declarer}' declares self-defined MCP server "
                         f"'{mcp_dependency.name}' (registry: false). Re-declare it in your "
@@ -410,7 +524,7 @@ def _collect_locked_dependencies(
                         logger.warning(message)
                     continue
             collected.append(replace(mcp_dependency, resolved_by=declarer))
-    return collected, problems
+    return collected, problems, fingerprints, omissions, refusable
 
 
 def _collect_unlocked_compat(
@@ -469,7 +583,7 @@ def _collect_transitive_compat(
             logger=logger,
         )
     project_root = lock_path.parent if lock_path is not None else Path.cwd()
-    dependencies, _ = _collect_locked_dependencies(
+    dependencies, _, _, _, _ = _collect_locked_dependencies(
         lockfile,
         modules_root,
         project_root,

@@ -18,6 +18,104 @@ from apm_cli.models.apm_package import APMPackage, clear_apm_yml_cache
 from apm_cli.models.dependency.mcp import MCPDependency
 from tests.unit.copilot_plugins._builders import write_agent_plugin
 
+pytestmark = pytest.mark.component
+
+
+@pytest.mark.parametrize("include_dependency_mcp,depth", [(False, 1), (True, 2)])
+def test_dependency_omission_requires_bound_selection_evidence(
+    tmp_path: Path, include_dependency_mcp: bool, depth: int
+) -> None:
+    """Only the exact deliberately omitted declaration is exempt from comparison."""
+    root = _write_manifest(tmp_path, name="consumer")
+    source = tmp_path / "package"
+    declaration = _self_defined("firebase", "inert")
+    _write_manifest(source, name="firebase", mcp=[declaration])
+    dependency = LockedDependency(
+        repo_url="_local/firebase", source="local", local_path=str(source), depth=depth
+    )
+    lock = _lock(dependency)
+    modules = tmp_path / "apm_modules"
+    selected = CurrentMcpConfigView.derive(
+        root,
+        lock,
+        modules,
+        trust_transitive_self_defined=False,
+        include_dependency_mcp=include_dependency_mcp,
+    )
+    assert selected.dependencies == ()
+    lock.mcp_omissions = selected.omission_evidence(lock)
+    assert set(lock.mcp_omissions) == {"firebase"}
+    lock = LockFile.from_yaml(lock.to_yaml())
+    audited = _derive(root, lock, modules).with_recorded_omissions(lock)
+    assert audited.diff(lock.mcp_configs).is_empty
+    assert not audited.problems
+
+    _write_manifest(source, name="firebase", mcp=[_self_defined("firebase", "changed")])
+    changed = _derive(root, lock, modules).with_recorded_omissions(lock)
+    assert changed.diff(lock.mcp_configs).source_only == {"firebase"}
+    assert changed.problems
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "lost",
+        "empty",
+        "reason",
+        "malformed-reason",
+        "dependency",
+        "baseline",
+        "server-only",
+        "provenance-only",
+        "ownership-only",
+        "root",
+    ],
+)
+def test_omission_never_masks_unknown_or_previously_admitted_state(
+    tmp_path: Path, damage: str
+) -> None:
+    """An empty field, stale identity, root or previous baseline cannot grant omission."""
+    root = _write_manifest(tmp_path, name="consumer")
+    source = tmp_path / "package"
+    declaration = _self_defined("firebase", "inert")
+    _write_manifest(source, name="firebase", mcp=[declaration])
+    dependency = LockedDependency(
+        repo_url="_local/firebase", source="local", local_path=str(source), depth=1
+    )
+    lock = _lock(dependency)
+    modules = tmp_path / "apm_modules"
+    selected = CurrentMcpConfigView.derive(
+        root, lock, modules, trust_transitive_self_defined=False, include_dependency_mcp=False
+    )
+    lock.mcp_omissions = selected.omission_evidence(lock)
+    if damage == "lost":
+        lock.mcp_omissions = {}
+    elif damage == "empty":
+        lock.mcp_omissions["firebase"] = {}
+    elif damage == "reason":
+        lock.mcp_omissions["firebase"]["reason"] = "unknown"
+    elif damage == "malformed-reason":
+        lock.mcp_omissions["firebase"]["reason"] = []
+    elif damage == "dependency":
+        lock.dependencies.clear()
+        different_source = tmp_path / "different-package"
+        _write_manifest(different_source, name="firebase", mcp=[declaration])
+        dependency.local_path = str(different_source)
+        lock.add_dependency(dependency)
+    elif damage == "baseline":
+        lock.mcp_servers = ["firebase"]
+        lock.mcp_configs = {"firebase": _self_defined("firebase", "old")}
+    elif damage == "server-only":
+        lock.mcp_servers = ["firebase"]
+    elif damage == "provenance-only":
+        lock.mcp_config_provenance = {"firebase": "package"}
+    elif damage == "ownership-only":
+        lock.mcp_target_servers = {"claude": ["firebase"]}
+    else:
+        root = _write_manifest(tmp_path, name="consumer", mcp=[declaration])
+    audited = _derive(root, lock, modules).with_recorded_omissions(lock)
+    assert not audited.diff(lock.mcp_configs).is_empty
+
 
 def _write_manifest(
     directory: Path,

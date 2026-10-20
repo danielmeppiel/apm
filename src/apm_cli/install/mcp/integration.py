@@ -190,7 +190,8 @@ def run_mcp_integration(  # noqa: PLR0913
     from apm_cli.policy.install_preflight import run_policy_preflight
 
     current_view = None
-    if should_install and (mcp_deps or apm_modules_path.exists()):
+    omissions: dict[str, dict[str, str]] = {}
+    if mcp_deps or apm_modules_path.exists() or lock_path.exists():
         lockfile = LockFile.read(lock_path) if lock_path.exists() else None
         current_view = CurrentMcpConfigView.derive(
             apm_package,
@@ -200,7 +201,9 @@ def run_mcp_integration(  # noqa: PLR0913
             diagnostics=diagnostics,
             logger=logger,
             trusted_transitive_configs=trusted_transitive_configs,
+            include_dependency_mcp=should_install,
         )
+        omissions = current_view.omission_evidence(lockfile or LockFile())
         root_count = len(apm_package.get_all_mcp_dependencies())
         transitive_count = max(0, len(current_view.dependencies) - root_count)
         if transitive_count:
@@ -399,5 +402,12 @@ def run_mcp_integration(  # noqa: PLR0913
             logger=logger,
             fail_on_write_error=True,
         )
+
+    if current_view is not None and lock_path.exists():
+        lockfile = LockFile.read(lock_path)
+        if lockfile is not None:
+            if omissions != lockfile.mcp_omissions:
+                lockfile.mcp_omissions = omissions
+                lockfile.write(lock_path)
 
     return mcp_count, mcp_apm_config
