@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 _SELF_KEY = "."
 _ALLOWED_HOST_TYPES = set(accepted_host_types())
 _ALLOWED_EXEC_STATUS = {"deployed", "gated_pending_approval", "denied", "absent"}
-SUPPORTED_LOCKFILE_VERSIONS = frozenset({"1", "2"})
+SUPPORTED_LOCKFILE_VERSIONS = frozenset({"1", "2", "3"})
 _REPRODUCIBLE_EPOCH = "1970-01-01T00:00:00+00:00"
 
 
@@ -844,6 +844,12 @@ class LockFile:
     _mcp_target_servers_present: bool = field(default=False, repr=False, compare=False)
     _lsp_target_servers_present: bool = field(default=False, repr=False, compare=False)
 
+    # Root replacement rules (issue #3180).  Stores the full normalized rule
+    # table including dormant rules so frozen validation can compare declared
+    # intent without reading unused sources.  ``None`` means no replacement
+    # state; ``[]`` means explicitly empty (cleared rules).
+    replacements: list[dict] | None = field(default=None, repr=False)
+
     def add_dependency(self, dep: LockedDependency) -> None:
         """Add a dependency to the lock file.
 
@@ -902,8 +908,20 @@ class LockFile:
                 return True
         return False
 
+    def _needs_v3(self) -> bool:
+        """Whether replacement state requires lockfile schema v3 (issue #3180).
+
+        The version bump is content-driven: only when replacement rules exist
+        (including an explicitly empty list) does the lockfile require v3.
+        This ensures old readers (>=v0.33) that do not understand replacements
+        reject the lockfile before replay.
+        """
+        return self.replacements is not None
+
     def _required_lockfile_version(self) -> str:
         """Return the minimum schema version required by current lock state."""
+        if self._needs_v3():
+            return "3"
         return "2" if self._needs_v2() else "1"
 
     def to_yaml(self) -> str:
@@ -964,6 +982,8 @@ class LockFile:
                 data["local_deployed_file_hashes"] = dict(
                     sorted(self.local_deployed_file_hashes.items())
                 )
+            if self.replacements is not None:
+                data["replacements"] = self.replacements
             from ..utils.yaml_io import yaml_to_str
 
             return yaml_to_str(data)
@@ -1015,6 +1035,14 @@ class LockFile:
         lock.lsp_config_provenance = dict(data.get("lsp_config_provenance") or {})
         lock.local_deployed_files = list(data.get("local_deployed_files", []))
         lock.local_deployed_file_hashes = dict(data.get("local_deployed_file_hashes") or {})
+        # Root replacement rules (issue #3180).  ``None`` = no replacement
+        # section in lockfile; ``[]`` = explicitly cleared replacement state.
+        raw_replacements = data.get("replacements")
+        if raw_replacements is not None:
+            if isinstance(raw_replacements, list):
+                lock.replacements = raw_replacements
+            else:
+                raise LockfileFormatError("'replacements' must be a list")
         # Synthesize a virtual self-entry representing the project's own
         # local content. This unifies traversal across "real" dependencies
         # and the local package, without changing the on-disk YAML shape.
