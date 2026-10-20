@@ -1795,14 +1795,14 @@ def _install_apm_packages(ctx, outcome):
         )
 
     if ctx.dry_run:
-        prospective_plan = ProspectiveInstallPlan.from_apm_package(
+        prospective_plan = ProspectiveInstallPlan.from_install_context(
             apm_package,
+            ctx,
             should_install_apm=should_install_apm,
             should_install_mcp=should_install_mcp,
-            only_packages=ctx.only_packages,
             updated_packages=outcome.updated_packages if outcome is not None else (),
         )
-        prospective_plan = prospective_plan.with_allowed_lsp_dependencies(apm_package, logger)
+        logger.record_dry_run_incomplete(bool(prospective_plan.dependency_preview_errors))
         logger.record_dry_run_apm_updates(len(prospective_plan.updated_apm_identities))
         _check_insecure_dependencies(
             prospective_plan.selected_apm_dependencies,

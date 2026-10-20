@@ -919,43 +919,11 @@ def _resolve_dependencies(
 
 def _apply_only_filter(ctx: InstallContext) -> None:
     """Filter ``ctx.deps_to_install`` to the ``--only`` package(s) and their subtrees."""
-    # ------------------------------------------------------------------
-    # 7. --only filtering
-    # ------------------------------------------------------------------
-    from apm_cli.install.package_selection import selected_dependency_identity
+    from apm_cli.install.package_selection import selected_subtree_dependencies
 
-    # Build identity set from user-supplied package specs.
-    # Accepts any input form: git URLs, FQDN, shorthand.
-    tree = ctx.dependency_graph.dependency_tree
-    resolved_refs = [node.dependency_ref for node in tree.nodes.values()]
-    only_identities: builtins.set = builtins.set()
-    for p in ctx.only_packages:
-        try:
-            only_identities.add(selected_dependency_identity(p, resolved_refs))
-        except Exception:
-            only_identities.add(p)
-
-    # Expand the set to include transitive descendants of the
-    # requested packages so their MCP servers, primitives, etc.
-    # are correctly installed and written to the lockfile.
-    def _collect_descendants(node: object, visited: builtins.set | None = None) -> None:
-        """Walk the tree and add every child identity (cycle-safe)."""
-        if visited is None:
-            visited = builtins.set()
-        for child in node.children:  # type: ignore[attr-defined]
-            identity = child.dependency_ref.get_identity()
-            if identity not in visited:
-                visited.add(identity)
-                only_identities.add(identity)
-                _collect_descendants(child, visited)
-
-    for node in tree.nodes.values():
-        if node.dependency_ref.get_identity() in only_identities:
-            _collect_descendants(node)
-
-    ctx.deps_to_install = [
-        dep for dep in ctx.deps_to_install if dep.get_identity() in only_identities
-    ]
+    ctx.deps_to_install = selected_subtree_dependencies(
+        ctx.only_packages, ctx.dependency_graph.dependency_tree, ctx.deps_to_install
+    )
 
 
 def _record_update_plan_complete_dep_keys(ctx: InstallContext) -> None:

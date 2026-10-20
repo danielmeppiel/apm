@@ -9,6 +9,7 @@ from apm_cli.models.dependency.reference import DependencyReference
 
 if TYPE_CHECKING:
     from apm_cli.core.command_logger import _ValidationOutcome
+    from apm_cli.deps.dependency_graph import DependencyNode, DependencyTree
 
 
 def _selected_dependency_reference(
@@ -26,6 +27,36 @@ def _selected_dependency_reference(
 def selected_dependency_identity(package: str, dependencies: Sequence[DependencyReference]) -> str:
     """Resolve a selector using interpreted references before shorthand parsing."""
     return _selected_dependency_reference(package, dependencies).get_identity()
+
+
+def selected_subtree_dependencies(
+    packages: Sequence[str],
+    tree: DependencyTree,
+    dependencies: Sequence[DependencyReference],
+) -> list[DependencyReference]:
+    """Filter the complete graph's winners to selected roots and their descendants."""
+    resolved_refs = [node.dependency_ref for node in tree.nodes.values()]
+    only_identities: set[str] = set()
+    for package in packages:
+        try:
+            only_identities.add(selected_dependency_identity(package, resolved_refs))
+        except (ValueError, TypeError):
+            only_identities.add(package)
+
+    def collect_descendants(node: DependencyNode, visited: set[str] | None = None) -> None:
+        if visited is None:
+            visited = set()
+        for child in node.children:
+            identity = child.dependency_ref.get_identity()
+            if identity not in visited:
+                visited.add(identity)
+                only_identities.add(identity)
+                collect_descendants(child, visited)
+
+    for node in tree.nodes.values():
+        if node.dependency_ref.get_identity() in only_identities:
+            collect_descendants(node)
+    return [dep for dep in dependencies if dep.get_identity() in only_identities]
 
 
 def existing_dependency_identities(current_dependencies: list[object]) -> set[str]:

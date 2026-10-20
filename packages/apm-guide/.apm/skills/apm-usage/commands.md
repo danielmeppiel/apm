@@ -82,7 +82,15 @@ For Cursor credential repair, edit `.cursor/mcp.json` at project scope or
 `~/.cursor/mcp.json` with `--global`; replace only the affected values with
 native `${env:NAME}` references and preserve other fields and servers.
 
-Positional-package dry-runs retain any bootstrapped manifest for inspection.
+`apm install --dry-run` includes required indirect APM dependencies in its
+counts using local source metadata and unchanged installed remote metadata.
+The dependency graph pass is read-only and offline: unavailable metadata or
+required fetches/lookups make the preview incomplete and suppress orphan-removal
+predictions. Stale-file integration cleanup is not previewed; positional
+validation may still access the network.
+
+Project-scope positional dry-runs retain any bootstrapped manifest for inspection.
+Global dry-run bootstrap leaves an absent `~/.apm` uncreated.
 `apm install -g --mcp ... --dry-run` does not create a user manifest, lockfile,
 or runtime configuration.
 

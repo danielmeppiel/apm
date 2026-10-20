@@ -241,6 +241,7 @@ class InstallLogger(CommandLogger):
         self.partial = partial  # True when specific packages are passed to `apm install`
         self._stale_cleaned_total = 0  # Accumulated by stale_cleanup / orphan_cleanup
         self._dry_run_apm_update_count = 0
+        self._dry_run_incomplete = False
 
     def revision_pins_retained(self, skips: Sequence[RevisionPinSkip]) -> None:
         """Report retained revision pins once, with per-pin verbose detail."""
@@ -349,6 +350,10 @@ class InstallLogger(CommandLogger):
     def record_dry_run_apm_updates(self, count: int) -> None:
         """Record how many selected APM refs the preview would update."""
         self._dry_run_apm_update_count = count
+
+    def record_dry_run_incomplete(self, incomplete: bool) -> None:
+        """Record whether offline metadata can support a complete preview."""
+        self._dry_run_incomplete = incomplete
 
     def nothing_to_install(
         self,
@@ -887,6 +892,13 @@ class InstallLogger(CommandLogger):
             timing_suffix = f" in {elapsed_seconds:.1f}s"
 
         if disposition is InstallDisposition.DRY_RUN:
+            if self._dry_run_incomplete:
+                _rich_info(
+                    "Dry run incomplete: dependency resolution is required; "
+                    "no deployment changes were made.",
+                    symbol="info",
+                )
+                return
             dry_parts = []
             if apm_count > 0:
                 noun = "dependency" if apm_count == 1 else "dependencies"
