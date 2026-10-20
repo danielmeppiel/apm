@@ -36,6 +36,12 @@ With no arguments it installs everything from `apm.yml`. With one or more `PACKA
 | `--verbose`, `-v` | off | Show per-file paths and full error context in the diagnostic summary. |
 | `--dev` | off | Add new packages to `devDependencies`. Dev deps install locally but are excluded from `apm pack` output. |
 
+Local-source verification is APM's frozen-install safety behavior, not a new
+lockfile format or an OpenAPM conformance requirement. Legacy bare SHA-256
+digests remain readable without rewriting the lock. A missing digest requires
+a normal install to establish the baseline; cross-implementation local-source
+hash portability is not guaranteed.
+
 ### Deploy location
 
 | Flag | Default | Description |

@@ -14,12 +14,18 @@ from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_package import LocalPackageFactory
 
-pytestmark = [pytest.mark.integration, pytest.mark.e2e, pytest.mark.lifecycle_smoke]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.e2e,
+    pytest.mark.lifecycle_smoke,
+    pytest.mark.requires_apm_binary,
+]
 
 
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+@pytest.mark.parametrize("hash_format", ["envelope", "bare"])
 def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
-    tmp_path: Path, apm_binary_path: Path, transitive: bool
+    tmp_path: Path, apm_binary_path: Path, transitive: bool, hash_format: str
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "local-frozen", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
@@ -45,6 +51,12 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
     initial = run(consumer.root, "install", "--no-policy")
     assert initial.returncode == 0, initial.stdout + initial.stderr
     lockfile = consumer.root / "apm.lock.yaml"
+    if hash_format == "bare":
+        legacy_lock = load_yaml(lockfile)
+        for entry in legacy_lock["dependencies"]:
+            if entry.get("source") == "local":
+                entry["content_hash"] = entry["content_hash"].removeprefix("sha256:")
+        dump_yaml(legacy_lock, lockfile)
     locked_bytes = lockfile.read_bytes()
     deployed = consumer.root / ".agents" / "skills" / "review" / "SKILL.md"
     deployed_bytes = deployed.read_bytes()
@@ -125,6 +137,63 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
     assert _snapshot(isolated.cache_root) == before_cache
 
 
+@pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+@pytest.mark.parametrize("cold", [False, True], ids=["existing", "cold"])
+def test_frozen_local_declared_deleted_source_is_rejected_without_mutation(
+    tmp_path: Path, apm_binary_path: Path, transitive: bool, cold: bool
+) -> None:
+    """Keep declared missing providers diagnostic and immutable on frozen replay."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "deleted-source", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    provider = factory.create("provider", targets=("agent-skills",))
+    factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n"
+    )
+    parent = factory.create("parent", dependencies=("../provider",))
+    consumer = factory.create(
+        "consumer",
+        dependencies=("../parent" if transitive else "../provider",),
+        targets=("agent-skills",),
+    )
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
+    installed = runner.run(
+        ("install", "--no-policy"), cwd=consumer.root, env=isolated.subprocess_env()
+    )
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    deployed = consumer.root / ".agents" / "skills" / "review" / "SKILL.md"
+    assert deployed.is_file()
+    lock_path = consumer.root / "apm.lock.yaml"
+    locked_bytes = lock_path.read_bytes()
+    root = consumer.root
+    if cold:
+        root = isolated.work_root / "cold-consumer"
+        root.mkdir()
+        shutil.copy2(consumer.manifest_path, root / "apm.yml")
+        shutil.copy2(lock_path, root / "apm.lock.yaml")
+        isolated = IsolatedApmEnvironment.create(tmp_path / "cold-cache", base_env=dict(os.environ))
+
+    manifest = root / "apm.yml"
+    manifest_bytes = manifest.read_bytes()
+    declaring_manifest = parent.manifest_path if transitive else manifest
+    declaration_bytes = declaring_manifest.read_bytes()
+    before_files = _snapshot(root)
+    before_cache = _snapshot(isolated.cache_root)
+    shutil.rmtree(provider.root)
+
+    rejected = runner.run(
+        ("install", "--frozen", "--no-policy"), cwd=root, env=isolated.subprocess_env()
+    )
+    output = rejected.stdout + rejected.stderr
+    assert rejected.returncode != 0, output
+    assert "local dependency '../provider' cannot be verified" in output, output
+    assert manifest.read_bytes() == manifest_bytes
+    assert declaring_manifest.read_bytes() == declaration_bytes
+    assert (root / "apm.lock.yaml").read_bytes() == locked_bytes
+    assert _snapshot(root) == before_files
+    assert _snapshot(isolated.cache_root) == before_cache
+    assert not list(isolated.temp_root.iterdir())
+
+
 def _snapshot(root: Path) -> dict[str, bytes]:
     """Read independent byte evidence for all managed files and cached packages."""
     return {
@@ -173,7 +242,7 @@ def test_frozen_local_in_project_transitive_identity(tmp_path: Path, apm_binary_
 
 
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
-@pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash"])
+@pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash", "empty-hash", "wrong-source"])
 def test_frozen_local_requires_selected_lock_evidence(
     tmp_path: Path, apm_binary_path: Path, transitive: bool, baseline: str
 ) -> None:
@@ -199,13 +268,19 @@ def test_frozen_local_requires_selected_lock_evidence(
     if baseline == "missing-entry":
         lock["dependencies"].remove(provider_entry)
         original.write_bytes(original.read_bytes().replace(b"original", b"changed"))
-    else:
+    elif baseline == "legacy-hash":
         provider_entry.pop("content_hash")
+    elif baseline == "empty-hash":
+        provider_entry["content_hash"] = ""
+    else:
+        provider_entry["source"] = "registry"
     dump_yaml(lock, lock_path)
     before = _snapshot(consumer.root)
     result = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
     assert result.returncode != 0, result.stdout + result.stderr
-    assert "provider" in result.stdout + result.stderr
+    # Rich can wrap a long canonical identity inside the dependency name.
+    output = result.stdout + result.stderr
+    assert "provider" in "".join(line.strip() for line in output.splitlines())
     assert _snapshot(consumer.root) == before
 
 

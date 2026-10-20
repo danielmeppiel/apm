@@ -376,16 +376,13 @@ def _build_package_info(
     lock_dep: LockedDependency,
     install_path: Path,
 ):
-    """Construct a real ``PackageInfo`` for the integrators.
-
-    Loads ``apm.yml`` when present so integrators that read
-    ``package_info.package.name`` see the right package identity.
-    """
+    """Construct ``PackageInfo`` with the selected manifest's package identity."""
     from apm_cli.agent_plugins.errors import (
         AgentPluginDeploymentBoundaryError,
         AgentPluginError,
     )
     from apm_cli.bundle.local_bundle import route_agent_plugin_package
+    from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
     from apm_cli.models.apm_package import (
         APMPackage,
         GitReferenceType,
@@ -410,7 +407,11 @@ def _build_package_info(
     except AgentPluginError as exc:
         raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
 
-    if native_detection is not None:
+    codex_native = False
+    if native_detection is None:
+        detected_type, selected_manifest = detect_package_type(install_path)
+        codex_native = is_codex_compatibility_manifest(install_path, selected_manifest)
+    if native_detection is not None or codex_native:
         validation = validate_apm_package(
             install_path,
             agent_plugin_detection=native_detection,
@@ -421,7 +422,7 @@ def _build_package_info(
                 "; ".join(validation.errors) or "Agent Plugin validation produced no package"
             )
         pkg = validation.package
-        package_type = PackageType.AGENT_PLUGIN
+        package_type = validation.package_type
     else:
         apm_yml = install_path / "apm.yml"
         pkg = None
@@ -438,9 +439,7 @@ def _build_package_info(
                 source=lock_dep.repo_url,
             )
         try:
-            package_type = PackageType(
-                lock_dep.package_type or detect_package_type(install_path)[0].value
-            )
+            package_type = PackageType(lock_dep.package_type or detected_type.value)
         except Exception:
             package_type = None
     if not pkg.source:
@@ -527,6 +526,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
+    codex_records = None
 
     live_targets = resolve_audit_targets(
         project_root,
@@ -668,6 +668,18 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             live_modules_dir,
                             scratch_root,
                         )
+                        if identity := result.get("codex_source_identity"):
+                            from apm_cli.codex_plugins.registrar import verify_codex_source_identity
+
+                            candidate = lock_dep.to_dependency_ref().get_install_path(
+                                live_modules_dir
+                            )
+                            codex_records = verify_codex_source_identity(
+                                live_modules_dir,
+                                candidate=candidate if candidate.exists() else install_path,
+                                records=codex_records,
+                                **identity,
+                            )
                     replayed_count += 1
     finally:
         if snapshot_started:

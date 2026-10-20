@@ -88,8 +88,10 @@ or runtime configuration.
 
 `apm update`, `apm install --update`, and `apm install --refresh` stage and
 validate replacement packages before publication. A failed download,
-validation, or activation leaves the previous package and lockfile active;
-fix the reported cause and rerun the command.
+validation, or staged activation leaves the previous package and lockfile active;
+fix the reported cause and rerun the command. Late Codex native reconciliation
+runs after APM persistence and is not part of that rollback; see its qualified
+contract below.
 
 `apm install` preserves the invoking repository's branch and HEAD when run from
 a Git hook. It rejects cross-host network rewrites for every Git host and scopes
@@ -127,6 +129,10 @@ A normal project install creates or updates `apm.lock.yaml` when the manifest de
 `apm install --frozen` validates package and MCP lock state before lockfile, target config, deployment, or cache mutation. A missing or stale MCP-only lock exits nonzero without writing; run normal `apm install` to repair it. `--only=mcp` follows the same guard. Add-style `--mcp NAME` is incompatible with `--frozen` because it mutates `apm.yml`.
 
 `apm install --frozen` never writes `apm.lock.yaml`. Before lifecycle or deployment it verifies each selected direct or transitive local dependency against its recorded `content_hash`. The hash covers the validated local-copy image, including dereferenced in-package symlinks, before integration transforms it. Changed, added, removed, or retargeted content fails without changing installed files or the lock. Unused local lock entries are ignored. Missing entries or legacy locks without a hash require a normal `apm install` to establish a baseline. Deployment still runs, and one separate check comes after it: if the install deploys files the committed lockfile does not record, frozen mode exits `1` and names those paths. Those files are already on disk -- only the lockfile write is withheld. Rerun the same command without `--frozen` (keeping `--root DIR` or `--global`) and commit the updated lockfile; see the [install reference](https://microsoft.github.io/apm/reference/cli/install/#behavior) for recovery details.
+
+The local-source check is APM-specific frozen-install behavior, not a new
+lockfile schema requirement. Legacy bare SHA-256 digests are accepted without
+rewriting the lock. Normal non-frozen installs can establish missing baselines.
 
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
@@ -221,6 +227,27 @@ target today. If target exclusion leaves a non-dry-run install with no deployed 
 installs that deploy at least one other package still exit `0`. For this target
 exclusion, `--dry-run` succeeds as a preview without the per-package recovery
 diagnostic; it does not certify real install success.
+
+Compatibility-only `.codex-plugin/plugin.json` bundles use
+`apm install -g <package> --target codex` with exactly Codex CLI 0.163.0 on
+`PATH`; native qualification was measured on macOS arm64 only.
+Project scope, other versions, skill subsets, and unsupported native
+shapes fail explicitly. Approve executable types through `allowExecutables`;
+new native registrations remain disabled. Reinstall/update and
+`apm install -g --frozen --target codex` preserve activation and MCP policy,
+repair owned missing/corrupt copies, and never run MCP/plugin code. Healthy
+reinstalls retain their transport generation. `apm uninstall -g <package>`
+refuses foreign or customized native settings before releasing APM ownership;
+retire those entries using Codex and retry. No loose registration or
+cross-target translation is produced. See the
+[qualified contract](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#codex-compatibility-bundles-through-apm)
+for late-failure retry and ownership-journal recovery.
+Migration names the dependency and retained paths and refuses native registration
+while cleanup retains edited or undeletable loose files. Preserve or relocate your edits, resolve the cleanup
+conflict, then retry; APM does not register duplicate native and loose copies.
+Same-pin native cache drift fails without replacing the recorded source identity.
+From the APM user directory, `apm audit --ci --format json` reports this as a failed
+drift check without starting Codex or changing native state.
 
 ## Cache management
 

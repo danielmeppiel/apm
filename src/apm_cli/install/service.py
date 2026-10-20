@@ -417,7 +417,13 @@ class InstallService:
                     parent_index=parent_index,
                     resolved_cache=resolved_cache,
                 )
-                if compute_local_package_hash(source) != dependency.content_hash:
+                observed_hash = compute_local_package_hash(source)
+                expected_hash = dependency.content_hash
+                # v0.1 readers also accept the identical SHA-256 digest without its envelope.
+                if (
+                    observed_hash != expected_hash
+                    and observed_hash.removeprefix("sha256:") != expected_hash
+                ):
                     reasons.append(
                         f"  - local dependency {declared.local_path!r} content differs "
                         "from its locked snapshot"

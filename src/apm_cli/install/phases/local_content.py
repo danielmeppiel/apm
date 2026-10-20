@@ -274,7 +274,7 @@ def _copy_local_package(dep_ref, install_path, base_dir, *, project_root, logger
     if (
         not (local / "apm.yml").exists()
         and not (local / "SKILL.md").exists()
-        and find_plugin_json(local) is None
+        and find_plugin_json(local, include_codex=True) is None
         and not has_marketplace_deployable_manifest(dep_ref)
     ):
         logger.error(

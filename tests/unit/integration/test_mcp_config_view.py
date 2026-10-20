@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,70 @@ def _derive(
         modules_root,
         trust_transitive_self_defined=True,
     )
+
+
+@pytest.mark.parametrize(
+    "record_key,package_type,expected_problem",
+    [
+        ("matching", "marketplace_plugin", False),
+        ("foreign", "marketplace_plugin", True),
+        ("absent", "marketplace_plugin", True),
+        ("matching", "hook_package", True),
+    ],
+)
+def test_cold_codex_cache_uses_owned_identity_without_waiving_legacy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_key: str,
+    package_type: str,
+    expected_problem: bool,
+) -> None:
+    from dataclasses import replace
+
+    from apm_cli.codex_plugins import registrar
+    from apm_cli.codex_plugins.registrar import _Record, _write_records, ledger_path_for
+    from apm_cli.codex_plugins.snapshot import NativeSnapshot
+
+    root = _write_manifest(tmp_path, name="consumer", mcp=[_self_defined("loose", "inert")])
+    dependency = LockedDependency(
+        name="example",
+        version="0.0.0",
+        repo_url="owner/example",
+        resolved_ref="main",
+        resolved_commit="a" * 40,
+        package_type=package_type,
+    )
+    modules = tmp_path / "apm_modules"
+    second = replace(dependency, repo_url="owner/second")
+    key = dependency.get_unique_key()
+    journal = ledger_path_for(modules)
+    if record_key != "absent":
+        snapshot = NativeSnapshot(journal.parent / "snapshots/owned", "a" * 40, "b" * 40)
+        record = _Record("example", "sha256:" + "c" * 64, snapshot, tmp_path / ".codex/config.toml")
+        records = (
+            {key: record, second.get_unique_key(): record}
+            if record_key == "matching"
+            else {"foreign": record}
+        )
+        _write_records(journal, records)
+    reads: list[Path] = []
+    read_records = registrar._read_records
+
+    def read_journal(path: Path) -> dict[str, _Record]:
+        reads.append(path)
+        return read_records(path)
+
+    monkeypatch.setattr(registrar, "_read_records", read_journal)
+    lockfile = _lock(dependency, second)
+    view = _derive(root, lockfile, modules)
+    assert bool(view.problems) is expected_problem
+    assert list(view.configs) == ["loose"]
+    assert not modules.exists()
+    assert len(reads) == (1 if package_type == "marketplace_plugin" else 0)
+    if not expected_problem:
+        _write_records(journal, {})
+        assert _derive(root, lockfile, modules).problems
+        assert len(reads) == 2
 
 
 class _RecordingLogger:
@@ -973,9 +1038,10 @@ def test_cold_cache_exemption_emits_verbose_trace(
     assert expected_kind in cold_cache_details[0]
 
 
-@pytest.mark.parametrize("locked_type", ["agent_plugin", "apm_package"])
+@pytest.mark.parametrize("native_kind", ["agent_plugin", "marketplace_plugin"])
+@pytest.mark.parametrize("locked_type", ["agent_plugin", "apm_package", "marketplace_plugin"])
 def test_manifestless_native_plugin_requires_matching_locked_type(
-    tmp_path: Path, locked_type: str
+    tmp_path: Path, locked_type: str, native_kind: str
 ) -> None:
     """The current MCP view waives only a valid, matching native package."""
     root = _write_manifest(tmp_path, name="root")
@@ -988,12 +1054,25 @@ def test_manifestless_native_plugin_requires_matching_locked_type(
         depth=1,
     )
     package_dir = locked.to_dependency_ref().get_install_path(modules)
-    write_agent_plugin(package_dir, name="native-plugin", with_mcp=False)
+    if native_kind == "agent_plugin":
+        write_agent_plugin(package_dir, name="native-plugin", with_mcp=False)
+    else:
+        manifest = package_dir / ".codex-plugin/plugin.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text(
+            json.dumps(
+                {
+                    "name": "native-plugin",
+                    "mcpServers": {"native-only": {"command": "DO_NOT_EXECUTE"}},
+                }
+            ),
+            encoding="utf-8",
+        )
     before = {path: path.read_bytes() for path in package_dir.rglob("*") if path.is_file()}
 
     view = _derive(root, _lock(locked), modules)
 
-    assert len(view.problems) == (0 if locked_type == "agent_plugin" else 1)
+    assert len(view.problems) == (0 if locked_type == native_kind else 1)
     assert view.dependencies == ()
     assert not (package_dir / "apm.yml").exists()
     assert before == {path: path.read_bytes() for path in package_dir.rglob("*") if path.is_file()}
