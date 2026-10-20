@@ -268,7 +268,7 @@ that at most one declaration remains.
 |-------|----------|-------------|
 | `name` | REQUIRED | Plugin identifier within the marketplace (`^[a-zA-Z0-9._-]+$`). |
 | `marketplace` | REQUIRED | Registered marketplace name (`^[a-zA-Z0-9._-]+$`). |
-| `version` | OPTIONAL | Semver range or exact version (e.g. `~2.1.0`, `^2.0`, `>=1.4`, `2.1.0`). Resolved against git tags using the publisher's effective pattern: `packages[].tag_pattern`, then `marketplace.build.tagPattern`. Older metadata without `source.tag_pattern` uses the legacy `{name}--v{version}` fallback. |
+| `version` | OPTIONAL | Semver range or exact version (e.g. `~2.1.0`, `^2.0`, `>=1.4`, `2.1.0`), literal branch/tag ref (e.g. `main`, `v1.2.3`), or full commit SHA. Semver selections resolve against git tags using the publisher's effective pattern: `packages[].tag_pattern`, then `marketplace.build.tagPattern`. Older metadata without `source.tag_pattern` uses the legacy `{name}--v{version}` fallback. Literal refs and pins bypass semver tag selection. |
 
 During resolution, marketplace entries are looked up in the marketplace's
 `marketplace.json` and replaced with concrete git coordinates. When `version`
@@ -280,8 +280,8 @@ constraint and picks the highest matching tag. Old `marketplace.json` files
 that omit `source.tag_pattern` fall back to `{name}--v{version}`. Patterns
 must contain exactly one `{version}` placeholder, and a no-match does not
 silently become a raw ref or consult a different repository. Use
-`apm install pkg@catalog#v1.0.1` for a literal ref; CLI marketplace suffixes
-do not accept ranges. Raw refs bypass tag resolution. The lockfile records the resolved ref, not the marketplace
+object-form `version: v1.0.1` or `apm install pkg@catalog#v1.0.1` for a literal
+ref; CLI marketplace suffixes do not accept ranges. Raw refs bypass tag resolution. The lockfile records the resolved ref, not the marketplace
 placeholder. Unknown keys in a marketplace entry are rejected.
 
 For object-form declarations, `apm audit --ci` uses recorded
@@ -290,6 +290,8 @@ Semver selections also record `constraint`, `resolved_tag`, and the selected
 `version`; a package display version alone is not selection proof. Missing or
 ambiguous evidence fails. Audit does not fetch the catalog, so removing a local
 catalog registration does not invalidate otherwise valid installed evidence.
+Omitting `version` removes the selector comparison, not the unique-provenance
+and full locked-commit requirements.
 
 Producer-emitted `source: url` and `source: git-subdir` objects resolve
 through the same Git dependency parser as direct object-form dependencies.

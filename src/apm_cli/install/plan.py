@@ -482,9 +482,10 @@ def lockfile_satisfies_manifest(
         if getattr(dep, "is_local", False):
             continue
         key = _dep_ref_key(dep)
+        display = dep.get_display_name() if dep.is_marketplace else key
         locked_dep = lockfile.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None or key == ".":
-            reasons.append(f"  - {key} is declared in apm.yml but missing from apm.lock.yaml")
+            reasons.append(f"  - {display} is declared in apm.yml but missing from apm.lock.yaml")
             continue
         reference = dep.reference
         if (
@@ -493,13 +494,13 @@ def lockfile_satisfies_manifest(
             and (locked_dep.resolved_commit or "").lower() != reference.lower()
         ):
             reasons.append(
-                f"  - {key}: manifest commit '{dep.reference}' != "
+                f"  - {display}: manifest commit '{dep.reference}' != "
                 f"lockfile resolved_commit '{locked_dep.resolved_commit or '(missing)'}'"
             )
             continue
         if detect_ref_change(dep, locked_dep):
             reasons.append(
-                f"  - {key}: declared source, ref, host provider, or transport "
+                f"  - {display}: declared source, ref, host provider, or transport "
                 "differs from apm.lock.yaml"
             )
 

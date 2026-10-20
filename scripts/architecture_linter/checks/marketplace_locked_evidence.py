@@ -8,8 +8,10 @@ RULE_ID = "marketplace-integrations-locked-evidence"
 _ROUTES = (
     ("src/apm_cli/policy/ci_checks.py", "_check_ref_consistency", "lock.get_dependency"),
     ("src/apm_cli/policy/ci_checks.py", "_check_ref_consistency", "marketplace_ref_mismatch"),
+    ("src/apm_cli/policy/ci_checks.py", "_check_ref_consistency", "dep_ref.get_display_name"),
     ("src/apm_cli/policy/ci_checks.py", "_check_no_orphans", "lock.get_dependency"),
     ("src/apm_cli/install/plan.py", "lockfile_satisfies_manifest", "lockfile.get_dependency"),
+    ("src/apm_cli/install/plan.py", "lockfile_satisfies_manifest", "dep.get_display_name"),
     ("src/apm_cli/drift.py", "detect_ref_change", "marketplace_ref_mismatch"),
     ("src/apm_cli/drift.py", "marketplace_ref_mismatch", "satisfies_range"),
     ("src/apm_cli/drift.py", "marketplace_ref_mismatch", "is_full_revision_pin"),

@@ -109,11 +109,7 @@ def _check_ref_consistency(
     marketplace_index = lock.marketplace_index()
     for dep_ref in manifest.get_all_apm_dependencies():
         key = dep_ref.get_unique_key()
-        display = (
-            f"{dep_ref.marketplace_plugin_name}@{dep_ref.marketplace_name}"
-            if dep_ref.is_marketplace
-            else key
-        )
+        display = dep_ref.get_display_name() if dep_ref.is_marketplace else key
         locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None:
             if dep_ref.is_marketplace:
@@ -399,9 +395,10 @@ def _check_skill_subset_consistency(
         else project_root / APM_MODULES_DIR
     )
     mismatches: list[str] = []
+    marketplace_index = lock.marketplace_index()
     for dep_ref in manifest.get_all_apm_dependencies():
         key = dep_ref.get_unique_key()
-        locked_dep = lock.get_dependency(key)
+        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None:
             continue
         if not dep_ref.skill_subset and not locked_dep.skill_subset:

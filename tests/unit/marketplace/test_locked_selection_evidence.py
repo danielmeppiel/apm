@@ -83,6 +83,18 @@ def test_lookup_refreshes_after_mutation_and_rejects_placeholder_bypass() -> Non
     assert lock.get_dependency(key) is None
 
 
+@pytest.mark.parametrize("missing", [True, False])
+def test_replay_diagnostic_names_declared_marketplace(missing: bool) -> None:
+    """Frozen install and audit replay must not expose the internal lookup key."""
+    locked = _locked(version="2.0.0")
+    lock = LockFile(dependencies={} if missing else {locked.get_unique_key(): locked})
+    satisfied, reasons = lockfile_satisfies_manifest(lock, [_selection()])
+    assert not satisfied
+    assert len(reasons) == 1
+    assert "tool@catalog" in reasons[0]
+    assert "_marketplace/" not in reasons[0]
+
+
 @pytest.mark.parametrize("changed_field", [None, "resolved_commit", "resolved_ref"])
 def test_rebuilt_lock_carries_selected_version_only_for_same_pin(
     changed_field: str | None,
