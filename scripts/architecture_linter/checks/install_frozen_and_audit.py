@@ -125,6 +125,7 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or local_bundle is None
         or not _before(add_guard, dedicated_mcp)
         or not _before(add_guard, local_bundle)
+        or not _present(adapter, "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,")
         or not _present(integration, "if ctx.frozen and ctx.existing_lockfile is not None:")
         or not _before(acquisition, hydrated_check)
         or not _before(hydrated_check, deployment)

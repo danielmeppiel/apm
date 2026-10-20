@@ -47,13 +47,20 @@ class _Scenario:
     pins: set[str]
     expected_type: str
 
-    def freeze(self, *, success: bool = True) -> str:
+    def freeze(self, *, success: bool = True, only_mcp: bool = False) -> str:
         """Run the installed CLI and retain exact inputs across either outcome."""
         before = {
             name: (self.consumer / name).read_bytes() for name in ("apm.yml", "apm.lock.yaml")
         }
         result = self.runner.run(
-            ("install", "--frozen", "--no-policy", "--parallel-downloads", "0"),
+            (
+                "install",
+                "--frozen",
+                "--no-policy",
+                "--parallel-downloads",
+                "0",
+                *(("--only", "mcp") if only_mcp else ()),
+            ),
             scenario_id="cold-whole-plugin-consumer",
             cwd=self.consumer,
             env=self.environment,
@@ -461,3 +468,18 @@ def test_frozen_does_not_defer_present_or_local_sources(
     assert "--frozen" in output
     assert native.read_bytes() == previous
     assert not (scenario.consumer / ".agents/skills/frozen-skill").exists()
+
+
+def test_frozen_services_only_cannot_defer_without_hydration(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """A services-only invocation cannot accept missing package declarations without fetching."""
+    scenario = _scenario(tmp_path, apm_binary_path)
+    native = scenario.consumer / ".github/mcp.json"
+    native.parent.mkdir()
+    native.write_text('{"mcpServers":{"user-owned":{"command":"keep"}}}\n', encoding="utf-8")
+    previous = native.read_bytes()
+    output = scenario.freeze(success=False, only_mcp=True)
+    assert "--frozen" in output
+    assert native.read_bytes() == previous
+    assert not (scenario.consumer / "apm_modules").exists()

@@ -226,7 +226,7 @@ class InstallService:
             )
 
     @staticmethod
-    def enforce_frozen(request: InstallRequest) -> None:
+    def enforce_frozen(request: InstallRequest, *, allow_pending_mcp: bool = True) -> None:
         """Raise :class:`FrozenInstallError` if lockfile is absent or stale.
 
         Reads the scoped installation's ``apm.lock.yaml`` (manifest-relative
@@ -270,7 +270,7 @@ class InstallService:
                 get_modules_dir(request.scope),
                 trust_transitive_mcp=request.trust_transitive_mcp,
                 logger=request.logger,
-                allow_pending=True,
+                allow_pending=allow_pending_mcp,
             )
         )
 

@@ -1717,6 +1717,12 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
     ("path", "old", "new", "rule_id"),
     [
         (
+            "src/apm_cli/commands/install.py",
+            "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,",
+            "allow_pending_mcp=True,",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
             "src/apm_cli/install/phases/integrate.py",
             "if ctx.frozen and ctx.existing_lockfile is not None:",
             "if False:",

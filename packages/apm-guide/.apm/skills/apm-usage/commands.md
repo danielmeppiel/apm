@@ -130,6 +130,8 @@ A normal project install creates or updates `apm.lock.yaml` when the manifest de
 
 A fresh checkout can restore supported locked remote whole plugins directly with `--frozen`; no ordinary install is required first. Unavailable package MCP evidence is deferred only when its recorded origin is unambiguous, then the actual hydrated declarations are checked before deployment or native MCP writes. Real changed/removed declarations, present/shared-owner mismatches, invalid package shapes, missing local sources and insufficient pins still fail. Deferred MCP failures preserve prior native MCP configuration and user-owned settings, but downloads/cache fills may have occurred; this is not general rollback of lifecycle scripts. Root precedence, transitive trust and native-plugin MCP ownership are unchanged. Frozen replay uses pinned sources, not a refreshed discovery catalog; uncached sources still require access and credentials.
 
+`--only=mcp` cannot defer unavailable package evidence because it skips package hydration. Restore sources with the full `apm install --frozen` command before a services-only replay.
+
 `apm install --frozen` never writes `apm.lock.yaml`. Deployment still runs, and one check comes after it: if the install deploys files the committed lockfile does not record, frozen mode exits `1` and names those paths. Those files are already on disk -- only the lockfile write is withheld. Rerun the same command without `--frozen` (keeping `--root DIR` or `--global`) and commit the updated lockfile; see the [install reference](https://microsoft.github.io/apm/reference/cli/install/#behavior) for recovery details.
 
 Claude MCP rewrites remove the previous transport's fields while preserving

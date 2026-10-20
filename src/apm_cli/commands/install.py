@@ -1777,7 +1777,8 @@ def _install_apm_packages(ctx, outcome):
                 frozen=True,
                 scope=ctx.scope,
                 trust_transitive_mcp=ctx.trust_transitive_mcp,
-            )
+            ),
+            allow_pending_mcp=ctx.install_mode != InstallMode.MCP,
         )
 
     should_install_apm = ctx.install_mode != InstallMode.MCP
