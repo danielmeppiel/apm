@@ -406,9 +406,10 @@ package-content validation still apply. The actual package shape -- APM package
 time. See [install validation](commands.md#install-validation-chain-virtual-subdirectory-packages).
 
 Compatibility-only `.codex-plugin/plugin.json` uses the same local or pinned
-Git dependency syntax, not a new reference format. The qualified consumer is
-Codex CLI 0.163.0 at user scope (`-g --target codex`), with the entire bundle
-and its executable types approved. Do not select a skill subset. Native
+Git dependency syntax, not a new reference format. Use `-g --target codex`
+with the entire bundle and its executable types approved. See the
+[native Codex contract](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#codex-compatibility-bundles-through-apm)
+for exact version, scope, and measured-platform limits. Do not select a skill subset. Native
 transport generations never replace the original dependency pin or publisher
 version. Other scopes/versions fail rather than reducing the package to skills.
 
