@@ -11,7 +11,7 @@ from pathlib import Path
 from apm_cli.install.cache_pin import MARKER_FILENAME
 from apm_cli.install.deployable_source_plan import _is_safe_source_path
 from apm_cli.integration.base_integrator import BaseIntegrator
-from apm_cli.utils.path_security import ensure_path_within
+from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 from apm_cli.utils.paths import portable_relpath
 
 _HOOK_SCRIPT_EXTENSIONS = {".js", ".mjs", ".cjs", ".ts"}
@@ -110,6 +110,29 @@ def is_minimal_hook_module_metadata(document: object) -> bool:
     )
 
 
+def resolve_hook_bundle_source(path: Path, package_path: Path) -> Path | None:
+    """Admit regular files and contained file aliases, never linked metadata."""
+    if _is_safe_source_path(path, package_path):
+        return path if path.is_file() and path.name != MARKER_FILENAME else None
+    if (
+        not path.is_symlink()
+        or path.name in {"package.json", MARKER_FILENAME}
+        or not _is_safe_source_path(path.parent, package_path)
+    ):
+        return None
+    try:
+        source = ensure_path_within(path, package_path)
+    except (OSError, PathTraversalError, RuntimeError):
+        return None
+    if (
+        source.name in {"package.json", MARKER_FILENAME}
+        or not _is_safe_source_path(source, package_path)
+        or not source.is_file()
+    ):
+        return None
+    return source
+
+
 def _same_text(path: Path, content: str) -> bool:
     """Return True when path already contains content."""
     try:
@@ -146,8 +169,7 @@ def iter_deployable_hook_bundle_files(
             )
             continue
         if (
-            source_file.is_symlink()
-            or not source_file.is_file()
+            not (source_file.is_symlink() or source_file.is_file())
             or source_file.name == MARKER_FILENAME
         ):
             continue
@@ -189,15 +211,15 @@ def copy_deployed_hook_bundle(
     package_path = package_path.resolve()
     if hook_file_dir is not None:
         hook_file_dir = hook_file_dir.resolve()
-    selected_bundle_files = frozenset(
-        path.resolve()
-        for path in selected_bundle_files
-        if _is_safe_source_path(path, package_path)
-        and (
+    bundle_sources: dict[Path, Path] = {}
+    for path in selected_bundle_files:
+        source_file = resolve_hook_bundle_source(path, package_path)
+        if source_file is not None and (
             source_plan is None
-            or source_plan.includes(portable_relpath(path, source_plan.source_root))
-        )
-    )
+            or source_plan.includes(portable_relpath(source_file, source_plan.source_root))
+        ):
+            bundle_sources[path.absolute()] = source_file
+    selected_bundle_files = frozenset(bundle_sources)
     source_target_roots: dict[tuple[Path, Path], str] = {}
     root_has_js_hook: dict[tuple[Path, Path], bool] = {}
     command_target_rels = {target_rel for _source_file, target_rel in scripts}
@@ -233,7 +255,7 @@ def copy_deployed_hook_bundle(
                 continue
             source_rel = source_file.relative_to(source_root)
             target_file = target_root / source_rel
-            copy_plan[portable_relpath(target_file, project_root)] = source_file
+            copy_plan[portable_relpath(target_file, project_root)] = bundle_sources[source_file]
             if source_file.suffix.lower() in _HOOK_SCRIPT_EXTENSIONS:
                 root_has_js_hook[(source_root, target_root)] = True
 

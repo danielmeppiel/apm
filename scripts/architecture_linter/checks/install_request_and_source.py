@@ -404,16 +404,21 @@ def check_source_plan(provider: FactsProvider) -> tuple[Violation, ...]:
             )
     metadata_routes = {
         "src/apm_cli/integration/hook_source_selection.py": {
-            "select_hook_sources": {"iter_hook_root_metadata"},
+            "select_hook_sources": {"iter_hook_root_metadata", "resolve_hook_bundle_source"},
+            "_resolve_relative_hook_script": {"ensure_path_within", "portable_relpath"},
         },
         "src/apm_cli/integration/hook_bundle.py": {
             "iter_hook_root_metadata": {"_is_safe_source_path"},
+            "resolve_hook_bundle_source": {"_is_safe_source_path", "ensure_path_within"},
             "copy_deployed_hook_bundle": {
-                "_is_safe_source_path",
+                "resolve_hook_bundle_source",
                 "includes",
                 "_read_hook_module_type",
             },
             "_hook_module_type": {"_read_hook_module_type"},
+        },
+        "src/apm_cli/integration/hook_integrator.py": {
+            "_rewrite_command_for_target": {"_resolve_relative_hook_script", "portable_relpath"},
         },
     }
     for path, functions in metadata_routes.items():

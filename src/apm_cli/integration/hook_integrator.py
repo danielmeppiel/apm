@@ -647,7 +647,7 @@ class HookIntegrator(BaseIntegrator):
                 continue
             handled_plugin_root_refs.add(full_var)
             if source_file.exists() and source_file.is_file():
-                target_rel = f"{scripts_base}/{rel_path}"
+                target_rel = f"{scripts_base}/{portable_relpath(source_file, package_path)}"
                 scripts_to_copy.append((source_file, target_rel))
                 resolved_cmd = self._project_scoped_command_path(
                     command,
@@ -696,11 +696,12 @@ class HookIntegrator(BaseIntegrator):
             # Normalize to forward slashes for path resolution
             rel_path = rel_ref[2:].replace("\\", "/")
 
-            source_file = _resolve_relative_hook_script(package_path, hook_file_dir, rel_path)
-            if source_file is None:
+            resolved_script = _resolve_relative_hook_script(package_path, hook_file_dir, rel_path)
+            if resolved_script is None:
                 continue
+            source_file, target_relative = resolved_script
             if source_file.exists() and source_file.is_file():
-                target_rel = f"{scripts_base}/{rel_path}"
+                target_rel = f"{scripts_base}/{target_relative}"
                 scripts_to_copy.append((source_file, target_rel))
                 resolved_cmd = self._project_scoped_command_path(
                     command,

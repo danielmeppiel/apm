@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from apm_cli.hook_contract import walk_hook_commands
-from apm_cli.integration.hook_bundle import _hook_source_root, iter_hook_root_metadata
+from apm_cli.integration.hook_bundle import (
+    _hook_source_root,
+    iter_hook_root_metadata,
+    resolve_hook_bundle_source,
+)
 from apm_cli.integration.hook_command_paths import (
     iter_plugin_root_paths,
     iter_relative_script_paths,
@@ -15,6 +19,7 @@ from apm_cli.integration.hook_command_paths import (
     plugin_root_relative_path,
 )
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
+from apm_cli.utils.paths import portable_relpath
 
 
 @dataclass(frozen=True)
@@ -34,11 +39,11 @@ class HookSourceSelection:
 
     @property
     def files(self) -> frozenset[Path]:
-        """Return the multi-target union of every selected source file."""
+        """Return physical payloads for scanning, retaining aliases in bundles."""
         return frozenset(
-            path
-            for selected in (*self.descriptor_files.values(), *self.bundle_files.values())
-            for path in selected
+            path for selected in self.descriptor_files.values() for path in selected
+        ) | frozenset(
+            path.resolve() for selected in self.bundle_files.values() for path in selected
         )
 
 
@@ -59,17 +64,18 @@ def _resolve_relative_hook_script(
     package_path: Path,
     hook_file_dir: Path | None,
     rel_path: str,
-) -> Path | None:
-    """Resolve a relative hook script path without escaping the package."""
-    last_candidate: Path | None = None
+) -> tuple[Path, str] | None:
+    """Resolve a script and its matching deployment path within the package."""
+    last_candidate: tuple[Path, str] | None = None
     for base in _relative_hook_script_bases(package_path, hook_file_dir):
         try:
             candidate = ensure_path_within(base / rel_path, package_path)
         except PathTraversalError:
             continue
-        last_candidate = candidate
+        source_base = base if candidate.is_relative_to(base.resolve()) else package_path
+        last_candidate = (candidate, portable_relpath(candidate, source_base))
         if candidate.exists() and candidate.is_file():
-            return candidate
+            return last_candidate
     return last_candidate
 
 
@@ -93,13 +99,13 @@ def _referenced_hook_source_files(
             if source_file.is_file():
                 source_files.add(source_file)
         for match in iter_relative_script_paths(command):
-            source_file = _resolve_relative_hook_script(
+            resolved_script = _resolve_relative_hook_script(
                 package_path,
                 hook_file_dir,
                 match.group(1)[2:].replace("\\", "/"),
             )
-            if source_file is not None and source_file.is_file():
-                source_files.add(source_file)
+            if resolved_script is not None and resolved_script[0].is_file():
+                source_files.add(resolved_script[0])
     return source_files
 
 
@@ -181,11 +187,13 @@ def select_hook_sources(
             if target_name != "copilot":
                 bundle_files.update(iter_hook_root_metadata(package_path, source_root))
             bundle_files.update(
-                iter_bundle_files(
+                path
+                for path in iter_bundle_files(
                     source_root,
                     descriptor_files=all_descriptors,
                     exclude_json_files=target_name == "copilot",
                 )
+                if resolve_hook_bundle_source(path, package_path) is not None
             )
         bundles_by_target[target_name] = frozenset(bundle_files)
 

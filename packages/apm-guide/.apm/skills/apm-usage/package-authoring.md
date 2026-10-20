@@ -243,8 +243,12 @@ unresolved plugin-root token, follow the package-specific repair: balance the
 quotes, add a relative path, or keep the path inside the package. Then run
 `apm install` again.
 
-Root hook JSON descriptors, symlinks, and `.apm-pin` markers are not
-deployed. JavaScript and TypeScript hook bundles get a minimal
+Root hook JSON descriptors, linked directories or module metadata, and
+`.apm-pin` markers are not deployed. Declared script aliases resolve to their
+contained real script's deployed path, retaining its module and resource
+location. Contained linked support files become regular bundle files;
+external and dangling links are excluded.
+JavaScript and TypeScript hook bundles get a minimal
 `package.json` sidecar with the source package's Node `type` (defaulting
 to `commonjs`); shell-only bundles do not get a sidecar. **Exception --
 Copilot and VS Code:** APM omits the sidecar for these targets because

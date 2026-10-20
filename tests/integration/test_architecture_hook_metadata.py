@@ -35,8 +35,20 @@ ROOT = Path(__file__).resolve().parents[2]
         (
             "install-deployment-source-plan",
             "src/apm_cli/integration/hook_bundle.py",
-            "source_plan.includes(portable_relpath(path, source_plan.source_root))",
-            "source_plan.bypass_includes(portable_relpath(path, source_plan.source_root))",
+            "source_plan.includes(portable_relpath(source_file, source_plan.source_root))",
+            "source_plan.bypass_includes(portable_relpath(source_file, source_plan.source_root))",
+        ),
+        (
+            "install-deployment-source-plan",
+            "src/apm_cli/integration/hook_bundle.py",
+            "source = ensure_path_within(path, package_path)",
+            "source = path.resolve()",
+        ),
+        (
+            "install-deployment-source-plan",
+            "src/apm_cli/integration/hook_integrator.py",
+            "portable_relpath(source_file, package_path)",
+            "rel_path",
         ),
         (
             "install-deployment-source-plan",

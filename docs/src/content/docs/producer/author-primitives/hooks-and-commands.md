@@ -111,8 +111,8 @@ available at runtime:
 
 - Claude-family merged targets (Claude, Cursor, Codex, Gemini,
   Antigravity, and Windsurf), Copilot, and Kiro receive the same bundle.
-- Root hook JSON descriptors, symlinks, and `.apm-pin` markers are not
-  deployed.
+- Root hook JSON descriptors, linked directories or module metadata, and
+  `.apm-pin` markers are not deployed.
 - JavaScript and TypeScript hook bundles get a minimal `package.json`
   sidecar with the nearest source package's Node `type`; packages
   without an explicit `type` deploy as `commonjs`, and shell-only
@@ -128,10 +128,13 @@ available at runtime:
 Nested source `package.json` files preserve their own module boundaries,
 including boundaries above deeper script directories. APM generates only
 `{"type": "module"}` or `{"type": "commonjs"}`, not full npm manifests.
-These inputs must be selected, authorized, contained, and non-symlinked;
-cached whole-repository installs preserve symlinks so selection can reject
-them just as it does after a fresh clone. Generated files use the normal
-ownership and collision checks. Install,
+These inputs must be selected, authorized, contained, and non-symlinked.
+Cached whole-repository installs preserve links until source admission.
+Declared script aliases use the contained real script's deployed path,
+preserving its module scope and resource location. Contained linked support
+files are copied as regular files under their bundle names; external and
+dangling links are excluded. Generated files use the normal ownership and
+collision checks. Install,
 reinstall, update, and audit replay use the same metadata projection.
 APM does not install npm dependencies or run lifecycle scripts.
 

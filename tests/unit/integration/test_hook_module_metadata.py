@@ -127,14 +127,17 @@ def test_nested_cache_markers_remain_excluded(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("relative", ["package.json", "hooks/nested/package.json"])
+@pytest.mark.parametrize("destination", ["inside", "outside"])
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink fixture")
-def test_symlinked_module_inputs_are_not_selected(tmp_path: Path, relative: str) -> None:
+def test_symlinked_module_inputs_are_not_selected(
+    tmp_path: Path, relative: str, destination: str
+) -> None:
     package = _package(tmp_path / "source")
-    outside = tmp_path / "outside.json"
-    outside.write_text('{"type":"module"}\n')
+    target = (package.install_path if destination == "inside" else tmp_path) / "metadata.json"
+    target.write_text('{"type":"module"}\n')
     source = package.install_path / relative
     source.unlink()
-    source.symlink_to(outside)
+    source.symlink_to(target)
     assert relative not in _plan(package).paths
     project = tmp_path / "project"
     project.mkdir()
@@ -144,6 +147,59 @@ def test_symlinked_module_inputs_are_not_selected(tmp_path: Path, relative: str)
         assert json.loads((root / "package.json").read_text()) == {"type": "commonjs"}
     else:
         assert not (root / "nested/package.json").exists()
+
+
+@pytest.mark.parametrize("admitted", [True, False])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink fixture")
+def test_asset_alias_materialization_requires_admitted_payload(
+    tmp_path: Path, admitted: bool
+) -> None:
+    package = _package(tmp_path / "source")
+    payload = package.install_path / "payload.txt"
+    payload.write_text("owned resource\n")
+    alias = package.install_path / "hooks/nested/resource.txt"
+    alias.symlink_to("../../payload.txt")
+    plan = _plan(package)
+    assert "payload.txt" in plan.paths
+    assert "hooks/nested/resource.txt" not in plan.paths
+    if not admitted:
+        plan = replace(plan, paths=plan.paths - {"payload.txt"})
+    project = tmp_path / "project"
+    project.mkdir()
+    result = HookIntegrator().integrate_hooks_for_target(
+        KNOWN_TARGETS["claude"], package, project, source_plan=plan
+    )
+    deployed = project / ".claude/hooks/source/hooks/nested/resource.txt"
+    assert deployed.exists() is admitted
+    assert (deployed in result.target_paths) is admitted
+    if admitted:
+        assert not deployed.is_symlink()
+        assert deployed.read_text() == "owned resource\n"
+
+
+@pytest.mark.parametrize("kind", ["outside", "dangling", "directory", "metadata", "marker"])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink fixture")
+def test_unsafe_asset_aliases_are_not_selected(tmp_path: Path, kind: str) -> None:
+    package = _package(tmp_path / "source")
+    target = {
+        "outside": tmp_path / "outside.txt",
+        "dangling": package.install_path / "absent.txt",
+        "directory": package.install_path / "hooks/nested/lib",
+        "metadata": package.install_path / "package.json",
+        "marker": package.install_path / ".apm-pin",
+    }[kind]
+    if kind in {"outside", "marker"}:
+        target.write_text("must not deploy\n")
+    alias = package.install_path / "hooks/nested/resource.txt"
+    alias.symlink_to(target)
+    plan = _plan(package)
+    assert alias not in plan.hook_source_selection.bundle_for("claude")
+    project = tmp_path / "project"
+    project.mkdir()
+    HookIntegrator().integrate_hooks_for_target(
+        KNOWN_TARGETS["claude"], package, project, source_plan=plan
+    )
+    assert not (project / ".claude/hooks/source/hooks/nested/resource.txt").exists()
 
 
 @pytest.mark.parametrize(
