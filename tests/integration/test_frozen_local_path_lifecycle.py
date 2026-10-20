@@ -17,20 +17,9 @@ from tests.utils.local_package import LocalPackageFactory
 pytestmark = [pytest.mark.integration, pytest.mark.e2e, pytest.mark.lifecycle_smoke]
 
 
-def _runner() -> ApmLifecycleRunner:
-    source = Path(__file__).resolve().parents[2] / "src"
-    return ApmLifecycleRunner(
-        (
-            sys.executable,
-            "-c",
-            f"import sys; sys.path.insert(0, {str(source)!r}); from apm_cli.cli import cli; cli()",
-        )
-    )
-
-
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
 def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
-    tmp_path: Path, transitive: bool
+    tmp_path: Path, apm_binary_path: Path, transitive: bool
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "local-frozen", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
@@ -47,7 +36,7 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
     cold_consumer = isolated.work_root / "cold-consumer"
     cold_consumer.mkdir()
     shutil.copy2(consumer.manifest_path, cold_consumer / "apm.yml")
-    runner = _runner()
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
     env = isolated.subprocess_env()
 
     def run(root: Path, *args: str):
@@ -62,7 +51,14 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
 
     # A fresh consumer uses the CLI-generated baseline and unchanged local source.
     shutil.copy2(lockfile, cold_consumer / "apm.lock.yaml")
-    cold = run(cold_consumer, "install", "--frozen", "--no-policy")
+    cold_isolated = IsolatedApmEnvironment.create(
+        tmp_path / "cold-cache", base_env=dict(os.environ)
+    )
+    cold = runner.run(
+        ("install", "--frozen", "--no-policy"),
+        cwd=cold_consumer,
+        env=cold_isolated.subprocess_env(),
+    )
     assert cold.returncode == 0, cold.stdout + cold.stderr
     assert (
         cold_consumer / ".agents" / "skills" / "review" / "SKILL.md"
@@ -70,6 +66,9 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
 
     before_deployment = deployed.read_bytes()
     before_files = _snapshot(consumer.root)
+    cache_sentinel = isolated.cache_root / "unrelated-cache-entry"
+    cache_sentinel.write_bytes(b"preserve unrelated cache content\n")
+    before_cache = _snapshot(isolated.cache_root)
 
     def assert_rejected_without_mutation() -> None:
         rejected = run(consumer.root, "install", "--frozen", "--no-policy")
@@ -79,6 +78,8 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
         assert lockfile.read_bytes() == locked_bytes
         assert deployed.read_bytes() == before_deployment == deployed_bytes
         assert _snapshot(consumer.root) == before_files
+        assert _snapshot(isolated.cache_root) == before_cache
+        assert not list(isolated.temp_root.iterdir())
 
     original.write_text("---\nname: review\ndescription: fixture\n---\nchanged\n", encoding="utf-8")
     assert_rejected_without_mutation()
@@ -110,6 +111,19 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
     assert lockfile.read_bytes() == locked_bytes
     assert deployed.read_bytes() == deployed_bytes
 
+    original.write_bytes(original.read_bytes().replace(b"original", b"accepted change"))
+    accepted = run(consumer.root, "install", "--no-policy")
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    accepted_lock = lockfile.read_bytes()
+    assert accepted_lock != locked_bytes
+    accepted_deployment = deployed.read_bytes()
+    assert b"accepted change" in accepted_deployment
+    replay = run(consumer.root, "install", "--frozen", "--no-policy")
+    assert replay.returncode == 0, replay.stdout + replay.stderr
+    assert lockfile.read_bytes() == accepted_lock
+    assert deployed.read_bytes() == accepted_deployment
+    assert _snapshot(isolated.cache_root) == before_cache
+
 
 def _snapshot(root: Path) -> dict[str, bytes]:
     """Read independent byte evidence for all managed files and cached packages."""
@@ -120,10 +134,48 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
+def test_frozen_local_in_project_transitive_identity(tmp_path: Path, apm_binary_path: Path) -> None:
+    """Replay portable in-project identities through the same resolver owner."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "nested", base_env=dict(os.environ))
+    consumer = LocalPackageFactory(isolated.work_root).create(
+        "consumer", dependencies=("./packages/parent",), targets=("agent-skills",)
+    )
+    factory = LocalPackageFactory(consumer.root / "packages")
+    provider = factory.create("provider", targets=("agent-skills",))
+    skill = factory.add_skill(
+        provider, "nested", "---\nname: nested\ndescription: fixture\n---\noriginal\n"
+    )
+    factory.create("parent", dependencies=("../provider",))
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
+    env = isolated.subprocess_env()
+    installed = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    lock_path = consumer.root / "apm.lock.yaml"
+    locked = lock_path.read_bytes()
+    lock = load_yaml(lock_path)
+    entry = next(d for d in lock["dependencies"] if d.get("local_path") == "../provider")
+    assert entry["anchored_local_path"] == "packages/provider"
+    replay = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert replay.returncode == 0, replay.stdout + replay.stderr
+    assert lock_path.read_bytes() == locked
+
+    original = skill.read_bytes()
+    skill.write_bytes(original.replace(b"original", b"changed"))
+    before = _snapshot(consumer.root)
+    refused = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "provider" in refused.stdout + refused.stderr
+    assert _snapshot(consumer.root) == before
+    skill.write_bytes(original)
+    restored = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert lock_path.read_bytes() == locked
+
+
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
 @pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash"])
 def test_frozen_local_requires_selected_lock_evidence(
-    tmp_path: Path, transitive: bool, baseline: str
+    tmp_path: Path, apm_binary_path: Path, transitive: bool, baseline: str
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "evidence", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
@@ -137,7 +189,7 @@ def test_frozen_local_requires_selected_lock_evidence(
         dependencies=("../parent" if transitive else "../provider",),
         targets=("agent-skills",),
     )
-    runner = _runner()
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
     env = isolated.subprocess_env()
     installed = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
     assert installed.returncode == 0, installed.stdout + installed.stderr
@@ -158,7 +210,9 @@ def test_frozen_local_requires_selected_lock_evidence(
 
 
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
-def test_frozen_local_ignores_removed_dependency_source(tmp_path: Path, transitive: bool) -> None:
+def test_frozen_local_ignores_removed_dependency_source(
+    tmp_path: Path, apm_binary_path: Path, transitive: bool
+) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "orphan", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
     provider = factory.create("provider", targets=("agent-skills",))
@@ -173,7 +227,7 @@ def test_frozen_local_ignores_removed_dependency_source(tmp_path: Path, transiti
         dependencies=("../parent" if transitive else "../provider", "../survivor"),
         targets=("agent-skills",),
     )
-    runner = _runner()
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
     env = isolated.subprocess_env()
     initial = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
     assert initial.returncode == 0, initial.stdout + initial.stderr
@@ -192,7 +246,7 @@ def test_frozen_local_ignores_removed_dependency_source(tmp_path: Path, transiti
 @pytest.mark.skipif(sys.platform == "win32", reason="Requires unprivileged POSIX symlink creation")
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
 def test_frozen_local_refuses_symlink_retarget_without_mutation(
-    tmp_path: Path, transitive: bool
+    tmp_path: Path, apm_binary_path: Path, transitive: bool
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "symlink", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
@@ -211,7 +265,7 @@ def test_frozen_local_refuses_symlink_retarget_without_mutation(
         dependencies=("../parent" if transitive else "../provider",),
         targets=("agent-skills",),
     )
-    runner = _runner()
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
     env = isolated.subprocess_env()
     initial = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
     assert initial.returncode == 0, initial.stdout + initial.stderr

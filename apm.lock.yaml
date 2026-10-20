@@ -121,6 +121,7 @@ dependencies:
     .agents/skills/autopilot-comment/apm.yml: sha256:4db657c42507061d9bfbd795a498e32f2492817b91343e4ff158886619c17fd0
   source: local
   local_path: ../autopilot-comment
+  content_hash: sha256:99f30af2deabe503620dfdb31d5f9c9d475b6649933d0e9acca5f1a2b3cc31dd
   declaring_parent: ./packages/autopilot/autopilot-pr-merge-worker
   anchored_local_path: packages/autopilot/autopilot-comment
   declared_license: MIT
@@ -181,6 +182,7 @@ dependencies:
     .agents/skills/autopilot-issue-delivery-worker/references/strategic-alignment-gate.md: sha256:17c872d668907fbee8fb1069244e5ac893dffdc1c5a36f898b7aee76397e91c8
   source: local
   local_path: ../autopilot-issue-delivery-worker
+  content_hash: sha256:92d235f5e94fc408eb8807fe21d03253fa9e5bedc2ca42777ddaf0ed272da742
   declaring_parent: ./packages/autopilot/autopilot-issue-delivery-scheduler
   anchored_local_path: packages/autopilot/autopilot-issue-delivery-worker
   declared_license: MIT
@@ -203,6 +205,7 @@ dependencies:
     .agents/skills/autopilot-issue-triage-worker/assets/triage-template.md: sha256:e37365e25911cca25775b1b111f38bbd1ccd09f6b57b7739ea09471d245d3d35
   source: local
   local_path: ../autopilot-issue-triage-worker
+  content_hash: sha256:9c3b431664852a2c80cb2b92026477ea28db38681ab4fccdd6af21e6c055d612
   declaring_parent: ./packages/autopilot/autopilot-issue-triage-scheduler
   anchored_local_path: packages/autopilot/autopilot-issue-triage-worker
   declared_license: MIT
@@ -247,6 +250,7 @@ dependencies:
     .agents/skills/autopilot-pr-review-worker/evals/trigger-evals.json: sha256:76d6da23bde1c6b6f0b0bf883ba8b5bf065f0db73f69182cfd98449716bc0d84
   source: local
   local_path: ../autopilot-pr-review-worker
+  content_hash: sha256:154423a450bd1a75727f7cf373344998542ee38310ec038b0f41f741e67206b1
   declaring_parent: ./packages/autopilot/autopilot-pr-review-scheduler
   anchored_local_path: packages/autopilot/autopilot-pr-review-worker
   declared_license: MIT
@@ -267,6 +271,7 @@ dependencies:
     .agents/skills/autopilot-pr-triage-worker/assets/pr-triage-template.md: sha256:d5155b45b2fa10badd82945582a9e3968cfaece5ca29678f3091f78e9dffae70
   source: local
   local_path: ../autopilot-pr-triage-worker
+  content_hash: sha256:0158981d171b3cc5d7ed3edfd31bc0f6f246175f454f18c7e6558cb113008c5a
   declaring_parent: ./packages/autopilot/autopilot-pr-triage-scheduler
   anchored_local_path: packages/autopilot/autopilot-pr-triage-worker
   declared_license: MIT
@@ -323,6 +328,7 @@ dependencies:
     .agents/skills/pr-description-skill/scripts/run_evals.py: sha256:a1792f8cb95b4fb37a4133af079908e2a3b5643c1a81d97e4dcda399bac069a2
   source: local
   local_path: ../../pr-description-skill
+  content_hash: sha256:6bda4645f6a5e190f0649c17d6a72a5ac3d88a71eaafc0fca4cb4b16cb973530
   declaring_parent: ./packages/autopilot/autopilot-pr-merge-worker
   anchored_local_path: packages/pr-description-skill
   declared_license: MIT
