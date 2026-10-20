@@ -339,6 +339,8 @@ descendants, are skipped.
 Audit replay and coverage use current manifest targets, otherwise concrete
 recorded deployment targets, before directory discovery. Unrelated workflow
 files cannot add Copilot output to a recorded Grok Cloud installation.
+Legacy lockfiles without recorded `deployments` retain directory discovery,
+even when compatibility paths imply a target.
 `apm config target` remains an install/update default, not retroactive audit
 intent. A disabled selected experimental target exits `3` with an enable hint
 on stderr, not a JSON audit report. Missing or modified managed files retain

@@ -53,7 +53,7 @@ def test_audit_target_intent(
 def test_recorded_target_names(
     records: list[tuple[str, str]] | None, scope: str, expected: tuple[str, ...]
 ) -> None:
-    lock = LockFile()
+    lock = LockFile(_deployments_present=True)
     if records is not None:
         ledger_records = {}
         for index, (target, record_scope) in enumerate(records):
@@ -73,4 +73,24 @@ def test_recorded_target_names(
             lock, scope=scope, supported_targets=("copilot", "grok-cloud")
         )
         == expected
+    )
+
+
+def test_synthesized_legacy_targets_are_not_recorded_intent() -> None:
+    lock = LockFile.from_yaml(
+        "lockfile_version: '1'\n"
+        "local_deployed_files:\n"
+        "  - .claude/skills/example/SKILL.md\n"
+        "  - .agents/skills/example/SKILL.md\n"
+    )
+    assert not lock._deployments_present
+    assert {row.locator.target for row in lock.deployment_ledger.records.values()} == {
+        "claude",
+        "legacy",
+    }
+    assert (
+        DeploymentLedgerCodec.recorded_target_names(
+            lock, scope="project", supported_targets=("claude", "copilot")
+        )
+        == ()
     )

@@ -30,7 +30,8 @@ Replay and coverage use the current `apm.yml` target declaration when present,
 otherwise the concrete target identities recorded by install. An unrelated
 `.github/workflows/` file does not add a Copilot deployment to a recorded
 Grok Cloud installation, and `.grok/` alone does not relabel it as Grok Build.
-Older lockfiles without concrete target identity retain directory discovery.
+Older lockfiles without a recorded `deployments` section retain directory
+discovery; identities inferred from legacy file paths do not narrow it.
 The saved `apm config target` is an install/update default, not a request to
 retarget an existing installation during audit.
 

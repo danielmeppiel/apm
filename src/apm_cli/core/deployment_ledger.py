@@ -93,9 +93,10 @@ class DeploymentLedgerCodec:
         scope: str,
         supported_targets: Collection[str],
     ) -> tuple[str, ...]:
-        """Project concrete target identities, never infer them from shared paths."""
+        """Project concrete target identities from recorded deployment state."""
         ledger = lockfile.deployment_ledger
-        if ledger is None:
+        # A compatibility ledger inferred from paths is not installed target intent.
+        if not lockfile._deployments_present or ledger is None:
             return ()
         return tuple(
             sorted(

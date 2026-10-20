@@ -24,6 +24,61 @@ pytestmark = [
 ]
 
 
+def test_installed_legacy_mixed_targets_preserve_audit_discovery(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    scenario = _new_scenario(tmp_path / "scenario", apm_binary_path)
+    source = scenario.sources.create("example-package")
+    content = _skill("example")
+    scenario.sources.add_skill(source, "example", content)
+    project = scenario.consumers.create("consumer", dependencies=({"path": str(source.root)},))
+    installed = scenario.runner.run(
+        (*_INSTALL_ARGS, "--target", "claude,copilot"),
+        cwd=project.root,
+        env=scenario.environment,
+    )
+    assert installed.returncode == 0, (installed.stdout, installed.stderr)
+    claude = project.root / ".claude/skills/example/SKILL.md"
+    copilot = project.root / ".agents/skills/example/SKILL.md"
+    assert claude.read_bytes() == copilot.read_bytes() == content.encode("ascii")
+    lock_path = project.root / "apm.lock.yaml"
+    legacy_lock = load_yaml(lock_path)
+    legacy_lock.pop("deployments")
+    dump_yaml(legacy_lock, lock_path)
+    manual_path = ".github/agents/manual.agent.md"
+    manual = project.root / manual_path
+    manual.parent.mkdir(parents=True, exist_ok=True)
+    manual.write_text("# Manual agent\nReview changes.\n", encoding="ascii")
+
+    for damaged in (False, True):
+        if damaged:
+            copilot.unlink()
+        before = ArtifactSnapshot.capture(tmp_path)
+        audited = scenario.runner.run(
+            ("audit", "--ci", "--no-policy", "--no-fail-fast", "--format", "json"),
+            cwd=project.root,
+            env=scenario.environment,
+        )
+        assert audited.returncode == int(damaged), (audited.stdout, audited.stderr)
+        payload = json.loads(audited.stdout)
+        coverage = next(
+            check["primitive_coverage"]
+            for check in payload["checks"]
+            if check["name"] == "content-integrity"
+        )
+        assert any(
+            row["file"] == manual_path and row["target"] == "copilot" and not row["tracked"]
+            for row in coverage
+        )
+        assert bool(payload["drift"]["drift"]) is damaged
+        if damaged:
+            assert any(
+                row["path"] == ".agents/skills/example/SKILL.md"
+                for row in payload["drift"]["drift"]
+            )
+        assert_unchanged(before, ArtifactSnapshot.capture(tmp_path))
+
+
 @pytest.mark.parametrize(
     ("target", "workflow", "configured"),
     [
