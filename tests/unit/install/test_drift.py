@@ -755,6 +755,7 @@ def test_run_replay_wraps_loop_with_readonly_guard(monkeypatch, tmp_path):
     def _bad_integrator(*args, **kwargs):
         # Simulate a leaky integrator that writes to project tree, not scratch.
         (project_root / ".apm" / "leaked.md").write_text("oops\n", encoding="utf-8")
+        return {"deployed_files": []}
 
     monkeypatch.setattr(
         "apm_cli.install.services.integrate_package_primitives",
