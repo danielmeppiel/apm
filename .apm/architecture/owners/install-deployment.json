@@ -82,7 +82,8 @@
       "selectors": [
         "src/apm_cli/install/deployable_source_plan.py",
         "src/apm_cli/integration/hook_source_selection.py",
-        "src/apm_cli/integration/hook_bundle.py"
+        "src/apm_cli/integration/hook_bundle.py",
+        "src/apm_cli/deps/github_downloader.py"
       ],
       "guards": ["install-deployment-source-plan"]
     },

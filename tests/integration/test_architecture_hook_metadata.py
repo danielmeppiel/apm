@@ -16,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[2]
     [
         (
             "install-deployment-source-plan",
+            "src/apm_cli/deps/github_downloader.py",
+            "symlinks=True,",
+            "symlinks=False,",
+        ),
+        (
+            "install-deployment-source-plan",
             "src/apm_cli/integration/hook_source_selection.py",
             "iter_hook_root_metadata(package_path, source_root)",
             "bypass_metadata_selection(package_path, source_root)",

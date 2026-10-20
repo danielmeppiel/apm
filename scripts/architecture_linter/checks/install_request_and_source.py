@@ -432,6 +432,23 @@ def check_source_plan(provider: FactsProvider) -> tuple[Violation, ...]:
                 findings.append(
                     _summary(rule_id, path, "Hook metadata must use admitted source inputs")
                 )
+    downloader = "src/apm_cli/deps/github_downloader.py"
+    index = provider.tree_index(downloader)
+    download = index.function("GitHubPackageDownloader.download_package") if index else None
+    calls = _named_calls(index.own_scope(download), "robust_copytree") if download else []
+    if len(calls) != 1 or not any(
+        keyword.arg == "symlinks"
+        and isinstance(keyword.value, ast.Constant)
+        and keyword.value.value is True
+        for keyword in calls[0].keywords
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                downloader,
+                "Cached package copies must preserve symlinks until source-plan admission",
+            )
+        )
     return tuple(findings)
 
 

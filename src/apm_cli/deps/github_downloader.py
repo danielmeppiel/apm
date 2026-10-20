@@ -4,6 +4,7 @@ import contextlib
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1918,17 +1919,16 @@ class GitHubPackageDownloader:
                     resolved_ref.resolved_commit or resolved_ref.ref_name,
                     locked_sha=resolved_ref.resolved_commit,
                 )
-                from ..utils.file_ops import robust_copy2, robust_copytree
+                from ..utils.file_ops import robust_copytree
 
-                for item in _cached.iterdir():
-                    if item.name == ".git":
-                        continue
-                    src = _cached / item.name
-                    dst = target_path / item.name
-                    if src.is_dir():
-                        robust_copytree(src, dst)
-                    else:
-                        robust_copy2(src, dst)
+                # Preserve source identity until DeployableSourcePlan admits files.
+                robust_copytree(
+                    _cached,
+                    target_path,
+                    symlinks=True,
+                    ignore=shutil.ignore_patterns(".git"),
+                    dirs_exist_ok=True,
+                )
 
                 # Validate, then return without cloning.
                 route_agent_plugin_package(target_path)

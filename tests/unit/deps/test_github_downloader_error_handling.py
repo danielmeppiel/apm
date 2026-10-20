@@ -1402,6 +1402,49 @@ class TestArtifactoryStubs:
 
 
 class TestPersistentGitCacheInDownloadPackage:
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink fixture")
+    def test_cache_copy_preserves_source_links_for_admission(
+        self, downloader: GitHubPackageDownloader, tmp_path: Path
+    ) -> None:
+        """Cache copies must not erase links before source-plan containment checks."""
+        cached = tmp_path / "cached"
+        nested = cached / "hooks/nested"
+        nested.mkdir(parents=True)
+        (cached / ".apm").mkdir()
+        (cached / "apm.yml").write_text("name: fixture\nversion: 1.0.0\n")
+        (cached / ".git").mkdir()
+        (cached / ".git/config").write_text("private cache configuration\n")
+        (nested / "asset.txt").write_text("in-package content\n")
+        outside = tmp_path / "outside.json"
+        outside.write_text('{"type":"module","private":true}\n')
+        links = {
+            "package.json": str(outside),
+            "hooks/nested/package.json": str(outside),
+            "hooks/nested/internal.txt": "asset.txt",
+            "hooks/nested/missing.txt": "absent.txt",
+            "hooks/linked-directory": str(tmp_path / "external-directory"),
+        }
+        (tmp_path / "external-directory").mkdir()
+        for relative, target in links.items():
+            (cached / relative).symlink_to(target)
+        downloader.persistent_git_cache = MagicMock()
+        destination = tmp_path / "installed"
+        with (
+            patch.object(downloader, "_is_artifactory_only", return_value=False),
+            patch.object(downloader, "_parse_artifactory_base_url", return_value=None),
+            patch.object(downloader, "resolve_git_reference", return_value=_make_resolved()),
+            patch.object(downloader, "_persistent_cache_checkout", return_value=cached),
+            patch.object(downloader, "_clone_with_fallback") as clone,
+        ):
+            result = downloader.download_package(_make_dep(), destination)
+        assert result.install_path == destination
+        clone.assert_not_called()
+        for relative, target in links.items():
+            assert (destination / relative).is_symlink()
+            assert os.readlink(destination / relative) == target
+        assert (destination / "hooks/nested/internal.txt").read_text() == "in-package content\n"
+        assert not (destination / ".git").exists()
+
     def test_cache_hit_returns_package_without_clone(
         self, downloader: GitHubPackageDownloader, tmp_path: Path
     ) -> None:
