@@ -457,11 +457,17 @@ def integrate_package_primitives(  # noqa: PLR0913
                 package_info,
                 project_root,
                 [target for target in targets if target.name in native_target_names],
+                dry_run=True,
             )
-            if reconcile_stats.get("errors"):
+            if reconcile_stats.get("errors") or reconcile_stats.get("files_removed"):
+                recovery = (
+                    "Repair unreadable hook settings or ownership. Inspect: "
+                    + ", ".join(reconcile_stats.get("failed_paths", []))
+                    if reconcile_stats.get("errors")
+                    else "Remove existing loose hooks with 'apm uninstall --global <package>' first."
+                )
                 raise ClaudeNativePluginError(
-                    "Cannot retire previous APM-owned loose Claude hooks safely. "
-                    "Repair the reported hook settings before native registration."
+                    "Cannot switch to native Claude. Hook settings were preserved. " + recovery
                 )
         if not projection_targets:
             if ctx is not None:

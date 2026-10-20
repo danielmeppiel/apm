@@ -59,6 +59,13 @@ APM preserves manifest selection, frontmatter, plugin-root expressions and sibli
 files, without duplicate loose Claude commands or hook-settings merges.
 Standalone APM primitives, project installs and other selected targets are unchanged.
 
+If this package already owns loose Claude hooks, APM preserves them and refuses
+the native transition instead of deleting retained-target state or enabling both
+routes. Explicitly uninstall that package with `apm uninstall --global <package>`,
+then reinstall it with the original targets to choose the native route. Unreadable
+hook settings or ownership records must be repaired first; unrelated hooks remain
+untouched.
+
 This route requires `.claude-plugin/plugin.json` and accepts commands, skills,
 agents and approved hooks. It rejects partial skill subsets, symlinks, MCP/LSP,
 bin scripts and unqualified manifest capabilities. Missing or different clients

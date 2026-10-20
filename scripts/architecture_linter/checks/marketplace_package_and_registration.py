@@ -524,6 +524,8 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
                 "projection_targets = [target for target in targets if target.name not in native_target_names]",
                 "if _target not in projection_targets:",
                 "targets=projection_targets,",
+                "dry_run=True,",
+                'if reconcile_stats.get("errors") or reconcile_stats.get("files_removed"):',
             ),
             "Native Claude routing must use shared admission/source scan and suppress loose projection",
         )
