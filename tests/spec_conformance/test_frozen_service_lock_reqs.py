@@ -38,9 +38,16 @@ def test_frozen_service_command_preserves_committed_lock_bytes(
                 "url": "https://example.invalid/locked-service",
             },
         ),
+        lsp_dependencies=(
+            {
+                "name": "locked-language",
+                "command": "inert-language-server",
+                "extensionToLanguage": {".fixture": "fixture"},
+            },
+        ),
     )
     runner = ApmLifecycleRunner((sys.executable, "-m", "apm_cli.cli"))
-    args = ("install", "--only", "mcp", "--no-policy")
+    args = ("install", "--no-policy")
     baseline = runner.run(args, cwd=project.root, env=environment)
     assert baseline.returncode == 0, baseline.stdout + baseline.stderr
     lockfile = project.root / "apm.lock.yaml"
