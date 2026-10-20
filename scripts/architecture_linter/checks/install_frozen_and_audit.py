@@ -72,8 +72,11 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     rule_id = _GUARD_FROZEN
     owner, owner_fail = _facts_for(provider, _FROZEN_OWNER, rule_id)
     adapter, adapter_fail = _facts_for(provider, _INSTALL_ADAPTER, rule_id)
-    if owner_fail or adapter_fail:
-        return tuple(list(owner_fail) + list(adapter_fail))
+    services, services_fail = _facts_for(
+        provider, "src/apm_cli/install/service_integration.py", rule_id
+    )
+    if owner_fail or adapter_fail or services_fail:
+        return tuple(list(owner_fail) + list(adapter_fail) + list(services_fail))
 
     preflight = _first_line(adapter, "InstallService.enforce_frozen(")
     migration = _first_line(adapter, "migrate_lockfile_if_needed(ctx.apm_dir)")
@@ -96,6 +99,9 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         _present_re(owner, re.compile(r"^    def enforce_frozen\("))
         and _present_re(owner, re.compile(r"^    def reject_frozen_mutation\("))
         and _present_re(owner, re.compile(r"^    def reject_missing_frozen_root\("))
+        and _present_re(owner, re.compile(r"^    def frozen_writes\("))
+        and _present_re(owner, re.compile(r"^    def enforce_frozen_services\("))
+        and _present(owner, "current_mcp.diff(lockfile.mcp_configs)")
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
 
@@ -115,6 +121,29 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or local_bundle is None
         or not _before(add_guard, dedicated_mcp)
         or not _before(add_guard, local_bundle)
+        or not _before(
+            _first_line(adapter, "ctx.with_resource(InstallService.frozen_writes(frozen))"),
+            root_redirect,
+        )
+        or not _before(
+            _first_line(services, "prepared_mcp = prepare_mcp_integration("),
+            _first_line(services, "InstallService.enforce_frozen_services("),
+        )
+        or not _before(
+            _first_line(services, "prepared_lsp = prepare_lsp_integration("),
+            _first_line(services, "InstallService.enforce_frozen_services("),
+        )
+        or not _before(
+            _first_line(services, "InstallService.enforce_frozen_services("),
+            _first_line(services, "mcp_count, mcp_apm_config = run_mcp_integration("),
+        )
+        or not _before(
+            _first_line(services, "InstallService.enforce_frozen_services("),
+            _first_line(services, "lsp_count = run_lsp_integration("),
+        )
+        or not _present(services, "prepared=prepared_mcp,")
+        or not _present(services, "prepared=prepared_lsp,")
+        or not _present(services, "current_mcp=prepared_mcp.current_view,")
         or bool(duplicates)
     )
     if not failed:

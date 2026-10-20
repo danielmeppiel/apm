@@ -22,6 +22,7 @@ the blast radius of a deeper DI rewrite.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,7 @@ from apm_cli.models.results import InstallDisposition
 if TYPE_CHECKING:
     from apm_cli.core.lifecycle_scripts import LifecycleEvent, LifecycleScriptRunner
     from apm_cli.deps.lockfile import LockFile
+    from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
     from apm_cli.models.results import InstallResult
 
 
@@ -103,6 +105,66 @@ class InstallService:
     extension point for collaborator injection (downloader, scanner,
     integrator factory) when programmatic callers need to swap them.
     """
+
+    @staticmethod
+    def frozen_writes(frozen: bool) -> AbstractContextManager[list[str] | None]:
+        """Protect the complete caller lifetime with the canonical write chokepoint."""
+        from apm_cli.deps.lockfile import suppress_lockfile_writes
+
+        return suppress_lockfile_writes() if frozen else nullcontext()
+
+    @staticmethod
+    def enforce_frozen_services(
+        lockfile: LockFile,
+        *,
+        mcp_servers: set[str],
+        mcp_targets: list[str],
+        lsp_servers: set[str],
+        lsp_targets: list[str],
+        current_mcp: CurrentMcpConfigView | None,
+        user_scope: bool,
+    ) -> None:
+        """Refuse unrecorded service claims before either service mutates native state."""
+        from apm_cli.install.errors import FrozenInstallError
+        from apm_cli.install.mcp.ownership import migrate_legacy_project_target_servers
+
+        mcp_ownership = {
+            target: set(names) for target, names in lockfile.mcp_target_servers.items()
+        }
+        migrate_legacy_project_target_servers(
+            mcp_ownership, active_runtimes=set(mcp_targets), user_scope=user_scope
+        )
+        reasons = []
+        if current_mcp is not None:
+            reasons.extend(
+                f"  - {problem.package_key}: {problem.message}" for problem in current_mcp.problems
+            )
+            difference = current_mcp.diff(lockfile.mcp_configs)
+            for name in sorted(difference.changed | difference.source_only | difference.lock_only):
+                reasons.append(
+                    f"  - MCP server {name!a} cannot reproduce its locked config "
+                    "from the available source declarations"
+                )
+        for service, names, targets, recorded in (
+            ("MCP", mcp_servers, mcp_targets, mcp_ownership),
+            ("LSP", lsp_servers, lsp_targets, lockfile.lsp_target_servers),
+        ):
+            for target in targets:
+                for name in sorted(names - set(recorded.get(target, ()))):
+                    reasons.append(
+                        f"  - {service} server {name!a} target {target!a} "
+                        "ownership is not recorded in apm.lock.yaml"
+                    )
+        if reasons:
+            raise FrozenInstallError(
+                "--frozen cannot replay the selected native services.",
+                reasons=reasons,
+                tip=(
+                    "Tip: native MCP/LSP configs were not changed. Rerun the same "
+                    "install command without --frozen, retaining the intended --target, "
+                    "--only, --root DIR or --global options, then commit apm.lock.yaml."
+                ),
+            )
 
     def run(self, request: InstallRequest) -> InstallResult:
         """Execute the install pipeline and return the structured result.

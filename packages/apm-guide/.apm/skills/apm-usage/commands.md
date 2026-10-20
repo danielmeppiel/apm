@@ -130,6 +130,15 @@ A normal project install creates or updates `apm.lock.yaml` when the manifest de
 
 `apm install --frozen` never writes `apm.lock.yaml`. Deployment still runs, and one check comes after it: if the install deploys files the committed lockfile does not record, frozen mode exits `1` and names those paths. Those files are already on disk -- only the lockfile write is withheld. Rerun the same command without `--frozen` (keeping `--root DIR` or `--global`) and commit the updated lockfile; see the [install reference](https://microsoft.github.io/apm/reference/cli/install/#behavior) for recovery details.
 
+Frozen native MCP/LSP integration also preserves exact manifest and lockfile
+bytes. It refuses a selected target/server without recorded ownership before
+writing or removing either service's native configs. For example, adding
+`intellij` to a Copilot/Claude baseline requires an ordinary install with the
+intended `--target` first; frozen mode does not create an unrecorded personal
+deployment. Retain `--only`, `--root DIR` or `--global` during recovery.
+Reordered, repeated and narrower selections work. Downloads may precede the
+check; package deployment and lifecycle scripts are not generally rolled back.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
