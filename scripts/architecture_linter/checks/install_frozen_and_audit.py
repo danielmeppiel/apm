@@ -98,12 +98,25 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         and _present_re(owner, re.compile(r"^    def reject_missing_frozen_root\("))
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
+    enforce_body = _awk_body(
+        owner, re.compile(r"^    def enforce_frozen\("), re.compile(r"^    def ")
+    )
+    replacement_preflight = all(
+        _body_has(enforce_body, needle)
+        for needle in (
+            "lockfile_satisfies_replacements(",
+            "if not replacements_satisfied:",
+            "project_manifest_dependencies(request.apm_package,",
+            "InstallService._verify_frozen_local_content(request, lockfile, manifest_deps)",
+        )
+    )
 
     def _before(first: int | None, second: int | None) -> bool:
         return first is not None and second is not None and first < second
 
     failed = (
         not owner_methods
+        or not replacement_preflight
         or preflight is None
         or migration is None
         or not _before(preflight, migration)

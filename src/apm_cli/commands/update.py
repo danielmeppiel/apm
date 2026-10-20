@@ -656,9 +656,9 @@ def _run_dep_update_locked(
     # pipeline must resolve against the new SHAs, but declined/dry-run paths
     # should not mutate the APMPackage instance parsed from the on-disk manifest.
     staged_apm_package = copy.deepcopy(apm_package)
-    all_declared_deps = (
-        staged_apm_package.get_apm_dependencies() + staged_apm_package.get_dev_apm_dependencies()
-    )
+    from ..models.dependency.replacement import project_manifest_dependencies
+
+    all_declared_deps = project_manifest_dependencies(staged_apm_package)
 
     # Map any positional [PACKAGES] to canonical dependency keys for the
     # engine's only_packages filter; None means "refresh everything".

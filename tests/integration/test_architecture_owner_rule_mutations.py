@@ -340,6 +340,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Root context writes lose the canonical hand-authored ownership gate.",
     ),
     MutationCase(
+        guard_id="contracts-tooling-source-replacements",
+        rule_id="contracts-tooling-source-replacements",
+        path="src/apm_cli/models/dependency/replacement.py",
+        old="return (self.host, self.port, self.repo_url, self.subpath)",
+        new="return ('github.com', None, self.repo_url, self.subpath)",
+        intent="Root replacement matching becomes host- and endpoint-blind.",
+    ),
+    MutationCase(
         guard_id="hooks-integrations-claude-mcp-paths",
         rule_id="mutation_writes.claude_mcp_paths",
         path="src/apm_cli/integration/mcp_integrator.py",

@@ -3,7 +3,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from apm_cli.deps.dependency_graph import DependencyNode
+    from apm_cli.install.context import InstallContext
+
+
+def locked_parent_identity(ctx: InstallContext, node: DependencyNode | None) -> str | None:
+    """Use exact original parent keys in the replacement-enabled lock contract."""
+    from apm_cli.deps.lockfile import lockfile_parent_identity
+
+    if node is None or node.parent is None:
+        return None
+    return lockfile_parent_identity(
+        node.parent.dependency_ref,
+        ctx.apm_package.replace_rules if ctx.apm_package is not None else None,
+    )
 
 
 def format_package_type_label(pkg_type: Any) -> str | None:
