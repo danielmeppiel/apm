@@ -47,11 +47,24 @@ class OpenCodeClientAdapter(CopilotClientAdapter):
     target_name: str = "opencode"
     mcp_servers_key: str = "mcp"
 
-    # OpenCode's config runtime-substitution support has not yet been
-    # individually audited (see #1152). Pin to legacy install-time
-    # resolution so this adapter is unchanged by the Copilot security fix;
-    # revisit in a follow-up.
-    _supports_runtime_env_substitution: bool = False
+    # OpenCode resolves {env:NAME} throughout config strings, including MCP
+    # environment, headers and command args (https://opencode.ai/docs/config/#env-vars).
+    # Keep referenced secrets out of generated configuration; see #3051.
+    _supports_runtime_env_substitution: bool = True
+
+    def _format_runtime_env_placeholder(self, name: str) -> str:
+        """Return OpenCode's native environment reference."""
+        return "{env:" + name + "}"
+
+    def _resolve_environment_variables(
+        self,
+        env_vars: dict[str, object] | list[dict[str, object]],
+        env_overrides: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Preserve explicit literals; translate references for runtime lookup."""
+        if not isinstance(env_vars, dict):
+            return super()._resolve_environment_variables(env_vars, env_overrides)
+        return self._resolve_explicit_environment_values(env_vars, env_overrides)
 
     @staticmethod
     def config_path_for(project_root: Path, user_scope: bool) -> Path:

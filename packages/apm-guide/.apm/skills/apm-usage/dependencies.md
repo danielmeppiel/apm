@@ -513,7 +513,8 @@ dependencies:
         #                            and resolved at runtime.
         #                            Kiro: preserved as ${VAR} and resolved at runtime.
         #                            Cursor: translated to ${env:VAR} and resolved at runtime.
-        #                            Windsurf/OpenCode/Claude/Gemini: resolved at install time.
+        #                            OpenCode: translated to {env:VAR}; export variables at runtime.
+        #                            Windsurf/Claude/Gemini: resolved at install time.
         #                            Codex: env resolved at install time; a remote
         #                            server's headers are written as
         #                            bearer_token_env_var / env_http_headers and
@@ -573,6 +574,12 @@ to replace previously written credentials without losing custom fields.
 See the [MCP
 Servers guide](../../../../../docs/src/content/docs/consumer/install-mcp-servers.md#token-injection-github-mcp-server)
 for token selection details.
+
+OpenCode translates `${VAR}`, `${env:VAR}`, and legacy `<VAR>` references to
+`{env:VAR}` in remote headers, local environment values, and command arguments.
+Export referenced variables in the environment that launches OpenCode; APM no
+longer saves install-time values into its config. Explicit static values remain
+literal, and command executables and URLs are unchanged.
 
 For OpenCode, top-level `enabled` passes the supplied value and JSON type
 unchanged, including `false`, `null`, and non-boolean values. Only omission
