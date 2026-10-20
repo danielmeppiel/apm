@@ -39,6 +39,16 @@ def plugin_root_relative_path(path: str) -> str:
     return unescaped.replace("\\", "/").lstrip("/")
 
 
+def relocated_plugin_root_reference(match: re.Match[str], relative_path: str) -> str:
+    """Keep the authored variable and shell escapes when relocating its path."""
+    original_path = match.group(1)
+    for character in " \t;&|<>()":
+        if f"\\{character}" in original_path:
+            relative_path = relative_path.replace(character, f"\\{character}")
+    variable = match.group(0)[: -len(original_path)]
+    return f"{variable}/{relative_path}"
+
+
 def unresolved_plugin_root_references(command: str) -> tuple[str, ...]:
     """Return residual supported references once each, preserving command order.
 
