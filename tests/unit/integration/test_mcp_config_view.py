@@ -76,8 +76,15 @@ def _derive(
     ],
 )
 def test_cold_codex_cache_uses_owned_identity_without_waiving_legacy(
-    tmp_path: Path, record_key: str, package_type: str, expected_problem: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_key: str,
+    package_type: str,
+    expected_problem: bool,
 ) -> None:
+    from dataclasses import replace
+
+    from apm_cli.codex_plugins import registrar
     from apm_cli.codex_plugins.registrar import _Record, _write_records, ledger_path_for
     from apm_cli.codex_plugins.snapshot import NativeSnapshot
 
@@ -91,16 +98,36 @@ def test_cold_codex_cache_uses_owned_identity_without_waiving_legacy(
         package_type=package_type,
     )
     modules = tmp_path / "apm_modules"
+    second = replace(dependency, repo_url="owner/second")
     key = dependency.get_unique_key()
     journal = ledger_path_for(modules)
     if record_key != "absent":
         snapshot = NativeSnapshot(journal.parent / "snapshots/owned", "a" * 40, "b" * 40)
         record = _Record("example", "sha256:" + "c" * 64, snapshot, tmp_path / ".codex/config.toml")
-        _write_records(journal, {key if record_key == "matching" else "foreign": record})
-    view = _derive(root, _lock(dependency), modules)
+        records = (
+            {key: record, second.get_unique_key(): record}
+            if record_key == "matching"
+            else {"foreign": record}
+        )
+        _write_records(journal, records)
+    reads: list[Path] = []
+    read_records = registrar._read_records
+
+    def read_journal(path: Path) -> dict[str, _Record]:
+        reads.append(path)
+        return read_records(path)
+
+    monkeypatch.setattr(registrar, "_read_records", read_journal)
+    lockfile = _lock(dependency, second)
+    view = _derive(root, lockfile, modules)
     assert bool(view.problems) is expected_problem
     assert list(view.configs) == ["loose"]
     assert not modules.exists()
+    assert len(reads) == (1 if package_type == "marketplace_plugin" else 0)
+    if not expected_problem:
+        _write_records(journal, {})
+        assert _derive(root, lockfile, modules).problems
+        assert len(reads) == 2
 
 
 class _RecordingLogger:

@@ -88,6 +88,11 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
             'getattr(package, "codex_plugin", None) is not None',
             "False",
         ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "ownership_cache=native_ownership_cache",
+            "ownership_cache=None",
+        ),
     ],
 )
 def test_codex_native_content_and_ownership_gates_cannot_be_bypassed(

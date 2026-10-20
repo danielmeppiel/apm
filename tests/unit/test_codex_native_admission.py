@@ -228,6 +228,9 @@ def test_final_native_phase_refuses_retained_loose_files(
         codex_native_plugins={"owner/example": object()},
         package_deployed_files={"owner/example": [".codex/skills/example/SKILL.md"]},
     )
-    with pytest.raises(CodexNativeError, match="retained loose"):
+    with pytest.raises(CodexNativeError, match="retained loose") as error:
         codex_plugins.run(ctx)
+    assert "owner/example" in str(error.value)
+    assert ".codex/skills/example/SKILL.md" in str(error.value)
+    assert "apm install -g --target codex" in str(error.value)
     assert loose.read_bytes() == original

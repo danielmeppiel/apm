@@ -579,7 +579,10 @@ def test_migration_preserves_edited_loose_skill_without_native_registration(
     (source / "SKILL.md").unlink()
     migrated = _apm(runner, args, tmp_path, env, "codex-migration-user-edit-refusal")
     assert migrated.returncode != 0, migrated.stdout + migrated.stderr
-    assert "retained loose" in " ".join((migrated.stdout + migrated.stderr).split())
+    diagnostic = " ".join((migrated.stdout + migrated.stderr).split())
+    assert "retained loose" in diagnostic
+    assert ".agents/skills/source/SKILL.md" in diagnostic
+    assert "apm install -g --target codex" in diagnostic
     assert loose[0].read_bytes() == edited
     assert not (apm_home / ".codex-native/ownership.json").exists()
     assert not (home / ".codex/config.toml").exists()

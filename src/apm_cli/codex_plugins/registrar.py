@@ -141,9 +141,19 @@ def _read_records(path: Path) -> dict[str, _Record]:
     return {key: _Record.read(value, path.parent) for key, value in data["plugins"].items()}
 
 
-def owns_codex_dependency(modules_dir: Path, dependency_key: str) -> bool:
+def owns_codex_dependency(
+    modules_dir: Path,
+    dependency_key: str,
+    *,
+    ownership_cache: dict[Path, frozenset[str]] | None = None,
+) -> bool:
     """Read durable native identity for cold-cache preflight without launching Codex."""
-    return dependency_key in _read_records(ledger_path_for(modules_dir))
+    keys = ownership_cache.get(modules_dir) if ownership_cache is not None else None
+    if keys is None:
+        keys = frozenset(_read_records(ledger_path_for(modules_dir)))
+        if ownership_cache is not None:
+            ownership_cache[modules_dir] = keys
+    return dependency_key in keys
 
 
 def _write_records(path: Path, records: dict[str, _Record]) -> None:

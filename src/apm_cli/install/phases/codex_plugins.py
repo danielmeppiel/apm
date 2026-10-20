@@ -25,12 +25,15 @@ def run(ctx: InstallContext) -> None:
             "Codex admission no longer matches the saved executable/ownership state. "
             "Review approval and rerun apm install."
         )
-    if any(ctx.package_deployed_files.get(key) for key in ctx.codex_native_plugins):
-        raise CodexNativeError(
-            "Codex native migration has retained loose deployment files. "
-            "Preserve or relocate your edits, resolve cleanup conflicts, and retry; "
-            "native registration was not changed."
-        )
+    for key in sorted(ctx.codex_native_plugins):
+        retained_files = ctx.package_deployed_files.get(key)
+        if retained_files:
+            raise CodexNativeError(
+                f"Codex native migration for {key} has retained loose deployment files: "
+                f"{', '.join(sorted(retained_files))}. "
+                "Preserve or relocate your edits, resolve cleanup conflicts, and rerun "
+                "'apm install -g --target codex'; native registration was not changed."
+            )
     retained.difference_update(set(ctx.package_deployed_files) - set(ctx.codex_native_plugins))
     changed = synchronize_codex_plugins(
         list(ctx.codex_native_plugins.values()),

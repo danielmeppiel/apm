@@ -531,6 +531,7 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "is_codex_compatibility_manifest(package_dir, selected_manifest)",
             "dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value",
             "owns_codex_dependency(",
+            "ownership_cache=native_ownership_cache",
         ),
         "src/apm_cli/utils/content_hash.py": (
             "_package_files(package_path, native=True)",

@@ -85,6 +85,7 @@ resolve the reported native error, then rerun `apm install -g --target codex`.
 Migration also refuses native registration if cleanup retains edited or
 undeletable loose files. Preserve or relocate your edits and resolve that
 cleanup conflict before retrying; APM does not register both copies.
+The error names the dependency and retained paths.
 
 Removal fails and retains APM declarations when native ownership has changed,
 another plugin shares the owned marketplace, or the entry contains activation
