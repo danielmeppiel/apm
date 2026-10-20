@@ -100,9 +100,10 @@ def test_native_cache_tamper_fails_installed_audit(
         )
 
     def audit() -> subprocess.CompletedProcess[str]:
-        before = [_snapshot(root) for root in (project, source, home)]
+        protected = (project, source, home, isolated.root)
+        before = [_snapshot(root) for root in protected]
         result = run("audit", "--no-policy", "--ci")
-        assert [_snapshot(root) for root in (project, source, home)] == before
+        assert [_snapshot(root) for root in protected] == before
         return result
 
     for _ in range(2):
