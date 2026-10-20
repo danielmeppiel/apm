@@ -150,13 +150,15 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 10,
+      "test_count": 12,
       "tests": [
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-stdio]",
         "tests/spec_conformance/test_lockfile_reqs.py::TestFrozenInstallNeverWritesLockfile::test_frozen_install_withholds_the_write_and_fails_instead",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_install_preserves_conflicted_lockfile_bytes[crlf]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_install_preserves_conflicted_lockfile_bytes[lf]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_mcp_validation_fails_before_durable_mutation",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[absent-project]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[absent-user]",
@@ -352,20 +354,6 @@
         "tests/spec_conformance/test_lockfile_reqs.py::test_materialization_spelling_collision_fails_without_deleting_candidates",
         "tests/spec_conformance/test_lockfile_reqs.py::test_materialization_spelling_does_not_change_lockfile_sort_order",
         "tests/spec_conformance/test_lockfile_reqs.py::test_materialization_spelling_migrates_one_case_variant_transactionally"
-      ]
-    },
-    {
-      "conformance_class": "consumer",
-      "id": "req-lk-023",
-      "keyword": "MUST",
-      "section": "5.4",
-      "status": "active",
-      "test_count": 4,
-      "tests": [
-        "tests/spec_conformance/test_lockfile_reqs.py::test_conflict_diagnostic_names_an_action_for_the_unreadable_file",
-        "tests/spec_conformance/test_lockfile_reqs.py::test_conflict_markers_recognised_at_load_without_raw_parser_output",
-        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_is_left_unmodified_across_reading_operations[crlf]",
-        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_is_left_unmodified_across_reading_operations[lf]"
       ]
     },
     {
@@ -1657,7 +1645,7 @@
   "spec_version": "v0.1.1",
   "summary_by_class": {
     "consumer": {
-      "active": 96,
+      "active": 95,
       "skipped": 1,
       "unbound": 0,
       "xfail": 0
@@ -1681,5 +1669,5 @@
       "xfail": 0
     }
   },
-  "total_requirements": 130
+  "total_requirements": 129
 }

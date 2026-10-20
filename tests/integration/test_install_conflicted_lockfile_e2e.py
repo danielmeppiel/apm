@@ -34,6 +34,74 @@ _CONFLICTED_LOCKFILE = textwrap.dedent("""\
 """)
 
 
+def test_conflict_markers_recognised_at_load_without_raw_parser_output(
+    tmp_path: Path,
+) -> None:
+    """The loading authority names the path and cause, not the parser error."""
+    lockfile_path = tmp_path / "apm.lock.yaml"
+    lockfile_path.write_text(_CONFLICTED_LOCKFILE, encoding="utf-8")
+
+    with pytest.raises(LockfileConflictError) as conflict:
+        LockFile.read(lockfile_path)
+
+    message = str(conflict.value)
+    assert str(lockfile_path) in message
+    assert "conflict markers" in message
+    assert "<<<<<<<" not in message
+    assert "could not find expected" not in message
+
+
+def test_conflict_diagnostic_names_an_action_for_the_unreadable_file(
+    tmp_path: Path,
+) -> None:
+    """Resolve or restore before another read of the same file."""
+    lockfile_path = tmp_path / "apm.lock.yaml"
+    lockfile_path.write_text(_CONFLICTED_LOCKFILE, encoding="utf-8")
+
+    with pytest.raises(LockfileConflictError) as conflict:
+        LockFile.read(lockfile_path)
+
+    message = str(conflict.value)
+    assert "Resolve the conflict in that file or restore a known-good lockfile" in message
+    assert message.index("Resolve the conflict") < message.index("retry your original command")
+    for operation in ("apm outdated", "apm update"):
+        assert operation not in message
+    assert "git checkout" not in message
+    assert "apm install" not in message
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_lockfile_is_left_unmodified_across_reading_operations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, newline: str
+) -> None:
+    """Recognition never removes, rewrites, or re-resolves the lockfile."""
+    (tmp_path / "apm.yml").write_text(
+        "name: conformance\nversion: '1.0.0'\ntargets:\n  - claude\n", encoding="utf-8"
+    )
+    instructions = tmp_path / ".apm" / "instructions"
+    instructions.mkdir(parents=True)
+    (instructions / "c.instructions.md").write_text("conformance\n", encoding="utf-8")
+    lockfile_path = tmp_path / "apm.lock.yaml"
+
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+    original = _CONFLICTED_LOCKFILE.replace("\n", newline).encode("utf-8")
+    for args, expected_exit in (
+        (["install"], 1),
+        (["install", "--frozen"], 1),
+        (["install", "--dry-run"], 0),
+        (["lock"], 1),
+    ):
+        lockfile_path.write_bytes(original)
+        result = _invoke(runner, args, catch_exceptions=True)
+        assert result.exit_code == expected_exit, result.output
+        output = " ".join(result.output.split())
+        assert "conflict markers" in output
+        assert "".join(str(lockfile_path).split()) in "".join(output.split())
+        assert "restore a known-good lockfile" in output
+        assert lockfile_path.read_bytes() == original
+
+
 @pytest.fixture
 def runner() -> CliRunner:
     return CliRunner()

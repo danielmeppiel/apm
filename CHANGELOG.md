@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Lockfile conflict diagnostics now name the affected file and direct manual resolution or restoration before retrying the original command, preserving bytes and frozen/preview behavior. The diagnostic contract is recorded in `openapm-v0.1.md` (`req-lk-023`); automatic recovery remains deferred to #2979. -- by @lachieh (#3028)
+- Lockfile conflict diagnostics now name the affected file and direct manual resolution or restoration before retrying the original command, preserving bytes and frozen/preview behavior. Automatic recovery remains deferred to #2979. -- by @lachieh (#3028)
 - Hook-only Git-path packages using `hooks/*.json` or `.apm/hooks/*.json` install without a placeholder manifest or skill, and invalid updates preserve the installed source, lockfile and deployment ownership. (#3282)
 - Codex MCP entries no longer emit the unsupported `id` setting; reinstalling repairs recorded APM-owned entries while preserving registry identity, user settings, and ownership safeguards. -- by @Pybsama (#3157)
 - Git marketplace installs accept versioned plugin directories while rejecting file, symlink, and submodule responses during directory validation. -- by @Pybsama (#3156)
