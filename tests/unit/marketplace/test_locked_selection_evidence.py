@@ -31,6 +31,7 @@ def _locked(**changes: object) -> LockedDependency:
             "resolved_tag": "arbitrary/tool@1.2.3",
             "version": "1.2.3",
             "constraint": "^1.0.0",
+            "resolved_at": "2026-10-20T19:26:55+00:00",
             **changes,
         }
     )
@@ -101,7 +102,9 @@ def test_rebuilt_lock_carries_selected_version_only_for_same_pin(
 ) -> None:
     """Discovery can survive an update, but old selected-version proof cannot."""
     previous = _locked()
-    current = replace(previous, constraint=None, resolved_tag=None, version="9.9.9")
+    current = replace(
+        previous, constraint=None, resolved_tag=None, version="9.9.9", resolved_at=None
+    )
     if changed_field:
         setattr(current, changed_field, "b" * 40 if changed_field == "resolved_commit" else "main")
     lock = LockFile(dependencies={current.get_unique_key(): current})
@@ -114,3 +117,4 @@ def test_rebuilt_lock_carries_selected_version_only_for_same_pin(
     assert current.version == ("9.9.9" if changed_field else "1.2.3")
     assert current.constraint == (None if changed_field else "^1.0.0")
     assert current.resolved_tag == (None if changed_field else previous.resolved_tag)
+    assert current.resolved_at == (None if changed_field else previous.resolved_at)

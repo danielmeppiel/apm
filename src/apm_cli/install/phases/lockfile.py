@@ -402,6 +402,7 @@ class LockfileBuilder:
                         dep.constraint = previous.constraint
                         dep.resolved_tag = previous.resolved_tag
                         dep.version = previous.version
+                        dep.resolved_at = previous.resolved_at
 
         # Fresh discovery replaces the entire snapshot, including absent fields.
         if self.ctx.marketplace_provenance:
@@ -418,6 +419,8 @@ class LockfileBuilder:
                         dep.resolved_tag = prov.get("resolved_tag")
                     if prov.get("resolved_version"):
                         dep.version = prov["resolved_version"]
+                    if prov.get("resolved_at"):
+                        dep.resolved_at = prov["resolved_at"]
 
     def _merge_existing(self, lockfile: LockFile) -> None:
         # Partial operations merge untouched dependencies and their canonical

@@ -282,7 +282,9 @@ must contain exactly one `{version}` placeholder, and a no-match does not
 silently become a raw ref or consult a different repository. Use
 object-form `version: v1.0.1` or `apm install pkg@catalog#v1.0.1` for a literal
 ref; CLI marketplace suffixes do not accept ranges. Raw refs bypass tag resolution. The lockfile records the resolved ref, not the marketplace
-placeholder. Unknown keys in a marketplace entry are rejected.
+placeholder. Semver selections also record the existing advisory `resolved_at`
+UTC timestamp; audit and replay do not use it to choose a version.
+Unknown keys in a marketplace entry are rejected.
 
 For object-form declarations, `apm audit --ci` uses recorded
 `discovered_via` + `marketplace_plugin_name` to find one locked coordinate.

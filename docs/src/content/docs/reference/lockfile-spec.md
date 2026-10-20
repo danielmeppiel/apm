@@ -232,7 +232,9 @@ Each item in `dependencies` describes one resolved package.
 Marketplace semver selections reuse the Git-semver fields: `constraint`,
 `resolved_tag`, and `version` record the requested selector, selected tag, and
 selected version. Here `version` comes from the publisher's tag pattern, not
-the package's display version. `resolved_ref` agrees with `resolved_tag`, and
+the package's display version. `resolved_at` records the resolution's UTC
+timestamp and is advisory, never an audit or replay tie-breaker.
+`resolved_ref` agrees with `resolved_tag`, and
 `resolved_commit` pins the installed bytes. Audit requires this locked evidence
 for version selections; it neither guesses a tag pattern nor re-resolves the
 catalog. `discovered_via` + `marketplace_plugin_name` associate a declaration
