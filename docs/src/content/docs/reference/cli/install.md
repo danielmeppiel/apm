@@ -64,10 +64,15 @@ File primitives resolve targets in this order: `--target`, manifest
 `--runtime` / `--target`, then manifest targets, saved config, then
 auto-detection only when `apm.yml` declares no targets.
 
-Native [Agent Plugin registration](../../../consumer/copilot-agent-plugins/#requirements)
-does not discover or execute the Copilot CLI. APM owns deterministic
-materialization and settings projection; you provide a supported runtime when
-you use the generated registration.
+[Copilot Agent Plugin registration](../../../consumer/copilot-agent-plugins/#requirements)
+does not discover or execute the Copilot CLI; APM owns materialization and
+target-file generation. Use a supported Copilot runtime for that registration.
+
+Plugins installed with `--global --target claude` instead require exactly
+Claude Code **2.1.291** on `PATH` for metadata registration. New plugins
+default disabled; updates preserve activation choices. Missing or different
+clients, or rejected capabilities, fail without loose-file fallback. See
+[Claude admission and qualification](../../../consumer/installing-from-marketplaces/#apm-managed-claude-user-plugins).
 
 ### Policy and trust
 
@@ -158,10 +163,12 @@ still cleans up its managed files, subject to the usual user-edit protections.
 - **Direct registry lookup fails closed.** Registry-form MCP entries (`apm install --mcp NAME` with no `--url` and no post-`--` command) resolve one unique registry identity before writing the manifest or user config. An unreachable registry, missing identity, or ambiguous bare server name exits non-zero without changing state.
 - **Diff-aware.** Packages whose ref or version changed in `apm.yml` are re-downloaded automatically. MCP servers with matching config are skipped (`already configured`); changed config is re-applied (`updated`).
 - **Claude Code profiles.** For user-scope MCP installs, an absolute `CLAUDE_CONFIG_DIR` selects that profile's `.claude.json` for both installation and stale-server cleanup. Removing an APM-managed server in the selected profile preserves other profiles and user-owned entries. Cleanup refuses symlinked config files or profile directories; replace the link with a regular file or directory before retrying.
-- **Transactional replacement.** `--update` and `--refresh` download package
-  replacements to isolated staging paths and validate them before publication.
-  If download, validation, or activation fails, APM keeps the previous package
-  and lockfile active and exits non-zero with retry guidance.
+- **Transactional replacement.** `--update` and `--refresh` stage and validate
+  APM-managed package replacements. Download, validation or package activation
+  failures preserve the previous package and lockfile and exit nonzero.
+  Later Claude-owned metadata changes are not rolled back on failure; APM
+  reports the error and retains ownership intent. Registration success is not
+  runtime proof. See [Claude recovery](../../../consumer/installing-from-marketplaces/#apm-managed-claude-user-plugins).
 - **Git-hook isolation.** Dependency Git operations ignore repository-locating
   hook variables, preserving the caller's branch and HEAD. APM allows safe URL
   rewrites but rejects credentials, insecure transports including `http://` and

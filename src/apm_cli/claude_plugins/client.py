@@ -7,6 +7,9 @@ import shutil
 import subprocess
 from typing import Any
 
+from apm_cli.utils.git_env import clear_git_platform_token_env
+from apm_cli.utils.subprocess_env import external_process_env
+
 from .admission import ClaudeNativePluginError
 
 QUALIFIED_VERSION = "2.1.291"
@@ -20,7 +23,8 @@ class ClaudePluginCLI:
         if executable is None:
             raise ClaudeNativePluginError(
                 f"Native Claude registration needs Claude Code {QUALIFIED_VERSION} on PATH. "
-                "Install that client, then rerun apm install --global. No loose fallback was used."
+                "Install that client, then retry with the original target selection. "
+                "No loose fallback was used."
             )
         self.executable = executable
 
@@ -43,9 +47,12 @@ class ClaudePluginCLI:
         )
         if not allowed:
             raise ClaudeNativePluginError("Refusing a non-metadata Claude operation.")
+        env = external_process_env()
+        clear_git_platform_token_env(env, remove=True)
         try:
             result = subprocess.run(
                 [self.executable, *args],
+                env=env,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -56,14 +63,15 @@ class ClaudePluginCLI:
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ClaudeNativePluginError(
-                "Claude plugin metadata operation failed or timed out; rerun after repairing "
-                "the native client. The APM intent ledger is retained for reconciliation."
+                "Claude plugin metadata operation failed or timed out. Repair the native client, "
+                "then retry with the original target selection. "
+                "The APM intent ledger is retained for reconciliation."
             ) from exc
         if result.returncode:
             # Native output can contain user configuration or authentication data.
             raise ClaudeNativePluginError(
                 f"Claude plugin metadata operation exited {result.returncode}. "
-                "Inspect the native client locally, then rerun apm install --global."
+                "Inspect the native client locally, then retry with the original target selection."
             )
         return result.stdout
 

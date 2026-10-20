@@ -167,7 +167,8 @@ def synchronize_claude_plugins(
     # Intent precedes foreign writes. Preserve retiring identities until the
     # native CLI confirms removal, including when a previous attempt crashed.
     _write_ledger(ledger, previous | desired)
-    for plugin_id in sorted(set(previous) - set(desired)):
+    removed = set(previous) - set(desired)
+    for plugin_id in sorted(removed):
         if plugin_id in live:
             client.run("plugin", "uninstall", plugin_id, "--scope", "user", "--keep-data")
     atomic_write_text(
@@ -199,7 +200,7 @@ def synchronize_claude_plugins(
     if set(after) != set(desired):
         raise ClaudeNativePluginError(
             "Claude did not converge to the requested plugin registration. "
-            "APM retained its intent ledger; rerun apm install --global."
+            "APM retained its intent ledger; retry with the original target selection."
         )
     for plugin_id, entry in desired.items():
         _check_live_root(after[plugin_id], entry, modules_dir)
@@ -210,6 +211,10 @@ def synchronize_claude_plugins(
                 "Review it in Claude; APM will not override native user consent."
             )
     _write_ledger(ledger, desired)
+    if logger and removed:
+        logger.tree_item(
+            f"{len(removed)} native Claude plugin(s) removed; native plugin data retained."
+        )
     if logger and desired:
         logger.tree_item(
             f"{len(desired)} native Claude plugin(s) registered; existing activation preserved. "

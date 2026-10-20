@@ -662,14 +662,15 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
         )
         lockfile_updated = lsp_lock_updated or lockfile_updated
 
+        remove_empty_lockfile = False
         if lockfile and lockfile_updated and lockfile_ready and mcp_cleanup_error is None:
             try:
                 from .lockfile_state import lockfile_has_persisted_state
 
-                if lockfile_has_persisted_state(lockfile):
-                    lockfile.write(lockfile_path)
-                else:
-                    lockfile_path.unlink(missing_ok=True)
+                # Keep authoritative empty survivors until native cleanup succeeds,
+                # so an interrupted last-package removal can retry safely.
+                lockfile.write(lockfile_path)
+                remove_empty_lockfile = not lockfile_has_persisted_state(lockfile)
             except Exception:
                 logger.warning(
                     "Failed to update lockfile -- it may be out of sync with uninstalled packages."
@@ -684,6 +685,8 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
             lockfile=lockfile,
             logger=logger,
         )
+        if remove_empty_lockfile:
+            lockfile_path.unlink(missing_ok=True)
 
         # Final summary
         summary_lines = [f"Removed {len(packages_to_remove)} package(s) from apm.yml"]
@@ -753,21 +756,26 @@ def _publish_native_registration(deploy_root, scope, manifest_path):
 def _resync_native_registration_after_uninstall(
     *, deploy_root, modules_dir, scope, lockfile, logger
 ) -> None:
-    """Rebuild APM-owned Copilot plugin rows from surviving locked state.
+    """Rebuild native plugin rows from surviving locked state.
 
-    Downgrades registration failures to a warning so an unrelated uninstall
-    is never bricked by a Copilot settings collision or a missing client.
+    Claude removal errors remain fatal; Copilot settings refresh is advisory.
     """
+    from ...claude_plugins.admission import ClaudeNativePluginError
     from ...claude_plugins.registrar import resync_claude_plugins
 
-    # Unlike advisory Copilot settings refresh, a live Claude source removal
-    # must not report success while its native registration still survives.
-    resync_claude_plugins(
-        modules_dir=modules_dir,
-        scope=scope,
-        lockfile=lockfile,
-        logger=logger,
-    )
+    try:
+        resync_claude_plugins(
+            modules_dir=modules_dir,
+            scope=scope,
+            lockfile=lockfile,
+            logger=logger,
+        )
+    except ClaudeNativePluginError as exc:
+        raise ClaudeNativePluginError(
+            "Package removal may already be complete, but Claude registration did not converge. "
+            f"{exc} Reconcile remaining declarations with 'apm install --global' and the "
+            "original --target selection; do not re-add the removed package."
+        ) from exc
     try:
         from ...agent_plugins.errors import AgentPluginError
         from ...copilot_plugins.registrar import resync_native_plugins

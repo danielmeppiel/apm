@@ -1,6 +1,10 @@
 """Native metadata lifecycle crosses only the external Claude command seam."""
 
 import json
+import os
+import subprocess
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -16,6 +20,50 @@ from apm_cli.claude_plugins.registrar import (
 from apm_cli.core.scope import InstallScope
 
 pytestmark = pytest.mark.component
+
+
+def test_native_child_environment_restores_libraries_and_omits_platform_tokens(
+    monkeypatch,
+) -> None:
+    """Reuse canonical subprocess and token owners without changing parent/native auth."""
+    monkeypatch.setattr("shutil.which", lambda name: "/native/claude")
+    monkeypatch.setattr("sys.frozen", True, raising=False)
+    supplied = {
+        "GH_TOKEN": "sentinel-gh",
+        "GITHUB_APM_PAT_ORG": "sentinel-scoped",
+        "APM_REGISTRY_TOKEN_PRIVATE": "sentinel-registry",
+        "LD_LIBRARY_PATH": "/bundle",
+        "LD_LIBRARY_PATH_ORIG": "/user",
+        "CLAUDE_CONFIG_DIR": "/owned-claude",
+        "ANTHROPIC_API_KEY": "sentinel-native",
+    }
+    for key, value in supplied.items():
+        monkeypatch.setenv(key, value)
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout="2.1.291 (Claude Code)"))
+    monkeypatch.setattr(subprocess, "run", run)
+    assert ClaudePluginCLI().run("--version") == "2.1.291 (Claude Code)"
+    env = run.call_args.kwargs["env"]
+    assert not {"GH_TOKEN", "GITHUB_APM_PAT_ORG", "APM_REGISTRY_TOKEN_PRIVATE"} & env.keys()
+    assert env["LD_LIBRARY_PATH"] == "/user"
+    assert "LD_LIBRARY_PATH_ORIG" not in env
+    assert env["CLAUDE_CONFIG_DIR"] == "/owned-claude"
+    assert env["ANTHROPIC_API_KEY"] == "sentinel-native"
+    assert all(os.environ[key] == value for key, value in supplied.items())
+
+
+def test_native_transport_failure_keeps_targets_without_echoing_native_stderr(monkeypatch) -> None:
+    """Do not leak captured output or prescribe a target-dropping install retry."""
+    monkeypatch.setattr("shutil.which", lambda name: "/native/claude")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        Mock(
+            return_value=SimpleNamespace(returncode=1, stdout="private-out", stderr="private-err")
+        ),
+    )
+    with pytest.raises(ClaudeNativePluginError, match="original target selection") as error:
+        ClaudePluginCLI().run("--version")
+    assert "private" not in str(error.value)
 
 
 @pytest.fixture

@@ -43,6 +43,7 @@ from .target_filter import (
     log_package_target_restriction as _log_package_target_restriction,
 )
 from .target_filter import resolve_effective_package_targets
+from .target_filter import warn_target_reconcile_failure as _warn_target_reconcile_failure
 
 if TYPE_CHECKING:
     from ..core.command_logger import InstallLogger
@@ -181,29 +182,6 @@ def _log_canvas_skip(package_name: str, package_info: Any, logger: InstallLogger
             f"Run 'apm approve {_pkg_label}' to approve.",
             symbol="warning",
         )
-
-
-def _warn_target_reconcile_failure(
-    diagnostics: DiagnosticCollector,
-    package_name: str,
-    reconcile_stats: dict,
-) -> None:
-    if not reconcile_stats.get("errors", 0):
-        return
-    failed_targets = reconcile_stats.get("failed_targets") or ["unknown"]
-    failed_paths = reconcile_stats.get("failed_paths") or ["unknown"]
-    if not isinstance(failed_targets, list):
-        failed_targets = ["unknown"]
-    if not isinstance(failed_paths, list):
-        failed_paths = ["unknown"]
-    diagnostics.warn(
-        "Could not fully reconcile hooks excluded by target restrictions",
-        package=package_name,
-        detail=(
-            f"targets: [{', '.join(failed_targets)}]; "
-            f"configs: [{', '.join(failed_paths)}]; run apm install again"
-        ),
-    )
 
 
 def _targets_explicitly_requested(ctx: InstallContext | None) -> bool:

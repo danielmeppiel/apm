@@ -46,6 +46,8 @@ import time
 from functools import wraps
 from typing import TYPE_CHECKING
 
+from apm_cli.claude_plugins.admission import ClaudeNativePluginError
+
 from ..agent_plugins.errors import AgentPluginError
 from ..copilot_plugins.settings import CopilotSettingsCollisionError
 from ..models.dependency.materialization import MaterializationPathCollisionError
@@ -956,41 +958,19 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         _perf_stats.render_summary(logger, project_root=str(ctx.project_root))
         return _run_phase("finalize", _finalize_phase, ctx)
 
-    except AgentPluginError:
-        # Preserve schema-routing and native-boundary diagnostics verbatim.
-        raise
-    except AuthenticationError:
-        # #1015: surface auth failures cleanly to the user. Same
-        # pattern as PolicyViolationError -- re-raise so the typed
-        # exception reaches commands/install.py for rendering with
-        # build_error_context diagnostics instead of being wrapped
-        # into "Failed to resolve APM dependencies: ...".
-        raise
-    except PolicyViolationError:
-        # #832: surface policy violations cleanly to the user.  The
-        # outer ``except Exception`` below would otherwise wrap the
-        # message into ``RuntimeError("Failed to resolve APM dependencies:
-        # Install blocked by org policy ...")`` and the caller in
-        # ``commands/install.py`` would wrap it AGAIN as
-        # ``"Failed to install APM dependencies: Failed to resolve APM
-        # dependencies: Install blocked by org policy ..."``.  Re-raising
-        # the typed exception lets the caller render the policy message
-        # as-is.
-        raise
-    except DirectDependencyError:
-        # #946: same pattern -- surface the message as-is instead of
-        # double-wrapping it through the generic RuntimeError below.
-        raise
-    except InstallFailureAlreadyRendered:
-        raise
-    except (PathTraversalError, MaterializationPathCollisionError, CopilotSettingsCollisionError):
-        # Path-safety, package-directory collision, and Copilot settings
-        # collision errors already include actionable guidance; re-raise them
-        # verbatim. A settings collision in particular means dependency
-        # resolution SUCCEEDED and the lockfile is written -- only the Copilot
-        # merge collided -- so wrapping it into "Failed to resolve APM
-        # dependencies: ..." would mis-attribute the failure and double-wrap
-        # once commands/install.py prefixes again.
+    except (
+        AgentPluginError,
+        AuthenticationError,
+        PolicyViolationError,
+        DirectDependencyError,
+        InstallFailureAlreadyRendered,
+        PathTraversalError,
+        MaterializationPathCollisionError,
+        CopilotSettingsCollisionError,
+        ClaudeNativePluginError,
+    ):
+        # Preserve actionable typed failures, including native registration
+        # after successful resolution, instead of misreporting them as resolution failures.
         raise
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")  # noqa: B904

@@ -69,18 +69,18 @@ workspace-only runtimes. If no selected target supports user scope, the command
 exits `2` before creating or changing the user manifest, lockfile, or runtime
 configuration.
 
-For intact Claude plugins, `apm install -g --target claude` requires Claude
-Code 2.1.291 on `PATH` and registers a local `apm-claude` marketplace against
-APM's materialized source. New plugins remain disabled until the user reviews
-and enables them in Claude; updates preserve native activation choices.
-Native command selection and plugin hooks stay intact, without duplicate
-loose Claude projection. Project installs and standalone APM primitives are
-unchanged. This bounded route rejects partial skill selections, symlinks,
-MCP/LSP, bin scripts, and unqualified capabilities rather than activating
-excluded content. Registration is not authenticated runtime proof.
-Global uninstall uses native removal with plugin data retained. If native
-metadata reconciliation fails, repair the reported issue and rerun
-`apm install --global`; APM does not overwrite foreign marketplace ownership.
+`apm install -g --target claude` registers Claude plugins natively;
+Claude Code exactly 2.1.291 must be on `PATH`. New plugins stay disabled;
+updates preserve activation choices. See [admission limits and outstanding
+runtime qualification](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#apm-managed-claude-user-plugins):
+registration is metadata-only, not runtime proof.
+
+Global uninstall retains native plugin data; APM never takes over foreign
+marketplace/plugin ownership. APM's package-replacement rollback does not cover
+Claude-owned metadata; failures retain ownership intent. After repair, reconcile
+remaining declarations with `apm install --global --target claude` for
+Claude-only installs; for mixed targets, retain the full original `--target`
+list. Do not re-add removed package arguments.
 
 Cursor and OpenCode user configs are `~/.cursor/mcp.json` and
 `~/.config/opencode/opencode.json`. Global MCP cleanup removes only names
