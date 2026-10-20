@@ -551,9 +551,9 @@ def test_replacement_rules_in_dependency_manifest_do_not_redirect_consumer(
 
 @pytest.mark.parametrize("cold", [False, True], ids=["existing", "cold"])
 def test_remote_parent_replacement_local_sibling_frozen_preflight(
-    replacement_fixture: ReplacementFixture, cold: bool
+    tmp_path: Path, apm_binary_path: Path, cold: bool
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     factory = LocalPackageFactory(fixture.consumer.root.parent)
     sibling = factory.create("sibling", targets=("copilot",))
     factory.add_instruction(sibling, "sibling", _content("SIBLING"))
