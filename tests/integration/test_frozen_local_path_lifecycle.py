@@ -278,7 +278,9 @@ def test_frozen_local_requires_selected_lock_evidence(
     before = _snapshot(consumer.root)
     result = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
     assert result.returncode != 0, result.stdout + result.stderr
-    assert "provider" in result.stdout + result.stderr
+    # Rich can wrap a long canonical identity inside the dependency name.
+    output = result.stdout + result.stderr
+    assert "provider" in "".join(line.strip() for line in output.splitlines())
     assert _snapshot(consumer.root) == before
 
 
