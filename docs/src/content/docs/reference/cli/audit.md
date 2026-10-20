@@ -26,6 +26,42 @@ subtrees for content integrity. Neither mode modifies those roots.
 Both modes also enforce the lockfile's canonical deployment ownership; see
 [Deployment-owner integrity](#deployment-owner-integrity).
 
+Replay and coverage use the current `apm.yml` target declaration when present,
+otherwise the concrete target identities recorded by install. An unrelated
+`.github/workflows/` file does not add a Copilot deployment to a recorded
+Grok Cloud installation, and `.grok/` alone does not relabel it as Grok Build.
+Older lockfiles without a recorded `deployments` section retain directory
+discovery; identities inferred from legacy file paths do not narrow it.
+The saved `apm config target` is an install/update default, not a request to
+retarget an existing installation during audit.
+
+Experimental targets remain opt-in. If a selected target's experiment is
+disabled, audit exits with code `3` and an enable instruction on stderr, such
+as `apm experimental enable grok-cloud`, instead of silently skipping verification.
+Configuration errors do not produce a JSON audit report.
+Changing the manifest can still expose missing requested output; the existing
+[drift exit rules](#drift-detection) apply. Audit does not install, repair, or
+rewrite that state. Retained paths recorded under a previous target remain
+eligible for [CI presence and recorded-hash checks](../../baseline-checks/),
+subject to those checks' existing exclusions and hash baselines, even when
+that target is no longer selected for replay.
+
+For a native Agent Plugin installed with the `copilot` target, replay uses the
+same package interpretation as install. A plugin does not need an accompanying
+`apm.yml`; reinstalling and auditing a clean plugin remains supported. Select
+targets in the project's `apm.yml` (`targets: [copilot]`), not an audit
+`--target` option. Invalid native manifests fail replay rather than falling back
+to legacy conversion. Audit does not modify plugin sources or live harness state.
+
+Native plugins remain whole under `apm_modules/`, rather than becoming loose
+managed skills. Replay compares admitted local plugins with a scratch copy of
+their original source, using the same validated copying as install. Modified
+or missing cached skills fail audit; run `apm install` to restore them. Remote
+native plugins use their recorded package content hash, including in cold-cache
+CI; a missing hash requires reinstalling to establish that baseline. These
+checks do not turn cache files into deployed-file claims. Native registration
+files are not covered by this content comparison.
+
 This is the explicit power tool. Built-in protection against critical Unicode findings already runs automatically in `apm install`, `apm compile`, and `apm unpack`; you do not need to call `apm audit` to be safe by default. See [Drift and secure by default](../../../consumer/drift-and-secure-by-default/) for the consumer-side overview and [Enforce in CI](../../../enterprise/enforce-in-ci/) for the gating workflow. For marketplace plugin transitive-dependency pinning, see [`apm marketplace audit`](../marketplace/#apm-marketplace-audit-name).
 
 `PACKAGE`, when supplied, scans one installed dependency by its lockfile key (the repo URL), so only files recorded for that package are included. Omit it to scan deployed files across the whole project. See [Baseline CI checks](../../baseline-checks/#content-integrity) for the exact lockfile, target-directory, symlink, and `.apm/` scope boundaries.
@@ -252,8 +288,11 @@ integrations, orphaned files, and `unrecorded` files. `unrecorded` applies when
 replay produced the same normalized bytes as the project but no exact or
 directory `deployed_files` claim covers the path. For shared merge-hook
 targets, audit compares only APM-owned hook entries; user-owned hooks do not
-create drift. The APM-owned sidecar remains byte-for-byte checked, so tampered
-or missing APM-owned hooks report `modified`. `unrecorded` findings fail
+create drift. The APM-owned sidecar is compared as JSON, ignoring object-key
+order and formatting while retaining every field and list order. Changed
+commands, ownership markers, or execution order still report `modified`, as
+do malformed JSON, duplicate keys, and non-JSON constants (`NaN`, `Infinity`,
+`-Infinity`). `unrecorded` findings fail
 `--ci`; run `apm install`, then commit the regenerated `apm.lock.yaml`.
 
 Drift is whole-project only; `--file` and explicit `PACKAGE` runs skip it.

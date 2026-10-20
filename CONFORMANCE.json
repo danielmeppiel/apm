@@ -63,6 +63,25 @@
     },
     {
       "conformance_class": "consumer",
+      "id": "req-ext-003",
+      "keyword": "MUST",
+      "section": "4.6.2",
+      "status": "active",
+      "test_count": 9,
+      "tests": [
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[unknown]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-Foo]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-a_b]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_checks_names_not_values[x-valid\\n]",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_extension_schema_preserves_previous_contract",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_lock_entry_records_extensions_and_omits_when_empty",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_parser_keeps_x_extensions_and_warns_without_failing",
+        "tests/spec_conformance/test_manifest_extension_reqs.py::test_req_ext_003_keeps_rewrite_preservation"
+      ]
+    },
+    {
+      "conformance_class": "consumer",
       "id": "req-lk-001",
       "keyword": "MUST",
       "section": "5.1",
@@ -89,11 +108,15 @@
       "keyword": "MUST",
       "section": "5.2",
       "status": "active",
-      "test_count": 5,
+      "test_count": 9,
       "tests": [
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_manifest_pin_requires_the_exact_locked_commit",
         "tests/spec_conformance/test_lockfile_reqs.py::test_full_sha_pin_audit_rejects_resolved_commit_mismatch",
         "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_carries_dependencies_block",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[git@github.com:fixture/private-mkt.git-success-named]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[git@github.com:fixture/private-mkt.git-success]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[ssh://git@github.com/fixture/private-mkt.git-success-named]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_ssh_marketplace_install_records_repository_and_exact_commit[ssh://git@github.com/fixture/private-mkt.git-success]",
         "tests/spec_conformance/test_resolution_reqs.py::test_frozen_short_pin_checks_recorded_commit_without_discovery[False]",
         "tests/spec_conformance/test_resolution_reqs.py::test_frozen_short_pin_checks_recorded_commit_without_discovery[True]"
       ]
@@ -127,8 +150,13 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 5,
+      "test_count": 10,
       "tests": [
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-http]",
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-stdio]",
+        "tests/spec_conformance/test_lockfile_reqs.py::TestFrozenInstallNeverWritesLockfile::test_frozen_install_withholds_the_write_and_fails_instead",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_mcp_validation_fails_before_durable_mutation",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[absent-project]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[absent-user]",
@@ -289,10 +317,11 @@
       "keyword": "MUST",
       "section": "5.2",
       "status": "active",
-      "test_count": 3,
+      "test_count": 4,
       "tests": [
         "tests/spec_conformance/test_lockfile_reqs.py::TestFinalLockfileTargetContraction::test_removes_dropped_target_instruction_file",
         "tests/spec_conformance/test_lockfile_reqs.py::test_cli_target_without_manifest_targets_preserves_inactive_state",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_keeps_shared_root_paths_another_declared_target_governs",
         "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_reconciles_inactive_target_paths_fail_safe"
       ]
     },
@@ -408,9 +437,11 @@
       "keyword": "MUST",
       "section": "4.3.3",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_pinned_version"
+        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_pinned_version",
+        "tests/spec_conformance/test_marketplace_directory_reqs.py::test_versioned_marketplace_directory_installs_and_replays_as_subdirectory[1.2.3]",
+        "tests/spec_conformance/test_marketplace_directory_reqs.py::test_versioned_marketplace_directory_installs_and_replays_as_subdirectory[2026.9.3]"
       ]
     },
     {
@@ -798,9 +829,16 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 1,
+      "test_count": 8,
       "tests": [
-        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified"
+        "tests/spec_conformance/test_audit_recorded_target_reqs.py::test_legacy_mixed_targets_preserve_discovery_and_drift",
+        "tests/spec_conformance/test_audit_recorded_target_reqs.py::test_recorded_grok_target_preserves_governed_drift[False]",
+        "tests/spec_conformance/test_audit_recorded_target_reqs.py::test_recorded_grok_target_preserves_governed_drift[True]",
+        "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[True]",
+        "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[True]"
       ]
     },
     {
@@ -1003,8 +1041,10 @@
       "keyword": "MUST",
       "section": "7.3",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_emits_lockfile_after_successful_resolution"
       ]
     },
@@ -1124,8 +1164,16 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 1,
+      "test_count": 9,
       "tests": [
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[direct-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[direct-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[parent-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[parent-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[refresh-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[refresh-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[shared-child-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[shared-child-hooks]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_records_resolved_ref_in_lockfile"
       ]
     },
@@ -1192,8 +1240,10 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 15,
+      "test_count": 17,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin--v1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin-v1.2.3]",
@@ -1306,8 +1356,9 @@
       "keyword": "MUST",
       "section": "10.13",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_denies_unapproved_manifest_referenced_mcp",
         "tests/spec_conformance/test_manifest_reqs.py::test_consumer_must_deny_executable_primitive_without_allowexecutables_approval"
       ]
     },
@@ -1376,8 +1427,11 @@
       "oracle": "tests/fixtures/spec-conformance/source-plan/req-sc-015.json",
       "section": "10.16",
       "status": "active",
-      "test_count": 5,
+      "test_count": 8,
       "tests": [
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_scans_the_exact_whole_bundle_before_transport[blocked]",
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_scans_the_exact_whole_bundle_before_transport[safe]",
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_scans_the_exact_whole_bundle_before_transport[symlink]",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_skip_diagnostic_preserves_authorized_scan_and_materialization[False]",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_skip_diagnostic_preserves_authorized_scan_and_materialization[True]",
         "tests/spec_conformance/test_manifest_reqs.py::test_authorized_source_plan_fixture_oracle_covers_symlinked_content",
@@ -1402,8 +1456,9 @@
       "keyword": "MUST",
       "section": "8.5",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_claude_cleanup_roots.py::test_claude_cleanup_writes_only_to_selected_registered_root",
         "tests/spec_conformance/test_manifest_reqs.py::test_consumer_deploys_only_under_registered_roots"
       ]
     },
@@ -1501,8 +1556,9 @@
       "keyword": "MUST",
       "section": "8.5.5",
       "status": "active",
-      "test_count": 2,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_copilot_plugins_reqs.py::test_cache_only_replay_preserves_native_target_exclusion",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_materializes_without_projection",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_stays_opaque_after_materialization"
       ]
@@ -1541,8 +1597,9 @@
       "keyword": "MUST",
       "section": "8.5.8",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_manifest_reqs.py::test_declared_user_mcp_targets_install_without_project_signals",
         "tests/spec_conformance/test_manifest_reqs.py::test_user_scoped_mcp_target_selection_ignores_project_signals"
       ]
     },
@@ -1586,7 +1643,7 @@
   "spec_version": "v0.1.1",
   "summary_by_class": {
     "consumer": {
-      "active": 94,
+      "active": 95,
       "skipped": 1,
       "unbound": 0,
       "xfail": 0
@@ -1610,5 +1667,5 @@
       "xfail": 0
     }
   },
-  "total_requirements": 128
+  "total_requirements": 129
 }

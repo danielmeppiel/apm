@@ -265,8 +265,14 @@ def _resolve_deployed_file_path(
     candidate = Path(value.rstrip("/"))
     if not candidate.is_absolute():
         rel_path = candidate.as_posix()
-        allowed_prefixes = BaseIntegrator._get_integration_prefixes(targets=targets or None)
-        if ".." in rel_path or not rel_path.startswith(allowed_prefixes):
+        # Historical claims remain verifiable after current replay intent changes.
+        allowed_prefixes = (
+            *BaseIntegrator._get_integration_prefixes(),
+            *BaseIntegrator._get_integration_prefixes(targets=targets),
+        )
+        if not BaseIntegrator.validate_deploy_path(
+            rel_path, project_root, allowed_prefixes=allowed_prefixes
+        ):
             return None
         return project_root / candidate
     for target in targets:
@@ -832,6 +838,7 @@ def _check_drift(
     fresh checkout that has never installed.
     """
     from ..agent_plugins.errors import AgentPluginDeploymentBoundaryError
+    from ..codex_plugins.client import CodexNativeError
     from ..core.scope import get_workspace_deploy_root
     from ..deps.lockfile import get_lockfile_path
     from ..deps.path_anchoring import LocalResolutionError
@@ -840,11 +847,10 @@ def _check_drift(
         CacheMissError,
         CheckLogger,
         ReplayConfig,
-        _read_apm_yml_target,
         diff_scratch_against_project,
         run_replay,
     )
-    from ..integration.targets import resolve_targets
+    from ..integration.targets import resolve_audit_targets
 
     logger = CheckLogger(verbose=verbose)
     deployment_root = get_workspace_deploy_root(project_root)
@@ -860,7 +866,7 @@ def _check_drift(
 
         try:
             scratch = run_replay(config, logger)
-        except AgentPluginDeploymentBoundaryError as exc:
+        except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:
             return (
                 CheckResult(
                     name="drift",
@@ -903,11 +909,10 @@ def _check_drift(
                 ),
                 [],
             )
-        resolved_targets = resolve_targets(
+        resolved_targets = resolve_audit_targets(
             project_root,
             user_scope=user_scope,
-            explicit_target=_read_apm_yml_target(project_root),
-            create_config=False,
+            lockfile=lockfile,
         )
         tracked_files = None
     else:
@@ -999,13 +1004,14 @@ def run_baseline_checks(
     result = CIAuditResult()
     deployment_root = get_workspace_deploy_root(project_root)
     user_scope = deployment_root != project_root.resolve()
-    from ..install.drift import _read_apm_yml_target
-    from ..integration.targets import resolve_targets
+    from ..integration.targets import resolve_audit_targets
 
-    resolved_targets = resolve_targets(
-        deployment_root,
+    lockfile_path = get_lockfile_path(project_root)
+    lock = LockFile.read(lockfile_path)
+    resolved_targets = resolve_audit_targets(
+        project_root,
         user_scope=user_scope,
-        explicit_target=_read_apm_yml_target(project_root),
+        lockfile=lock if lock is not None else LockFile(),
     )
     apm_yml_path = project_root / "apm.yml"
 
@@ -1022,8 +1028,6 @@ def run_baseline_checks(
     # If lockfile doesn't exist or isn't needed, remaining checks can't run
     if not result.checks[0].passed:
         return result
-
-    lockfile_path = get_lockfile_path(project_root)
 
     # If there's no apm.yml or no lockfile, the first check already passed
     # (no deps needed).  Skip remaining checks -- but warn if APM artifacts
@@ -1052,7 +1056,6 @@ def run_baseline_checks(
         )
         return result
 
-    lock = LockFile.read(lockfile_path)
     if lock is None or manifest is None:
         return result
 
