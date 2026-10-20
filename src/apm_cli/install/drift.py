@@ -526,6 +526,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
+    codex_records = None
 
     live_targets = resolve_audit_targets(
         project_root,
@@ -667,6 +668,18 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             live_modules_dir,
                             scratch_root,
                         )
+                        if identity := result.get("codex_source_identity"):
+                            from apm_cli.codex_plugins.registrar import verify_codex_source_identity
+
+                            candidate = lock_dep.to_dependency_ref().get_install_path(
+                                live_modules_dir
+                            )
+                            codex_records = verify_codex_source_identity(
+                                live_modules_dir,
+                                candidate=candidate if candidate.exists() else install_path,
+                                records=codex_records,
+                                **identity,
+                            )
                     replayed_count += 1
     finally:
         if snapshot_started:

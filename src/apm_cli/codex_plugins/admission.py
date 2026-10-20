@@ -31,7 +31,16 @@ class CodexNativePlugin:
     source_root: Path
     source_hash: str
     mcp_server_names: tuple[str, ...] = ()
+    source_commit: str | None = None
     target_name: ClassVar[str] = "codex"
+
+    def source_identity(self) -> dict[str, str | None]:
+        """Carry the admitted source identity into registration and read-only replay."""
+        return {
+            "dependency_key": self.dependency_key,
+            "source_hash": self.source_hash,
+            "source_commit": self.source_commit,
+        }
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,7 @@ def finalize_codex_native(
             plugin.source_hash,
         )
     result["native_plugin"] = True
+    result["codex_source_identity"] = plugin.source_identity()
     return result
 
 
@@ -111,10 +121,18 @@ def plan_native_codex_plugin(
             f"Review and approve '{dependency_key}' before retrying; "
             "APM will not drop native resources to bypass approval."
         )
+    reference = getattr(package_info, "dependency_ref", None)
+    resolved = getattr(package_info, "resolved_reference", None)
+    source_commit = (
+        None
+        if reference is not None and reference.is_local
+        else getattr(resolved, "resolved_commit", None)
+    )
     return CodexNativePlugin(
         dependency_key,
         manifest.name,
         root,
         compute_native_bundle_hash(root),
         manifest.mcp_server_names,
+        source_commit,
     )

@@ -77,6 +77,14 @@ alongside unrelated loose MCP declarations. A missing or `0.0.0` native
 version does not authorize rewriting publisher `apm.yml` metadata.
 Running `apm audit --ci` from the APM user directory checks the cached source
 bundle without starting Codex. Native-copy verification happens during install.
+The journal binds each remote bundle's native fingerprint to its original Git
+commit. Changed cache bytes or executable bits at the same commit are refused,
+not adopted as an update. Remove only that dependency's disposable
+`apm_modules/` directory and rerun `apm install -g --frozen --target codex`.
+Local source edits and newly selected Git commits remain valid updates.
+A legacy remote record without source-pin provenance must be removed with
+`apm uninstall -g <dependency>` and then reinstalled from its pinned declaration;
+APM does not infer missing provenance from the current cache.
 
 Native registration runs after APM persistence. A late failure can leave the
 acquired package, lockfile, or some native changes in place: pending ownership

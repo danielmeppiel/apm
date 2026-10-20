@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import shutil
+import stat
 import sys
 import uuid
 from dataclasses import asdict
@@ -13,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import tomlkit
+import yaml
 
 from apm_cli.codex_plugins.registrar import marketplace_name
 from apm_cli.models.apm_package import DependencyReference
@@ -183,15 +185,28 @@ def _audit_cache(
 
     clean = audit("codex-native-cache-audit-clean")
     assert clean.returncode == 0, clean.stdout + clean.stderr
-    cached = materialized / "sibling.txt"
-    original = cached.read_bytes()
-    try:
-        cached.write_bytes(original + b"\nChanged only in the APM cache.\n")
-        changed = audit("codex-native-cache-audit-tampered")
-        assert changed.returncode != 0, changed.stdout + changed.stderr
-        assert "cache differs from its replay baseline" in " ".join(changed.stdout.split())
-    finally:
-        cached.write_bytes(original)
+    for relative in ("sibling.txt", "resources/__pycache__/asset.bin"):
+        cached = materialized / relative
+        original = cached.read_bytes()
+        try:
+            cached.write_bytes(original + b"\nChanged only in the APM cache.\n")
+            changed = audit(f"codex-native-cache-audit-tampered-{cached.name}")
+            assert changed.returncode != 0, changed.stdout + changed.stderr
+            assert "cache differs" in " ".join((changed.stdout + changed.stderr).split())
+            assert "Traceback" not in changed.stderr
+        finally:
+            cached.write_bytes(original)
+    if os.name != "nt":
+        cached = materialized / "resources/__pycache__/asset.bin"
+        original_mode = cached.stat().st_mode
+        try:
+            cached.chmod(original_mode ^ stat.S_IXUSR)
+            changed = audit("codex-native-cache-audit-mode")
+            assert changed.returncode != 0, changed.stdout + changed.stderr
+            assert "cache differs" in " ".join((changed.stdout + changed.stderr).split())
+            assert "Traceback" not in changed.stderr
+        finally:
+            cached.chmod(original_mode)
 
 
 @pytest.mark.parametrize("mcp_shape", ["file", "inline"])
@@ -513,6 +528,7 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
     ledger = apm_home / ".codex-native/ownership.json"
     ownership_before = ledger.read_bytes()
     record = next(iter(json.loads(ownership_before)["plugins"].values()))
+    assert record["source_commit"] == commit.sha
     assert compute_package_hash(Path(record["installed_root"])) == compute_package_hash(source)
     materialized = reference.get_install_path(apm_home / "apm_modules")
     assert (materialized / "apm.yml").read_text() == publisher_metadata
@@ -523,6 +539,53 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
         is False
     )
     _audit_cache(runner, tmp_path, env, materialized)
+    config_path = Path(env["CODEX_HOME"]) / "config.toml"
+    config_before = config_path.read_bytes()
+    asset = materialized / "resources/__pycache__/asset.bin"
+    asset_before = asset.read_bytes()
+    mode_before = asset.stat().st_mode
+    for fault in ("bytes", "mode"):
+        if fault == "mode" and os.name == "nt":
+            continue
+        if fault == "bytes":
+            asset.write_bytes(b"changed at the same original Git pin")
+        else:
+            asset.chmod(mode_before ^ stat.S_IXUSR)
+        try:
+            refused = _apm(
+                runner,
+                ("install", "-g", "--frozen", "--target", "codex", "--no-policy"),
+                tmp_path,
+                env,
+                f"codex-native-same-pin-{fault}",
+            )
+            assert refused.returncode != 0, refused.stdout + refused.stderr
+            assert "cache differs" in " ".join((refused.stdout + refused.stderr).split())
+            assert ledger.read_bytes() == ownership_before
+            assert config_path.read_bytes() == config_before
+            assert lock_path.read_bytes() == lock_before
+        finally:
+            asset.write_bytes(asset_before)
+            asset.chmod(mode_before)
+    legacy = json.loads(ownership_before)
+    for entry in legacy["plugins"].values():
+        del entry["source_commit"]
+    ledger.write_text(json.dumps(legacy), encoding="utf-8")
+    legacy_before = ledger.read_bytes()
+    try:
+        refused = _apm(
+            runner,
+            ("install", "-g", "--frozen", "--target", "codex", "--no-policy"),
+            tmp_path,
+            env,
+            "codex-native-missing-source-provenance",
+        )
+        assert refused.returncode != 0, refused.stdout + refused.stderr
+        assert "source provenance is missing" in " ".join((refused.stdout + refused.stderr).split())
+        assert ledger.read_bytes() == legacy_before
+        assert config_path.read_bytes() == config_before
+    finally:
+        ledger.write_bytes(ownership_before)
     safe_rmtree(materialized, apm_home / "apm_modules")
     result = _apm(
         runner,
@@ -535,6 +598,29 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
     assert lock_path.read_bytes() == lock_before
     assert ledger.read_bytes() == ownership_before
     assert compute_package_hash(materialized) == compute_package_hash(source)
+    (repository.worktree / "resources/__pycache__/asset.bin").write_bytes(b"new pinned release")
+    updated_commit = factory.commit(repository, message="Update opaque publisher resource")
+    updated_declaration = f"{remote}#{updated_commit.sha}"
+    document = yaml.safe_load((apm_home / "apm.yml").read_text())
+    document["dependencies"]["apm"] = [updated_declaration]
+    document["allowExecutables"] = {
+        str(DependencyReference.parse(updated_declaration)): {"mcp": True},
+        "loose": {"mcp": True},
+    }
+    dump_yaml(document, apm_home / "apm.yml")
+    updated = _apm(
+        runner,
+        ("install", "-g", "--target", "codex", "--no-policy"),
+        tmp_path,
+        env,
+        "codex-native-new-source-pin",
+    )
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    updated_record = next(iter(json.loads(ledger.read_bytes())["plugins"].values()))
+    assert updated_record["source_commit"] == updated_commit.sha
+    assert compute_native_bundle_hash(
+        Path(updated_record["installed_root"])
+    ) == compute_native_bundle_hash(repository.worktree)
 
 
 def test_migration_preserves_edited_loose_skill_without_native_registration(

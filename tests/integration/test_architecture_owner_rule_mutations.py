@@ -93,6 +93,31 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
             "ownership_cache=native_ownership_cache",
             "ownership_cache=None",
         ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "verify_codex_source_identity(modules_dir, records=records, **item.plugin.source_identity())",
+            "None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "record.source_commit == source_commit",
+            "False",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "codex_records = verify_codex_source_identity(",
+            "codex_records = noncanonical_source_check(",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "records=codex_records",
+            "records=None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/admission.py",
+            'result["codex_source_identity"] = plugin.source_identity()',
+            "pass",
+        ),
     ],
 )
 def test_codex_native_content_and_ownership_gates_cannot_be_bypassed(

@@ -2,19 +2,23 @@
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
+from apm_cli.codex_plugins import registrar
 from apm_cli.codex_plugins.admission import CodexNativeDeployment, CodexNativePlugin
 from apm_cli.codex_plugins.client import CodexNativeClient, CodexNativeError, NativeUserConfig
 from apm_cli.codex_plugins.registrar import (
     _observed_root,
     _preflight,
     _Record,
+    _write_records,
     marketplace_name,
     synchronize_codex_plugins,
+    verify_codex_source_identity,
 )
 from apm_cli.codex_plugins.snapshot import NativeSnapshot
 from apm_cli.core.scope import InstallScope
@@ -157,9 +161,13 @@ def test_observed_root_refuses_invalid_native_evidence(
         _observed_root(detail, deployment, record, "apm-owned")
 
 
-def test_pending_refresh_retries_without_replacing_native_disable(tmp_path, monkeypatch):
+@pytest.mark.parametrize("source_commit", [None, "a" * 40])
+def test_pending_refresh_retries_without_replacing_native_disable(
+    tmp_path, monkeypatch, source_commit
+):
     """A native failure after CAS leaves retryable ownership, not a fresh/adopted entry."""
     deployment = _deployment(tmp_path)
+    deployment = replace(deployment, plugin=replace(deployment.plugin, source_commit=source_commit))
     modules = tmp_path / "apm_modules"
     marketplace = marketplace_name(modules, deployment.plugin.dependency_key)
     ledger = tmp_path / ".codex-native/ownership.json"
@@ -218,9 +226,107 @@ def test_pending_refresh_retries_without_replacing_native_disable(tmp_path, monk
     settled = json.loads(ledger.read_text())["plugins"][deployment.plugin.dependency_key]
     assert settled["pending"] is False
     assert settled["snapshot"] == snapshot
+    assert settled["source_commit"] == source_commit
     assert values["plugins"]["foreign@external"] == {"enabled": False}
     assert values["plugins"][f"example@{marketplace}"] == {"enabled": False}
     client.write_config.assert_called_once()
     stable = ledger.read_bytes()
     assert synchronize_codex_plugins([deployment], **options) == ()
     assert ledger.read_bytes() == stable
+    if source_commit is not None:
+        deployment = replace(deployment, plugin=replace(deployment.plugin, source_commit="b" * 40))
+        assert synchronize_codex_plugins([deployment], **options) == ()
+        assert (
+            json.loads(ledger.read_bytes())["plugins"][deployment.plugin.dependency_key][
+                "source_commit"
+            ]
+            == "b" * 40
+        )
+        client.write_config.assert_called_once()
+
+
+@pytest.mark.parametrize("fault", ["same-pin", "missing-provenance", "invalid-pin"])
+def test_source_identity_refusal_precedes_native_access(tmp_path, monkeypatch, fault):
+    """A disposable cache cannot become a new native baseline at the same immutable pin."""
+    deployment = _deployment(tmp_path)
+    modules = tmp_path / "apm_modules"
+    ledger = tmp_path / ".codex-native/ownership.json"
+    config = tmp_path / "config.toml"
+    config.write_text("user = 'retained'\n")
+    record = _Record(
+        deployment.plugin.name,
+        deployment.source_hash,
+        NativeSnapshot(ledger.parent / "snapshots/owned", "c" * 40, "d" * 40),
+        config,
+        source_commit=None if fault == "missing-provenance" else "a" * 40,
+    )
+    _write_records(ledger, {deployment.plugin.dependency_key: record})
+    before = ledger.read_bytes(), config.read_bytes()
+    (deployment.plugin.source_root / "skills/example/SKILL.md").write_text(
+        "changed publisher bytes"
+    )
+    changed_hash = compute_native_bundle_hash(deployment.plugin.source_root)
+    deployment = replace(
+        deployment,
+        source_hash=changed_hash,
+        plugin=replace(
+            deployment.plugin,
+            source_hash=changed_hash,
+            source_commit="invalid" if fault == "invalid-pin" else "a" * 40,
+        ),
+    )
+    factory = Mock(side_effect=AssertionError("native access must not happen"))
+    monkeypatch.setattr(CodexNativeClient, "for_scope", factory)
+    diagnostic = {
+        "same-pin": "cache differs",
+        "missing-provenance": "source provenance is missing",
+        "invalid-pin": "Invalid original Codex source pin",
+    }[fault]
+    with pytest.raises(CodexNativeError, match=diagnostic):
+        synchronize_codex_plugins(
+            [deployment],
+            modules_dir=modules,
+            cwd=tmp_path,
+            scope=InstallScope.USER,
+            retained_keys={deployment.plugin.dependency_key},
+        )
+    factory.assert_not_called()
+    assert (ledger.read_bytes(), config.read_bytes()) == before
+
+
+@pytest.mark.parametrize("pin", [True, 123, "latest"])
+def test_ownership_rejects_invalid_source_commit(tmp_path, pin):
+    record = _Record(
+        "example",
+        "sha256:" + "a" * 64,
+        NativeSnapshot(tmp_path / "snapshots/owned", "b" * 40, "c" * 40),
+        tmp_path / "config.toml",
+    ).data()
+    record["source_commit"] = pin
+    with pytest.raises(CodexNativeError, match="Invalid Codex ownership record"):
+        _Record.read(record, tmp_path)
+
+
+def test_source_identity_records_are_cached_only_for_one_operation(tmp_path, monkeypatch):
+    deployment = _deployment(tmp_path)
+    modules = tmp_path / "apm_modules"
+    reader = Mock(wraps=registrar._read_records)
+    monkeypatch.setattr(registrar, "_read_records", reader)
+    identity = deployment.plugin.source_identity()
+    records = verify_codex_source_identity(modules, **identity)
+    assert verify_codex_source_identity(modules, records=records, **identity) == {}
+    assert reader.call_count == 1
+    ledger = tmp_path / ".codex-native/ownership.json"
+    _write_records(
+        ledger,
+        {
+            deployment.plugin.dependency_key: _Record(
+                deployment.plugin.name,
+                deployment.source_hash,
+                NativeSnapshot(ledger.parent / "snapshots/owned", "a" * 40, "b" * 40),
+                tmp_path / "config.toml",
+            )
+        },
+    )
+    assert deployment.plugin.dependency_key in verify_codex_source_identity(modules, **identity)
+    assert reader.call_count == 2

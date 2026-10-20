@@ -118,8 +118,8 @@
     },
     {
       "id": "codex-native-plugin-lifecycle",
-      "decision": "Qualified Codex compatibility-bundle admission, public native lifecycle, and APM transport ownership",
-      "owner": "codex_plugins/registrar.py (synchronize_codex_plugins), admission.py, client.py; utils/content_hash.py owns the opt-in native fingerprint",
+      "decision": "Qualified Codex compatibility-bundle admission, public native lifecycle, APM transport ownership and immutable source-pin integrity",
+      "owner": "codex_plugins/registrar.py (synchronize_codex_plugins, verify_codex_source_identity), admission.py, client.py; utils/content_hash.py owns the opt-in native fingerprint",
       "selectors": [
         "src/apm_cli/codex_plugins/admission.py",
         "src/apm_cli/codex_plugins/client.py",

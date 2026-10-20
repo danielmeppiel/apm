@@ -84,6 +84,7 @@ class _Record:
     marketplace_path: Path | None = None
     installed_root: Path | None = None
     pending: bool = True
+    source_commit: str | None = None
 
     def data(self) -> dict[str, Any]:
         return {
@@ -95,6 +96,7 @@ class _Record:
             "marketplace_path": str(self.marketplace_path) if self.marketplace_path else None,
             "installed_root": str(self.installed_root) if self.installed_root else None,
             "pending": self.pending,
+            "source_commit": self.source_commit,
         }
 
     @classmethod
@@ -107,6 +109,13 @@ class _Record:
             or re.fullmatch(r"sha256:[0-9a-f]{64}", data["source_hash"]) is None
             or not isinstance(data.get("config_path"), str)
             or not isinstance(data.get("pending"), bool)
+            or (
+                data.get("source_commit") is not None
+                and (
+                    not isinstance(data["source_commit"], str)
+                    or re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", data["source_commit"]) is None
+                )
+            )
             or any(
                 data.get(key) is not None and not isinstance(data[key], str)
                 for key in ("marketplace_path", "installed_root")
@@ -124,6 +133,7 @@ class _Record:
             Path(data["marketplace_path"]) if data.get("marketplace_path") else None,
             Path(data["installed_root"]) if data.get("installed_root") else None,
             data["pending"],
+            data.get("source_commit"),
         )
 
 
@@ -154,6 +164,48 @@ def owns_codex_dependency(
         if ownership_cache is not None:
             ownership_cache[modules_dir] = keys
     return dependency_key in keys
+
+
+def verify_codex_source_identity(
+    modules_dir: Path,
+    *,
+    dependency_key: str,
+    source_hash: str,
+    source_commit: str | None,
+    candidate: Path | None = None,
+    records: dict[str, _Record] | None = None,
+) -> dict[str, _Record]:
+    """Reject cache drift without rebasing an immutable pin onto changed publisher bytes."""
+    if records is None:
+        records = _read_records(ledger_path_for(modules_dir))
+    record = records.get(dependency_key)
+    if source_commit is not None:
+        if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", source_commit) is None:
+            raise CodexNativeError(
+                f"Invalid original Codex source pin for {dependency_key}; "
+                "restore the pinned dependency before retrying."
+            )
+        if record is not None and record.source_commit is None:
+            raise CodexNativeError(
+                f"Codex native source provenance is missing for {dependency_key}. "
+                f"Use 'apm uninstall -g {dependency_key}', then reinstall its pinned declaration; "
+                "native state was retained."
+            )
+    if (
+        candidate is not None
+        and (not candidate.is_dir() or compute_native_bundle_hash(candidate) != source_hash)
+    ) or (
+        source_commit is not None
+        and record is not None
+        and record.source_commit == source_commit
+        and record.source_hash != source_hash
+    ):
+        raise CodexNativeError(
+            f"Codex native cache differs from its admitted source for {dependency_key}. "
+            "Remove only this dependency's disposable apm_modules directory and run "
+            "'apm install -g --frozen --target codex'; native state was retained."
+        )
+    return records
 
 
 def _write_records(path: Path, records: dict[str, _Record]) -> None:
@@ -366,14 +418,15 @@ def synchronize_codex_plugins(
     records = _read_records(ledger)
     if not deployments and set(records).issubset(retained_keys):
         return ()
-    client = CodexNativeClient.for_scope(scope, cwd)
     desired = {item.plugin.dependency_key: item for item in deployments}
     for key, item in desired.items():
+        verify_codex_source_identity(modules_dir, records=records, **item.plugin.source_identity())
         if key in records and records[key].name != item.plugin.name:
             raise CodexNativeError(
                 "Codex native plugin name changed. Uninstall the prior dependency before "
                 "installing its renamed version; its registration was retained."
             )
+    client = CodexNativeClient.for_scope(scope, cwd)
     changed: list[str] = []
     with client.connect() as rpc:
         config = client.read_config(rpc)
@@ -426,6 +479,9 @@ def synchronize_codex_plugins(
             if healthy:
                 detail = client.read_plugin(rpc, record.marketplace_path, record.name)
                 _observed_root(detail, item, record, name)
+                if record.source_commit != item.plugin.source_commit:
+                    records[key] = replace(record, source_commit=item.plugin.source_commit)
+                    _write_records(ledger, records)
                 continue
             if (
                 record is None
@@ -448,6 +504,7 @@ def synchronize_codex_plugins(
                     item.source_hash,
                     snapshot,
                     config.path,
+                    source_commit=item.plugin.source_commit,
                     previous=(
                         record.previous
                         if record

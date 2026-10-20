@@ -471,6 +471,7 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
         ("plan_native_codex_plugin", _CODEX_PREFIX + "admission.py"),
         ("compute_native_bundle_hash", "src/apm_cli/utils/content_hash.py"),
         ("owns_codex_dependency", _CODEX_PREFIX + "registrar.py"),
+        ("verify_codex_source_identity", _CODEX_PREFIX + "registrar.py"),
     ):
         count = _count_across(
             provider,
@@ -495,6 +496,7 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "plugin.source_hash",
             "compute_native_bundle_hash(root)",
             "manifest.mcp_server_names",
+            'result["codex_source_identity"] = plugin.source_identity()',
         ),
         _CODEX_PREFIX + "registrar.py": (
             "_preflight(",
@@ -503,6 +505,9 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             'actual_plugin != {"enabled": False}',
             "prepare_snapshot(",
             "compute_native_bundle_hash(",
+            "verify_codex_source_identity(modules_dir, records=records, **item.plugin.source_identity())",
+            "record.source_commit == source_commit",
+            "source_commit=item.plugin.source_commit",
         ),
         _CODEX_PREFIX + "snapshot.py": (
             "plan.paths",
@@ -544,6 +549,8 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "is_codex_compatibility_manifest(install_path, selected_manifest)",
             "if native_detection is not None or codex_native:",
             "agent_plugin_detection=native_detection,\n            read_only=True",
+            "codex_records = verify_codex_source_identity(",
+            "records=codex_records",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
     }
