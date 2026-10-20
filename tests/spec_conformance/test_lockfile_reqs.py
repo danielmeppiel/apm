@@ -96,7 +96,7 @@ def test_full_sha_pin_audit_rejects_resolved_commit_mismatch():
             )
         }
     )
-    manifest = SimpleNamespace(get_all_apm_dependencies=lambda: [dependency])
+    manifest = SimpleNamespace(get_all_apm_dependencies=lambda: [dependency], replace_rules=None)
 
     result = _check_ref_consistency(manifest, lock)
 
