@@ -223,6 +223,78 @@ def test_frozen_mcp_validation_fails_before_durable_mutation(tmp_path):
 
 
 @pytest.mark.req("req-lk-006")
+@pytest.mark.parametrize("development", [False, True])
+def test_cold_dependency_evidence_cannot_defer_direct_mcp_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, development: bool
+) -> None:
+    """Pending dependency evidence never excuses changed root MCP declarations."""
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
+    from apm_cli.install.errors import FrozenInstallError
+    from apm_cli.install.request import InstallRequest
+    from apm_cli.install.service import InstallService
+    from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
+    from apm_cli.models.apm_package import APMPackage
+    from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
+    from tests.utils.local_package import LocalPackageFactory
+
+    root_config = {
+        "name": "root-server",
+        "registry": False,
+        "transport": "stdio",
+        "command": "printf",
+        "args": ["current"],
+    }
+    fixture = LocalPackageFactory(tmp_path / "sources").create(
+        "consumer",
+        dependencies=("owner/plugin",),
+        mcp_dependencies=() if development else (root_config,),
+        dev_mcp_dependencies=(root_config,) if development else (),
+        targets=("cursor",),
+    )
+    monkeypatch.chdir(fixture.root)
+    package = APMPackage.from_apm_yml(fixture.manifest_path)
+    lock = LockFile()
+    lock.add_dependency(
+        LockedDependency(
+            repo_url="owner/plugin",
+            name="plugin",
+            package_type="apm_package",
+            resolved_ref="main",
+            resolved_commit="a" * 40,
+            depth=1,
+        )
+    )
+    view = CurrentMcpConfigView.derive(
+        package,
+        lock,
+        fixture.root / "apm_modules",
+        trust_transitive_self_defined=False,
+        allow_pending=True,
+    )
+    lock.mcp_configs = {
+        "root-server": {**view.configs["root-server"], "args": ["previous"]},
+        "plugin-server": {**root_config, "name": "plugin-server"},
+    }
+    lock.mcp_servers = sorted(lock.mcp_configs)
+    lock.mcp_config_provenance = {"root-server": "user", "plugin-server": "plugin"}
+    lock.write(fixture.root / "apm.lock.yaml")
+    config = fixture.root / ".cursor/mcp.json"
+    config.parent.mkdir()
+    config.write_text('{"mcpServers":{"sentinel":{}}}\n', encoding="ascii")
+    before = ArtifactSnapshot.capture(tmp_path)
+
+    assert view.pending_packages == frozenset({"owner/plugin"})
+    assert view.pending_servers(lock) == frozenset({"plugin-server"})
+    with pytest.raises(FrozenInstallError, match="out of sync") as failure:
+        InstallService.enforce_frozen(InstallRequest(apm_package=package, frozen=True))
+
+    assert failure.value.reasons == [
+        "  - MCP server 'root-server' config differs from apm.lock.yaml"
+    ]
+    assert_unchanged(before, ArtifactSnapshot.capture(tmp_path))
+
+
+@pytest.mark.req("req-lk-006")
 @pytest.mark.parametrize("scope_name", ["project", "user"])
 @pytest.mark.parametrize("selected_state", ["absent", "missing-pin"])
 def test_frozen_selected_store_rejects_source_decoy_without_writes(
