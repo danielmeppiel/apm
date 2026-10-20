@@ -27,6 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apm_cli import config
 from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.copilot_plugins.capability import (
     native_registration_scope,
@@ -73,6 +74,9 @@ def test_transitive_native_preview_preflight_preserves_state(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("APM_HOME", str(home / ".apm"))
+    monkeypatch.setattr(config, "CONFIG_DIR", str(home / ".apm"))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(home / ".apm" / "config.json"))
+    monkeypatch.setattr(config, "_config_cache", None)
     factory = LocalPackageFactory(tmp_path / "sources")
     write_agent_plugin(tmp_path / "sources" / "native", name="native", with_mcp=False)
     factory.create("parent", dependencies=("../native",))
