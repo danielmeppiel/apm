@@ -88,6 +88,9 @@ The dependency graph pass is read-only and offline: unavailable metadata or
 required fetches/lookups make the preview incomplete and suppress orphan-removal
 predictions. Stale-file integration cleanup is not previewed; positional
 validation may still access the network.
+`--refresh`/`--update` preserve their remote-resolution intent, and `--frozen`
+checks locally discoverable transitive pins. An incomplete summary reports only
+the locally known count, not a complete install plan.
 
 Project-scope positional dry-runs retain any bootstrapped manifest for inspection.
 Global dry-run bootstrap leaves an absent `~/.apm` uncreated.

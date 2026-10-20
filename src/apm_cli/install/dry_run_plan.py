@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from apm_cli.deps.apm_resolver import APMDependencyResolver
 from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+from apm_cli.deps.tiered_ref_resolver import RefFreshnessPolicy
 from apm_cli.install.package_selection import (
     selected_dependency_identity,
     selected_subtree_dependencies,
@@ -110,7 +111,10 @@ class ProspectiveInstallPlan:
             project_root=source_root if source_root != ctx.project_root else ctx.apm_dir,
             apm_modules_dir=get_modules_dir(ctx.scope),
             lockfile_dir=ctx.apm_dir,
-            update=ctx.update,
+            update=RefFreshnessPolicy.for_install_intent(
+                update_refs=ctx.update, refresh=ctx.refresh
+            ).requires_remote,
+            frozen=ctx.frozen,
         )
 
     def with_resolved_dependencies(
@@ -121,6 +125,7 @@ class ProspectiveInstallPlan:
         apm_modules_dir: Path,
         lockfile_dir: Path,
         update: bool,
+        frozen: bool = False,
     ) -> ProspectiveInstallPlan:
         """Reuse installation's graph owner without downloading or changing files."""
         if not self.should_install_apm:
@@ -133,6 +138,7 @@ class ProspectiveInstallPlan:
             apm_modules_dir=apm_modules_dir,
             existing_lockfile=lockfile,
             update_refs=update,
+            frozen=frozen,
             read_only=True,
         )
         graph = resolver.resolve_dependencies(project_root, root_package=apm_package)

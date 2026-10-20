@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -11,6 +12,7 @@ import pytest
 from apm_cli.deps.apm_resolver import APMDependencyResolver
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.install.dry_run_plan import ProspectiveInstallPlan
+from apm_cli.install.package_selection import selected_subtree_dependencies
 from apm_cli.install.phases.resolve import _apply_only_filter
 from apm_cli.models.apm_package import APMPackage
 from apm_cli.models.dependency import DependencyReference
@@ -64,6 +66,45 @@ def test_local_descendants_share_resolver_identity_without_materialization(
     )
     materialize.assert_not_called()
     assert ArtifactSnapshot.capture(tmp_path) == before
+
+
+def test_selected_subtree_expands_each_graph_node_once() -> None:
+    """Count actual graph expansion rather than comparing noisy elapsed times."""
+    expansions: list[int] = []
+
+    class ObservedChildren(list):
+        def __iter__(self) -> Iterator:
+            expansions.append(id(self))
+            return super().__iter__()
+
+    refs = [DependencyReference.parse(f"owner/package-{index}") for index in range(25)]
+    nodes = [
+        SimpleNamespace(dependency_ref=ref, children=ObservedChildren()) for ref in refs
+    ]
+    for parent, child in zip(nodes, nodes[1:], strict=False):
+        parent.children.append(child)
+    tree = SimpleNamespace(nodes=dict(enumerate(nodes)))
+    result = selected_subtree_dependencies(["owner/package-0"], tree, refs)
+    assert result == refs
+    assert len(expansions) == len(nodes)
+
+
+def test_selected_subtree_keeps_distinct_nodes_with_the_same_identity() -> None:
+    """Shared traversal state must not discard children of another ref claimant."""
+    first = DependencyReference.parse("owner/shared#v1")
+    second = DependencyReference.parse("owner/shared#v2")
+    leaf = DependencyReference.parse("owner/leaf")
+    root = DependencyReference.parse("owner/root")
+    leaf_node = SimpleNamespace(dependency_ref=leaf, children=[])
+    first_node = SimpleNamespace(dependency_ref=first, children=[])
+    second_node = SimpleNamespace(dependency_ref=second, children=[leaf_node])
+    root_node = SimpleNamespace(dependency_ref=root, children=[first_node, second_node])
+    tree = SimpleNamespace(nodes=dict(enumerate([root_node, first_node, second_node, leaf_node])))
+    assert selected_subtree_dependencies(["owner/root"], tree, [root, first, leaf]) == [
+        root,
+        first,
+        leaf,
+    ]
 
 
 @pytest.mark.parametrize(

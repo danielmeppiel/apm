@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from apm_cli.deps.lockfile import LockFile
+from apm_cli.deps.lockfile import LockedDependency, LockFile
+from tests.unit.copilot_plugins._builders import write_agent_plugin
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
 from tests.utils.artifact_snapshot import ArtifactSnapshot, ArtifactSnapshotSet
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
@@ -94,3 +95,84 @@ def test_transitive_preview_matches_install_without_mutation(
     else:
         assert not child_file.exists()
         assert not lock.dependencies
+
+
+@pytest.mark.parametrize("intent", ["unchanged", "refresh", "frozen"])
+def test_cached_remote_preview_preserves_resolution_intent(
+    tmp_path: Path, apm_binary_path: Path, intent: str
+) -> None:
+    """Refresh and frozen mismatches cannot claim a complete cached preview."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "isolated", base_env=dict(os.environ))
+    consumer = LocalPackageFactory(isolated.work_root).create(
+        "consumer", dependencies=("owner/parent#v1",), targets=("copilot",)
+    )
+    installed = LocalPackageFactory(consumer.root / "apm_modules" / "owner")
+    requested_commit = "b" * 40
+    installed.create("parent", dependencies=(f"owner/child#{requested_commit}",))
+    installed.create("child")
+    lock = LockFile()
+    lock.add_dependency(
+        LockedDependency(repo_url="owner/parent", resolved_ref="v1", resolved_commit="a" * 40)
+    )
+    lock.add_dependency(
+        LockedDependency(
+            repo_url="owner/child",
+            resolved_ref=requested_commit,
+            resolved_commit="c" * 40 if intent == "frozen" else requested_commit,
+        )
+    )
+    lock.write(consumer.root / "apm.lock.yaml")
+    roots = {"project": isolated.work_root, "configuration": isolated.config_root}
+    before = ArtifactSnapshotSet.capture(roots)
+    flags = () if intent == "unchanged" else (f"--{intent}",)
+    result = ApmLifecycleRunner((str(apm_binary_path),)).run(
+        ("install", "--dry-run", "--target", "copilot", "--no-policy", "--verbose", *flags),
+        cwd=consumer.root,
+        env=isolated.subprocess_env(),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert ArtifactSnapshotSet.capture(roots) == before
+    if intent == "unchanged":
+        assert "APM dependencies (2)" in result.stdout
+        assert "Dependency preview incomplete" not in result.stdout
+    else:
+        assert "Dependency preview incomplete" in result.stdout
+        assert "Files that would be removed" not in result.stdout
+        assert "Dry run completed:" not in result.stdout
+        assert "locally known APM" in result.stdout
+        if intent == "frozen":
+            assert "incompatible immutable requirements" in result.stdout
+
+
+@pytest.mark.parametrize("remote_child", [False, True])
+def test_cold_transitive_native_preview_does_not_create_configuration(
+    tmp_path: Path, apm_binary_path: Path, remote_child: bool
+) -> None:
+    """Both preflight validation routes keep absent user configuration absent."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "isolated", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    child_ref = "owner/native" if remote_child else "../native"
+    factory.create("parent", dependencies=(child_ref,))
+    consumer = factory.create("consumer", dependencies=("../parent",), targets=("copilot",))
+    native = (
+        consumer.root / "apm_modules" / "owner" / "native"
+        if remote_child
+        else isolated.work_root / "native"
+    )
+    write_agent_plugin(native, name="native", with_mcp=False)
+    if remote_child:
+        lock = LockFile()
+        lock.add_dependency(LockedDependency(repo_url="owner/native", resolved_commit="a" * 40))
+        lock.write(consumer.root / "apm.lock.yaml")
+    roots = {"project-and-sources": isolated.work_root, "configuration": isolated.config_root}
+    before = ArtifactSnapshotSet.capture(roots)
+    result = ApmLifecycleRunner((str(apm_binary_path),)).run(
+        ("install", "--dry-run", "--target", "copilot", "--no-policy"),
+        cwd=consumer.root,
+        env=isolated.subprocess_env(),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "APM dependencies (2)" in result.stdout
+    assert "Dependency preview incomplete" not in result.stdout
+    assert ArtifactSnapshotSet.capture(roots) == before
+    assert not (isolated.config_root / "config.json").exists()

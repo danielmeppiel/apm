@@ -893,10 +893,11 @@ class InstallLogger(CommandLogger):
 
         if disposition is InstallDisposition.DRY_RUN:
             if self._dry_run_incomplete:
-                _rich_info(
-                    "Dry run incomplete: dependency resolution is required; "
-                    "no deployment changes were made.",
-                    symbol="info",
+                noun = "dependency" if apm_count == 1 else "dependencies"
+                _rich_warning(
+                    f"Dry run incomplete: {apm_count} locally known APM {noun}. "
+                    "Run 'apm install' without --dry-run to resolve the full plan.",
+                    symbol="warning",
                 )
                 return
             dry_parts = []

@@ -31,7 +31,7 @@ With no arguments it installs everything from `apm.yml`. With one or more `PACKA
 |---|---|---|
 | `--update` | off | Re-resolve dependencies to the latest version or Git ref allowed by `apm.yml` and rewrite `apm.lock.yaml`. Mutable Git refs must resolve against upstream; APM does not fall back to stale refs from the local bare Git cache. Mutually exclusive with `--frozen`. For interactive use with a confirmation prompt, use [`apm update`](../update/) instead. |
 | `--frozen` | off | Never write `apm.lock.yaml`. Require it and reject manifest-declared ref/pin or MCP state drift before the install pipeline. This is a structural check, not a network freshness check. Verify transitive immutable requirements as locked package manifests become available, before deployment and lockfile commit. A cold cache may need locked-parent downloads for that check. Also fails -- after deployment -- if the install deploys files the lockfile does not record. Mutually exclusive with `--update`, positional package additions, and `--mcp`. |
-| `--dry-run` | off | Preview without deployment writes; see [offline dependency limits](#preview-without-writing). Positional packages and ref changes are validated and previewed without changing an existing `apm.yml`. Project bootstrap keeps its manifest and explicit targets; global bootstrap uses temporary state without creating `~/.apm`. `-g --mcp` writes no user manifest, lockfile, or runtime configuration. |
+| `--dry-run` | off | [Preview without writing](#preview-without-writing), subject to offline dependency limits. Positional packages and ref changes are validated and previewed without changing an existing `apm.yml`. Project bootstrap keeps its manifest and explicit targets; global bootstrap uses temporary state without creating `~/.apm`. `-g --mcp` writes no user manifest, lockfile, or runtime configuration. |
 | `--force` | off | Overwrite locally-authored files on collision **and** bypass the security scan's critical-finding block. Does **not** suppress general install errors (any reported error still exits `1`, matching npm / pip / cargo) or select ref freshness. Add `--update` or `--refresh` to resolve mutable refs upstream; [`apm update`](../update/) does so with or without `--force`. Use only after independent verification. |
 | `--verbose`, `-v` | off | Show per-file paths and full error context in the diagnostic summary. |
 | `--dev` | off | Add new packages to `devDependencies`. Dev deps install locally but are excluded from `apm pack` output. |
@@ -260,8 +260,10 @@ apm install -g microsoft/apm-sample-package --dry-run
 `--dry-run` reuses the install resolver read-only: local source metadata and
 unchanged installed remote metadata supply required indirect APM dependencies,
 which are included in preview counts. Missing or unreadable metadata, changed
-remote refs, updates requiring fetching, or unresolved marketplace lookups
+remote refs, `--update` or `--refresh` requiring fetching, failed `--frozen`
+transitive pin checks, or unresolved marketplace lookups
 mark the dependency preview incomplete and suppress orphan-removal predictions.
+The final summary reports the locally known count, not a complete install plan.
 This graph pass performs no fetching, materialization, or writes; positional
 validation may still access the network. Stale-file integration cleanup is not
 previewed.

@@ -43,15 +43,16 @@ def selected_subtree_dependencies(
         except (ValueError, TypeError):
             only_identities.add(package)
 
-    def collect_descendants(node: DependencyNode, visited: set[str] | None = None) -> None:
-        if visited is None:
-            visited = set()
+    expanded_nodes: set[int] = set()
+
+    def collect_descendants(node: DependencyNode) -> None:
+        if id(node) in expanded_nodes:
+            return
+        expanded_nodes.add(id(node))
         for child in node.children:
             identity = child.dependency_ref.get_identity()
-            if identity not in visited:
-                visited.add(identity)
-                only_identities.add(identity)
-                collect_descendants(child, visited)
+            only_identities.add(identity)
+            collect_descendants(child)
 
     for node in tree.nodes.values():
         if node.dependency_ref.get_identity() in only_identities:
