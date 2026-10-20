@@ -290,7 +290,10 @@ class InstallService:
         """
         from apm_cli.deps.lockfile import LockFile
         from apm_cli.install.errors import FrozenInstallError
-        from apm_cli.install.plan import lockfile_satisfies_manifest
+        from apm_cli.install.plan import (
+            lockfile_satisfies_manifest,
+            lockfile_satisfies_replacements,
+        )
 
         lockfile_path = _frozen_lockfile_path(request)
         missing_message = (
@@ -311,6 +314,15 @@ class InstallService:
 
         if lockfile is None:
             raise FrozenInstallError(missing_message)
+
+        replacements_satisfied, replacement_reasons = lockfile_satisfies_replacements(
+            lockfile, getattr(request.apm_package, "replace_rules", None)
+        )
+        if not replacements_satisfied:
+            raise FrozenInstallError(
+                "--frozen: replacement rules differ from apm.lock.yaml.",
+                reasons=replacement_reasons,
+            )
 
         manifest_deps = list(request.apm_package.get_apm_dependencies())
         manifest_deps.extend(request.apm_package.get_dev_apm_dependencies())

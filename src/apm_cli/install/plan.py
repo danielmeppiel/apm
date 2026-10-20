@@ -46,12 +46,38 @@ if TYPE_CHECKING:
 
     from apm_cli.deps.lockfile import LockedDependency, LockFile
     from apm_cli.models.dependency.reference import DependencyReference
+    from apm_cli.models.dependency.replacement import ReplacementRule
 
 
 _ACTION_UPDATE = "update"
 _ACTION_ADD = "add"
 _ACTION_REMOVE = "remove"
 _ACTION_UNCHANGED = "unchanged"
+
+
+def lockfile_satisfies_replacements(
+    lockfile: LockFile,
+    rules: list[ReplacementRule] | None,
+) -> tuple[bool, list[str]]:
+    """Compare the complete root replacement intent without accessing sources."""
+    from apm_cli.models.dependency.replacement import (
+        ReplacementConfigError,
+        build_replacement_index,
+        replacement_rules_from_dicts,
+    )
+
+    if rules is None and lockfile.replacements is None:
+        return True, []
+    if rules is None or lockfile.replacements is None:
+        return False, ["  - replacement declaration differs from apm.lock.yaml"]
+    try:
+        locked_rules = replacement_rules_from_dicts(lockfile.replacements)
+        build_replacement_index(locked_rules)
+    except ReplacementConfigError as exc:
+        return False, [f"  - locked replacement table is invalid: {exc}"]
+    if frozenset(rules) != frozenset(locked_rules):
+        return False, ["  - replacement rules differ from apm.lock.yaml"]
+    return True, []
 
 
 def _dep_ref_key(dep: DependencyReference) -> str:
