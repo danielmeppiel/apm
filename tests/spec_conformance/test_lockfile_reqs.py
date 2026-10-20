@@ -495,6 +495,42 @@ def test_lockfile_should_record_publish_timestamp():
     )
 
 
+@pytest.mark.req("req-lk-008")
+@pytest.mark.parametrize("replay", [False, True])
+def test_marketplace_semver_records_resolution_timestamp(replay: bool) -> None:
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
+    from apm_cli.install.phases.lockfile import LockfileBuilder
+    from apm_cli.marketplace.resolver import MarketplacePluginResolution
+
+    timestamp = "2026-10-20T19:26:55+00:00"
+    resolution = MarketplacePluginResolution(
+        canonical="owner/package#v1.2.3",
+        plugin=MagicMock(),
+        constraint="^1.0.0",
+        resolved_tag="v1.2.3",
+        resolved_version="1.2.3",
+        resolved_at=timestamp,
+    )
+    current = LockedDependency(
+        repo_url="owner/package", resolved_ref="v1.2.3", resolved_commit="a" * 40
+    )
+    previous = replace(current, constraint="^1.0.0", resolved_tag="v1.2.3", resolved_at=timestamp)
+    key = current.get_unique_key()
+    lock = LockFile(dependencies={key: current})
+    context = SimpleNamespace(
+        existing_lockfile=LockFile(dependencies={key: previous}) if replay else None,
+        marketplace_provenance=None if replay else {key: resolution.provenance("catalog", "tool")},
+    )
+    LockfileBuilder(context)._attach_marketplace_provenance(lock)
+    emitted = current.to_dict()
+    assert emitted["constraint"] == "^1.0.0"
+    assert emitted["resolved_tag"] == "v1.2.3"
+    assert emitted["resolved_at"] == timestamp
+
+
 @pytest.mark.req("req-lk-019")
 def test_lockfile_inventory_metadata_is_non_trust_anchor():
     # The optional `name`/`version` inventory fields MUST be permitted
@@ -530,6 +566,38 @@ def test_lockfile_inventory_metadata_is_non_trust_anchor():
         "registry-resolved `version` MAY remain the exact\nregistry selection",
         "MUST NOT change `lockfile_version`",
     )
+
+
+@pytest.mark.req("req-lk-019")
+@pytest.mark.parametrize(
+    ("selection", "inventory"),
+    [("^1.0.0", "1.2.3"), ("main", "main"), ("b" * 40, "b" * 40)],
+)
+def test_marketplace_inventory_cannot_substitute_for_locked_selection(
+    selection: str, inventory: str
+) -> None:
+    """Inventory metadata cannot make an unproved frozen selection valid."""
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
+    from apm_cli.install.plan import lockfile_satisfies_manifest
+    from apm_cli.models.dependency import DependencyReference
+
+    declared = DependencyReference.parse_from_dict(
+        {"name": "tool", "marketplace": "catalog", "version": selection}
+    )
+    locked = LockedDependency(
+        repo_url="owner/package",
+        discovered_via="catalog",
+        marketplace_plugin_name="tool",
+        resolved_commit="a" * 40,
+        resolved_ref="other",
+        name="tool",
+        version=inventory,
+    )
+    lock = LockFile(dependencies={locked.get_unique_key(): locked})
+    satisfied, reasons = lockfile_satisfies_manifest(lock, [declared])
+    assert satisfied is False
+    assert len(reasons) == 1
+    assert "tool@catalog" in reasons[0]
 
 
 @pytest.mark.req("req-lk-022")

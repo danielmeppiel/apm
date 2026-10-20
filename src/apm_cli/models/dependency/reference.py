@@ -2008,6 +2008,8 @@ class DependencyReference(ProviderCoordinateMixin):
 
     def get_display_name(self) -> str:
         """Get display name for this dependency (alias or repo name)."""
+        if self.is_marketplace:
+            return f"{self.marketplace_plugin_name}@{self.marketplace_name}"
         if self.alias:
             return self.alias
         if self.is_local and self.local_path:
