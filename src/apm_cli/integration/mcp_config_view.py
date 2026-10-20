@@ -12,7 +12,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
 from apm_cli.deps.path_anchoring import (
     LocalResolutionError,
     build_local_parent_index,
@@ -226,6 +225,8 @@ def _allows_missing_manifest(
     logger: _McpViewLogger | None = None,
 ) -> bool:
     """Return whether the package contract permits an absent apm.yml."""
+    from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
+
     if dependency.package_type == PackageType.SKILL_BUNDLE.value:
         return True
 

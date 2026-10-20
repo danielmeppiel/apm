@@ -153,3 +153,22 @@ def test_finalize_queues_immutable_deployment(tmp_path):
     assert dep.source_plan is plan
     assert dep.source_hash == plugin.source_hash
     assert dep.source_hash != compute_package_hash(tmp_path)
+
+
+def test_final_native_phase_refuses_unsaved_candidate_before_native_writes(tmp_path, monkeypatch):
+    """A scanned plan cannot register unless the saved lockfile still admits it."""
+    from apm_cli.install.phases import codex_plugins
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unretained candidate must not reach native synchronization")
+
+    monkeypatch.setattr(codex_plugins, "synchronize_codex_plugins", forbidden)
+    ctx = SimpleNamespace(
+        dry_run=False,
+        lockfile_only=False,
+        apm_modules_dir=tmp_path / "apm_modules",
+        apm_dir=tmp_path,
+        codex_native_plugins={"owner/example": object()},
+    )
+    with pytest.raises(CodexNativeError, match="saved executable/ownership state"):
+        codex_plugins.run(ctx)
