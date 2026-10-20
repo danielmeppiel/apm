@@ -69,6 +69,16 @@
       "guards": ["install-deployment-frozen-mutation-eligibility"]
     },
     {
+      "id": "materialized-manifest-evidence",
+      "decision": "Acquired manifest metadata and manifest-authoritative lock version evidence",
+      "owner": "install/source_helpers.py (materialized_manifest_snapshot) delegates manifest interpretation to APMPackage.from_mapping and lock version authority to deps/lockfile.py (LockedDependency.manifest_version)",
+      "selectors": [
+        "src/apm_cli/install/source_helpers.py",
+        "src/apm_cli/deps/lockfile.py"
+      ],
+      "guards": ["install-deployment-manifest-snapshot"]
+    },
+    {
       "id": "prospective-dry-run-install-plan",
       "decision": "Prospective dry-run install plan and interpreted package selection",
       "owner": "install/dry_run_plan.py (ProspectiveInstallPlan) delegates selector identity to install/package_selection.py",

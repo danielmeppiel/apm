@@ -130,6 +130,17 @@ A normal project install creates or updates `apm.lock.yaml` when the manifest de
 
 `apm install --frozen` never writes `apm.lock.yaml`. Deployment still runs, and one check comes after it: if the install deploys files the committed lockfile does not record, frozen mode exits `1` and names those paths. Those files are already on disk -- only the lockfile write is withheld. Rerun the same command without `--frozen` (keeping `--root DIR` or `--global`) and commit the updated lockfile; see the [install reference](https://microsoft.github.io/apm/reference/cli/install/#behavior) for recovery details.
 
+Manifest-derived dependency versions come from the acquired package snapshot,
+not an older descriptor in `apm_modules/`. The first ordinary install after a
+branch switch records the current version. Frozen installs reject a present
+locked version that contradicts that manifest before managed deployment,
+including local-path dependencies. The error names the dependency and both
+versions; lock, project manifest and prior deployment remain unchanged. Cold
+installs may acquire the package to verify it. Review the change and run ordinary
+`apm install` to repair the lock before retrying. Registry and Git-semver
+resolver-selected versions and legacy synthesized plugin versions retain their
+own meaning; absent optional versions do not become errors.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching

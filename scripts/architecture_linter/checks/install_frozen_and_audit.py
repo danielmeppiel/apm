@@ -72,8 +72,11 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     rule_id = _GUARD_FROZEN
     owner, owner_fail = _facts_for(provider, _FROZEN_OWNER, rule_id)
     adapter, adapter_fail = _facts_for(provider, _INSTALL_ADAPTER, rule_id)
-    if owner_fail or adapter_fail:
-        return tuple(list(owner_fail) + list(adapter_fail))
+    integration, integration_fail = _facts_for(
+        provider, "src/apm_cli/install/phases/integrate.py", rule_id
+    )
+    if owner_fail or adapter_fail or integration_fail:
+        return tuple(list(owner_fail) + list(adapter_fail) + list(integration_fail))
 
     preflight = _first_line(adapter, "InstallService.enforce_frozen(")
     migration = _first_line(adapter, "migrate_lockfile_if_needed(ctx.apm_dir)")
@@ -96,12 +99,20 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         _present_re(owner, re.compile(r"^    def enforce_frozen\("))
         and _present_re(owner, re.compile(r"^    def reject_frozen_mutation\("))
         and _present_re(owner, re.compile(r"^    def reject_missing_frozen_root\("))
+        and _present_re(owner, re.compile(r"^    def enforce_materialized_versions\("))
+        and _present(owner, "current.package_type = ctx.package_types.get(key)")
+        and _present(owner, "expected = locked.manifest_version")
+        and _present(owner, "actual = current.manifest_version")
+        and _present(owner, "expected != actual")
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
 
     def _before(first: int | None, second: int | None) -> bool:
         return first is not None and second is not None and first < second
 
+    acquired = _first_line(integration, "prepare_integration_materialization(source)")
+    version_guard = _first_line(integration, "InstallService.enforce_materialized_versions(ctx)")
+    deployment = _first_line(integration, "deltas = run_integration_template(")
     failed = (
         not owner_methods
         or preflight is None
@@ -115,6 +126,8 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or local_bundle is None
         or not _before(add_guard, dedicated_mcp)
         or not _before(add_guard, local_bundle)
+        or not _before(acquired, version_guard)
+        or not _before(version_guard, deployment)
         or bool(duplicates)
     )
     if not failed:

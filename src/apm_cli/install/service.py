@@ -31,6 +31,7 @@ from apm_cli.models.results import InstallDisposition
 if TYPE_CHECKING:
     from apm_cli.core.lifecycle_scripts import LifecycleEvent, LifecycleScriptRunner
     from apm_cli.deps.lockfile import LockFile
+    from apm_cli.install.context import InstallContext
     from apm_cli.models.results import InstallResult
 
 
@@ -371,6 +372,36 @@ class InstallService:
             raise FrozenInstallError(
                 "--frozen: apm.lock.yaml is out of sync with apm.yml.",
                 reasons=reasons,
+            )
+
+    @staticmethod
+    def enforce_materialized_versions(ctx: InstallContext) -> None:
+        """Reject contradictory manifest versions before any managed deployment."""
+        if not ctx.frozen or ctx.existing_lockfile is None:
+            return
+
+        from apm_cli.deps.lockfile import LockFile
+        from apm_cli.install.errors import FrozenInstallError
+
+        acquired = LockFile.from_installed_packages(ctx.installed_packages, ctx.dependency_graph)
+        reasons = []
+        for key, current in acquired.dependencies.items():
+            current.package_type = ctx.package_types.get(key)
+            locked = ctx.existing_lockfile.get_dependency(key)
+            if locked is None:
+                continue
+            expected = locked.manifest_version
+            actual = current.manifest_version
+            if expected is not None and actual is not None and expected != actual:
+                reasons.append(f"  - {key}: locked version {expected!r}, manifest version {actual!r}")
+        if reasons:
+            raise FrozenInstallError(
+                "--frozen: dependency versions contradict the acquired package manifests.",
+                reasons=reasons,
+                tip=(
+                    "Tip: review the dependency changes, run 'apm install' without --frozen "
+                    "to refresh the lockfile, then retry the frozen install."
+                ),
             )
 
     @staticmethod

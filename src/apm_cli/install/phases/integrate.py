@@ -696,6 +696,10 @@ def run(ctx: InstallContext) -> None:
     preflight_agent_plugin_materializations(materialized)
     _fail_explicit_target_without_deploy(ctx)
 
+    from apm_cli.install.service import InstallService
+
+    InstallService.enforce_materialized_versions(ctx)
+
     for dep_key, install_path, source, materialization, terminal_deltas in prepared_integrations:
         if terminal_deltas is not None:
             deltas = terminal_deltas
