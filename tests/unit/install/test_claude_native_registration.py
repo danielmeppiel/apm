@@ -179,3 +179,17 @@ def test_missing_lock_cannot_remove_owned_native_plugins(tmp_path, native):
         resync_claude_plugins(modules_dir=tmp_path, scope=InstallScope.USER, lockfile=None)
     assert native["calls"] == []
     assert set(native["plugins"]) == {"alpha@" + MARKETPLACE_NAME}
+
+
+def test_prepared_plugin_missing_from_lock_cannot_report_success(tmp_path, native):
+    from apm_cli.deps.lockfile import LockFile
+
+    plan = ClaudeNativePlugin("owner/alpha", "alpha", tmp_path / "alpha")
+    with pytest.raises(ClaudeNativePluginError, match="authorized locked set"):
+        resync_claude_plugins(
+            modules_dir=tmp_path,
+            scope=InstallScope.USER,
+            lockfile=LockFile(),
+            prepared={plan.dependency_key: plan},
+        )
+    assert native["calls"] == []
