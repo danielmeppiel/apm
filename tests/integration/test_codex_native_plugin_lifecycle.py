@@ -780,7 +780,7 @@ def test_project_refusal_and_foreign_collision_do_not_cross_write(
         runner, ("install", "--target", "codex", "--no-policy"), tmp_path, env, "project-refusal"
     )
     assert result.returncode != 0
-    assert "user scope" in result.stdout + result.stderr
+    assert "user scope" in " ".join((result.stdout + result.stderr).split())
     assert native_config.read_bytes() == before
     assert not list((tmp_path / ".agents").rglob("SKILL.md"))
     assert not any(path.is_file() for path in (tmp_path / ".codex").rglob("*"))
