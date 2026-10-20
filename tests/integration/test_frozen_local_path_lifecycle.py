@@ -125,6 +125,63 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
     assert _snapshot(isolated.cache_root) == before_cache
 
 
+@pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+@pytest.mark.parametrize("cold", [False, True], ids=["existing", "cold"])
+def test_frozen_local_declared_deleted_source_is_rejected_without_mutation(
+    tmp_path: Path, apm_binary_path: Path, transitive: bool, cold: bool
+) -> None:
+    """Keep declared missing providers diagnostic and immutable on frozen replay."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "deleted-source", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    provider = factory.create("provider", targets=("agent-skills",))
+    factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\noriginal\n"
+    )
+    parent = factory.create("parent", dependencies=("../provider",))
+    consumer = factory.create(
+        "consumer",
+        dependencies=("../parent" if transitive else "../provider",),
+        targets=("agent-skills",),
+    )
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
+    installed = runner.run(
+        ("install", "--no-policy"), cwd=consumer.root, env=isolated.subprocess_env()
+    )
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    deployed = consumer.root / ".agents" / "skills" / "review" / "SKILL.md"
+    assert deployed.is_file()
+    lock_path = consumer.root / "apm.lock.yaml"
+    locked_bytes = lock_path.read_bytes()
+    root = consumer.root
+    if cold:
+        root = isolated.work_root / "cold-consumer"
+        root.mkdir()
+        shutil.copy2(consumer.manifest_path, root / "apm.yml")
+        shutil.copy2(lock_path, root / "apm.lock.yaml")
+        isolated = IsolatedApmEnvironment.create(tmp_path / "cold-cache", base_env=dict(os.environ))
+
+    manifest = root / "apm.yml"
+    manifest_bytes = manifest.read_bytes()
+    declaring_manifest = parent.manifest_path if transitive else manifest
+    declaration_bytes = declaring_manifest.read_bytes()
+    before_files = _snapshot(root)
+    before_cache = _snapshot(isolated.cache_root)
+    shutil.rmtree(provider.root)
+
+    rejected = runner.run(
+        ("install", "--frozen", "--no-policy"), cwd=root, env=isolated.subprocess_env()
+    )
+    output = rejected.stdout + rejected.stderr
+    assert rejected.returncode != 0, output
+    assert "local dependency '../provider' cannot be verified" in output, output
+    assert manifest.read_bytes() == manifest_bytes
+    assert declaring_manifest.read_bytes() == declaration_bytes
+    assert (root / "apm.lock.yaml").read_bytes() == locked_bytes
+    assert _snapshot(root) == before_files
+    assert _snapshot(isolated.cache_root) == before_cache
+    assert not list(isolated.temp_root.iterdir())
+
+
 def _snapshot(root: Path) -> dict[str, bytes]:
     """Read independent byte evidence for all managed files and cached packages."""
     return {
