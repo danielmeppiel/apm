@@ -169,6 +169,37 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
 
     # Directory normalization may not be re-invoked outside its owner and reuses.
     findings.extend(_scan_normalization_callers(provider, inv))
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_PROJECTION,
+            "src/apm_cli/install/drift.py",
+            (
+                "native_detection = route_agent_plugin_package(install_path)",
+                "agent_plugin_detection=native_detection",
+                "read_only=True",
+                "with native_registration_scope(targets):",
+                'if result.get("native_plugin"):',
+                "from apm_cli.install.native_plugin_admission import verify_native_plugin_cache",
+                "verify_native_plugin_cache(\n                            lock_dep,",
+            ),
+            "Native replay must use canonical read-only projection, admission and integrity",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_PROJECTION,
+            "src/apm_cli/install/native_plugin_admission.py",
+            (
+                "_copy_tree_dereferencing_validated(source, replay_path, source)",
+                "verify_package_hash(candidate, expected_hash)",
+            ),
+            "Native cache verification must reuse canonical copying and package hashing",
+        )
+    )
     return tuple(findings)
 
 
