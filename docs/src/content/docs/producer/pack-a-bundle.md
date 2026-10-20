@@ -133,7 +133,8 @@ script is executed during packing.
 
 Quoted filenames and split-quoted roots retain their shell meaning.
 References to selected directories, such as `cd "${CLAUDE_PLUGIN_ROOT}/.apm/skills/demo"`,
-follow the packed directory without adding unselected files. Root-level scripts
+follow the packed directory without adding unselected files. The selected files
+must materialize that directory; empty directories fail. Root-level scripts
 retain their Node module type without publishing the rest of the repository.
 
 An explicit `includes` list remains exhaustive: include the hook descriptor

@@ -143,8 +143,9 @@ References may resolve relative to the source hook descriptor when absent
 at the package root. Sibling assets and Node module type are preserved.
 Packing never executes scripts or translates hook semantics between hosts.
 Quoted filenames and selected directory references retain their meaning after
-relocation. Root scripts retain their Node module type without publishing the
-whole repository.
+relocation. Selected files must materialize each referenced directory; empty
+directories fail. Root scripts retain their Node module type without publishing
+the whole repository.
 
 With hooks present, root `plugin.json` and `.claude-plugin/plugin.json` both
 declare `"hooks": "./hooks.json"` for native Claude discovery. This is a

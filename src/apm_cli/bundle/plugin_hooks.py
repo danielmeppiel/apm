@@ -104,15 +104,17 @@ class PluginHookResources:
                 "Add the resource to includes, move it into .apm/, or remove the hook reference."
             )
 
-    def _packed_path(self, source: Path) -> str:
+    def _packed_path(self, source: Path, *, directory: bool = False) -> str:
         source_relative = portable_relpath(source, self.root)
-        relative = self.output_path(source_relative) or source_relative
+        # The canonical mapper accepts files; keep its sentinel out of diagnostics.
+        mapped_source = f"{source_relative}/__apm_hook_resource__" if directory else source_relative
+        relative = self.output_path(mapped_source) or mapped_source
         if relative.startswith(".apm/"):
             raise ValueError(
                 f"Hook resource has no packed layout: {source_relative}. "
                 "Move it under the selected hooks or primitive directory."
             )
-        return relative
+        return PurePosixPath(relative).parent.as_posix() if directory else relative
 
     def _add_resource(self, source: Path) -> str:
         self._validate_source(source)
@@ -188,11 +190,7 @@ class PluginHookResources:
                     ) from exc
                 if source.is_dir():
                     self._validate_source(source, allow_directory=True)
-                    # Map a file-shaped path through the canonical layout mapper,
-                    # but never insert a directory into the file-copy map.
-                    output = PurePosixPath(
-                        self._packed_path(source / "__apm_hook_resource__")
-                    ).parent.as_posix()
+                    output = self._packed_path(source, directory=True)
                     self.required_directories.add(output)
                 else:
                     output = self._add_resource(source)

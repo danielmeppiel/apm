@@ -309,6 +309,50 @@ def test_hook_directory_reference_uses_only_selected_materialized_files(
     assert not (result.bundle_path / "hooks/scripts").exists()
 
 
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_empty_hook_directory_is_rejected_before_replacing_output(
+    hook_project: Path, dry_run: bool
+) -> None:
+    directory = hook_project / ".apm/hooks/empty"
+    directory.mkdir()
+    (hook_project / ".apm/hooks/script.json").write_text(
+        '{"hooks":{"Stop":[{"command":"cd ${CLAUDE_PLUGIN_ROOT}/.apm/hooks/empty"}]}}',
+        encoding="utf-8",
+    )
+    manifest = load_yaml(hook_project / "apm.yml")
+    manifest["includes"] = [".apm/hooks/script.json", ".apm/hooks/empty"]
+    dump_yaml(manifest, hook_project / "apm.yml")
+    output = hook_project / "dist/demo-1.0.0"
+    output.mkdir(parents=True)
+    sentinel = output / "keep.txt"
+    sentinel.write_text("previous bundle", encoding="utf-8")
+    with pytest.raises(
+        ValueError, match="Hook resource directory has no selected files: hooks/empty"
+    ):
+        export_plugin_bundle(hook_project, output.parent, dry_run=dry_run)
+    assert sentinel.read_text() == "previous bundle"
+
+
+def test_unmapped_hook_directory_diagnostic_names_authored_directory(
+    hook_project: Path,
+) -> None:
+    (hook_project / ".apm/custom/empty").mkdir(parents=True)
+    (hook_project / ".apm/hooks/script.json").write_text(
+        '{"hooks":{"Stop":[{"command":"cd ${CLAUDE_PLUGIN_ROOT}/.apm/custom/empty"}]}}',
+        encoding="utf-8",
+    )
+    manifest = load_yaml(hook_project / "apm.yml")
+    manifest["includes"] = [".apm/hooks/script.json", ".apm/custom/empty"]
+    dump_yaml(manifest, hook_project / "apm.yml")
+    with pytest.raises(ValueError, match="Hook resource has no packed layout") as error:
+        export_plugin_bundle(hook_project, hook_project / "dist")
+    assert str(error.value) == (
+        "Hook resource has no packed layout: .apm/custom/empty. "
+        "Move it under the selected hooks or primitive directory."
+    )
+    assert not (hook_project / "dist").exists()
+
+
 @pytest.mark.parametrize("script_relative", ["scripts/run.js", "run.js"])
 @pytest.mark.parametrize("local_metadata", [True, False])
 def test_root_script_keeps_node_module_scope_without_publishing_package_tree(
