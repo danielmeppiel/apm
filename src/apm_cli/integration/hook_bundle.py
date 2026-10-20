@@ -145,14 +145,14 @@ def iter_deployable_hook_bundle_files(
                 source_file,
             )
             continue
-        if source_file.is_symlink() or not source_file.is_file():
-            continue
-        # Exclude root-level package.json and marker files
-        if source_file.parent == source_root and (
-            source_file.name in {"package.json", MARKER_FILENAME}
+        if (
+            source_file.is_symlink()
+            or not source_file.is_file()
+            or source_file.name == MARKER_FILENAME
         ):
             continue
-        # Exclude root-level hook descriptors
+        if source_file.parent == source_root and source_file.name == "package.json":
+            continue
         if _is_root_hook_descriptor(source_file, source_root, descriptors):
             continue
         yield source_file

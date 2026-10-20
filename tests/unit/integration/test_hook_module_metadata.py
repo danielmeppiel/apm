@@ -99,6 +99,20 @@ def test_recursive_json_target_does_not_select_module_inputs(tmp_path: Path) -> 
     assert "hooks/nested/lib/entry.js" in plan.paths
 
 
+def test_nested_cache_markers_remain_excluded(tmp_path: Path) -> None:
+    package = _package(tmp_path / "source")
+    marker = package.install_path / "hooks/nested/.apm-pin"
+    marker.write_text("source cache bookkeeping\n")
+    plan = _plan(package)
+    assert "hooks/nested/.apm-pin" not in plan.paths
+    project = tmp_path / "project"
+    project.mkdir()
+    HookIntegrator().integrate_hooks_for_target(
+        KNOWN_TARGETS["claude"], package, project, source_plan=plan
+    )
+    assert not (project / ".claude/hooks/source/hooks/nested/.apm-pin").exists()
+
+
 @pytest.mark.parametrize("relative", ["package.json", "hooks/nested/package.json"])
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink fixture")
 def test_symlinked_module_inputs_are_not_selected(tmp_path: Path, relative: str) -> None:
