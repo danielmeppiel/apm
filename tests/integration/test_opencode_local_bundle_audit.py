@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -83,7 +84,10 @@ def _evidence(result: CommandResult) -> str:
 
 
 def test_opencode_local_bundle_pinned_skills_audit_lifecycle(
-    tmp_path: Path, apm_engine_command: tuple[str, ...]
+    tmp_path: Path,
+    apm_engine_command: tuple[str, ...],
+    capsys: pytest.CaptureFixture[str],
+    request: pytest.FixtureRequest,
 ) -> None:
     """Install, reinstall, update and real drift preserve the isolated durable state."""
     isolated = IsolatedApmEnvironment.create(
@@ -163,3 +167,6 @@ def test_opencode_local_bundle_pinned_skills_audit_lifecycle(
         }, report
         path.write_bytes(expected[relative])
     _assert_deployed(project, expected)
+    # xdist forwards worker stderr, but not uncaptured stdout.
+    with capsys.disabled():
+        print(f"[+] Completed {request.node.nodeid}", file=sys.stderr, flush=True)
