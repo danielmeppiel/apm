@@ -134,6 +134,44 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     }
 
 
+def test_frozen_local_in_project_transitive_identity(tmp_path: Path, apm_binary_path: Path) -> None:
+    """Replay portable in-project identities through the same resolver owner."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "nested", base_env=dict(os.environ))
+    consumer = LocalPackageFactory(isolated.work_root).create(
+        "consumer", dependencies=("./packages/parent",), targets=("agent-skills",)
+    )
+    factory = LocalPackageFactory(consumer.root / "packages")
+    provider = factory.create("provider", targets=("agent-skills",))
+    skill = factory.add_skill(
+        provider, "nested", "---\nname: nested\ndescription: fixture\n---\noriginal\n"
+    )
+    factory.create("parent", dependencies=("../provider",))
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
+    env = isolated.subprocess_env()
+    installed = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    lock_path = consumer.root / "apm.lock.yaml"
+    locked = lock_path.read_bytes()
+    lock = load_yaml(lock_path)
+    entry = next(d for d in lock["dependencies"] if d.get("local_path") == "../provider")
+    assert entry["anchored_local_path"] == "packages/provider"
+    replay = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert replay.returncode == 0, replay.stdout + replay.stderr
+    assert lock_path.read_bytes() == locked
+
+    original = skill.read_bytes()
+    skill.write_bytes(original.replace(b"original", b"changed"))
+    before = _snapshot(consumer.root)
+    refused = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "provider" in refused.stdout + refused.stderr
+    assert _snapshot(consumer.root) == before
+    skill.write_bytes(original)
+    restored = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert lock_path.read_bytes() == locked
+
+
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
 @pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash"])
 def test_frozen_local_requires_selected_lock_evidence(
