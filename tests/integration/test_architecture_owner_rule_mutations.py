@@ -775,6 +775,17 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Discovery allows package admission to mutate the source it is inventorying.",
     ),
     MutationCase(
+        guard_id="registry-delegation-audit-target-selection",
+        rule_id="registry_delegation.audit_target_selection",
+        path="src/apm_cli/install/drift.py",
+        old="def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:",
+        new=(
+            "def resolve_audit_targets(project_root): return []\n\n"
+            "def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:"
+        ),
+        intent="Drift introduces a second audit target-selection owner.",
+    ),
+    MutationCase(
         guard_id="registry-delegation-bootstrap-project-name",
         rule_id="registry_delegation.bootstrap_project_name",
         path="src/apm_cli/core/project_name.py",
