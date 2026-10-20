@@ -438,7 +438,7 @@ class InstallService:
                             child,
                             declaring_parent=key,
                             anchored_local_path=APMDependencyResolver._portable_anchor_identity(
-                                anchored, request.apm_package.source_path
+                                anchored, request.apm_package.source_path or package_root
                             ),
                         )
                         queue.append(child)

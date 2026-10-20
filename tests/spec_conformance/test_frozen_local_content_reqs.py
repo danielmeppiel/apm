@@ -35,14 +35,7 @@ def test_frozen_local_content_preserves_prior_evidence(
         dependencies=("../parent" if transitive else "../provider",),
         targets=("agent-skills",),
     )
-    src = Path(__file__).resolve().parents[2] / "src"
-    runner = ApmLifecycleRunner(
-        (
-            sys.executable,
-            "-c",
-            f"import sys; sys.path.insert(0, {str(src)!r}); from apm_cli.cli import cli; cli()",
-        )
-    )
+    runner = ApmLifecycleRunner((sys.executable, "-m", "apm_cli.cli"))
     env = isolated.subprocess_env()
     installed = runner.run(("install", "--no-policy"), cwd=consumer.root, env=env)
     assert installed.returncode == 0, installed.stdout + installed.stderr
