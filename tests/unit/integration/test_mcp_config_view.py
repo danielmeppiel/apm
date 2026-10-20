@@ -15,6 +15,7 @@ from apm_cli.integration.mcp_config_view import (
 )
 from apm_cli.models.apm_package import APMPackage, clear_apm_yml_cache
 from apm_cli.models.dependency.mcp import MCPDependency
+from tests.unit.copilot_plugins._builders import write_agent_plugin
 
 
 def _write_manifest(
@@ -932,7 +933,11 @@ def test_absent_local_apm_package_dep_still_records_problem(tmp_path: Path) -> N
 
 @pytest.mark.parametrize(
     ("package_type", "expected_kind"),
-    (("apm_package", "APM package"), ("claude_skill", "Claude skill")),
+    (
+        ("apm_package", "APM package"),
+        ("claude_skill", "Claude skill"),
+        ("agent_plugin", "Agent plugin"),
+    ),
 )
 def test_cold_cache_exemption_emits_verbose_trace(
     tmp_path: Path,
@@ -966,3 +971,29 @@ def test_cold_cache_exemption_emits_verbose_trace(
     assert len(cold_cache_details) == 1
     assert "some-pkg" in cold_cache_details[0]
     assert expected_kind in cold_cache_details[0]
+
+
+@pytest.mark.parametrize("locked_type", ["agent_plugin", "apm_package"])
+def test_manifestless_native_plugin_requires_matching_locked_type(
+    tmp_path: Path, locked_type: str
+) -> None:
+    """The current MCP view waives only a valid, matching native package."""
+    root = _write_manifest(tmp_path, name="root")
+    modules = tmp_path / "apm_modules"
+    locked = LockedDependency(
+        repo_url="owner/native-plugin",
+        resolved_ref="v1",
+        resolved_commit="a" * 40,
+        package_type=locked_type,
+        depth=1,
+    )
+    package_dir = locked.to_dependency_ref().get_install_path(modules)
+    write_agent_plugin(package_dir, name="native-plugin", with_mcp=False)
+    before = {path: path.read_bytes() for path in package_dir.rglob("*") if path.is_file()}
+
+    view = _derive(root, _lock(locked), modules)
+
+    assert len(view.problems) == (0 if locked_type == "agent_plugin" else 1)
+    assert view.dependencies == ()
+    assert not (package_dir / "apm.yml").exists()
+    assert before == {path: path.read_bytes() for path in package_dir.rglob("*") if path.is_file()}
