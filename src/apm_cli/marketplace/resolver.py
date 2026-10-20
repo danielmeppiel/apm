@@ -115,6 +115,7 @@ class MarketplacePluginResolution:
     source_digest: str = ""
     constraint: str | None = None
     resolved_tag: str | None = None
+    resolved_version: str | None = None
 
     def __iter__(self) -> Iterator[str | MarketplacePlugin]:
         yield self.canonical
@@ -134,6 +135,8 @@ class MarketplacePluginResolution:
             data["constraint"] = self.constraint
         if self.resolved_tag:
             data["resolved_tag"] = self.resolved_tag
+        if self.resolved_version:
+            data["resolved_version"] = self.resolved_version
         return data
 
 
@@ -1071,6 +1074,7 @@ def resolve_marketplace_plugin(
     # package remote instead of ``source.owner/source.repo``.
     resolved_constraint: str | None = None
     resolved_tag_name: str | None = None
+    resolved_version: str | None = None
     if version_spec:
         from .version_resolver import is_version_constraint
 
@@ -1136,6 +1140,13 @@ def resolve_marketplace_plugin(
             resolved_override = tag_name
             resolved_constraint = version_spec
             resolved_tag_name = tag_name
+            from .tag_pattern import build_tag_regex
+
+            tag_match = build_tag_regex(
+                effective_tag_pattern.replace("{name}", plugin_name)
+            ).fullmatch(tag_name)
+            if tag_match is not None:
+                resolved_version = tag_match.group("version")
             logger.debug(
                 "Version constraint '%s' for %s@%s resolved with pattern '%s' to tag '%s'",
                 version_spec,
@@ -1219,4 +1230,5 @@ def resolve_marketplace_plugin(
         source_digest=manifest.source_digest,
         constraint=resolved_constraint,
         resolved_tag=resolved_tag_name,
+        resolved_version=resolved_version,
     )

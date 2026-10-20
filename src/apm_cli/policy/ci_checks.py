@@ -102,74 +102,35 @@ def _check_ref_consistency(
 ) -> CheckResult:
     """Verify manifest refs match the lockfile's resolved ref and commit."""
     from ..deps.revision_pins import is_full_revision_pin
-    from ..drift import detect_ref_change
+    from ..drift import detect_ref_change, marketplace_ref_mismatch
 
     mismatches: list[str] = []
     requires_update = False
+    marketplace_index = lock.marketplace_index()
     for dep_ref in manifest.get_all_apm_dependencies():
         key = dep_ref.get_unique_key()
-        locked_dep = lock.get_dependency(key)
+        display = (
+            f"{dep_ref.marketplace_plugin_name}@{dep_ref.marketplace_name}"
+            if dep_ref.is_marketplace
+            else key
+        )
+        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None:
-            mismatches.append(f"{key}: not found in lockfile")
+            if dep_ref.is_marketplace:
+                pair = (dep_ref.marketplace_name, dep_ref.marketplace_plugin_name)
+                reason = "ambiguous" if pair in marketplace_index else "missing"
+                mismatches.append(
+                    f"{display}: {reason} marketplace provenance in lockfile; "
+                    "inspect the locked sources before reinstalling"
+                )
+            else:
+                mismatches.append(f"{key}: not found in lockfile")
             requires_update = requires_update or bool(lock.dependencies)
             continue
         if dep_ref.is_marketplace:
-            if dep_ref.marketplace_version_spec:
-                from ..marketplace.semver import parse_semver, satisfies_range
-                from ..marketplace.version_resolver import is_version_constraint
-
-                spec = dep_ref.marketplace_version_spec
-                if is_version_constraint(spec):
-                    matches_constraint = bool(
-                        locked_dep.constraint and locked_dep.constraint == spec
-                    )
-                    candidates: list[str] = []
-                    if locked_dep.resolved_tag:
-                        candidates.append(locked_dep.resolved_tag)
-                    if locked_dep.resolved_ref:
-                        candidates.append(locked_dep.resolved_ref)
-                    if locked_dep.version:
-                        candidates.append(locked_dep.version)
-
-                    matches_semver = False
-                    for cand in candidates:
-                        parsed = parse_semver(cand)
-                        if parsed is None and cand.startswith("v"):
-                            parsed = parse_semver(cand[1:])
-                        if parsed is None:
-                            for sep in ("--v", "-v", "--", "-"):
-                                if sep in cand:
-                                    part = cand.split(sep)[-1]
-                                    parsed = parse_semver(part.lstrip("v"))
-                                    if parsed is not None:
-                                        break
-                        if parsed is not None and satisfies_range(parsed, spec):
-                            matches_semver = True
-                            break
-
-                    if not (matches_constraint or matches_semver):
-                        mismatches.append(
-                            f"{key}: manifest version '{spec}' != "
-                            f"lockfile '{locked_dep.constraint or locked_dep.resolved_tag or locked_dep.resolved_ref or locked_dep.version or '(missing)'}'"
-                        )
-                        requires_update = True
-                elif is_full_revision_pin(spec):
-                    if locked_dep.resolved_commit != spec:
-                        mismatches.append(
-                            f"{key}: manifest commit '{spec}' != "
-                            f"lockfile resolved_commit '{locked_dep.resolved_commit or '(missing)'}'"
-                        )
-                        requires_update = True
-                elif spec not in (
-                    locked_dep.resolved_ref,
-                    locked_dep.resolved_tag,
-                    locked_dep.version,
-                ):
-                    mismatches.append(
-                        f"{key}: manifest ref '{spec}' != "
-                        f"lockfile ref '{locked_dep.resolved_ref or locked_dep.resolved_tag or '(missing)'}'"
-                    )
-                    requires_update = True
+            if reason := marketplace_ref_mismatch(dep_ref, locked_dep):
+                mismatches.append(f"{display}: {reason}")
+                requires_update = True
             continue
         if is_full_revision_pin(dep_ref.reference) and (
             locked_dep.resolved_commit != dep_ref.reference
@@ -382,11 +343,12 @@ def _check_no_orphans(
     cannot make them go away by editing its dependency lists.
     """
     declared_lock_keys: set[str] = set()
+    marketplace_index = lock.marketplace_index()
     for dep in manifest.get_all_apm_dependencies():
         key = dep.get_unique_key()
         declared_lock_keys.add(key)
         if dep.is_marketplace or key.startswith("_marketplace/"):
-            locked_dep = lock.get_dependency(key)
+            locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
             if locked_dep is not None:
                 declared_lock_keys.add(locked_dep.get_unique_key())
 

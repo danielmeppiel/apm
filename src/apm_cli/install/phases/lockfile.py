@@ -392,10 +392,16 @@ class LockfileBuilder:
                     dep.marketplace_plugin_name = previous.marketplace_plugin_name
                     dep.source_url = previous.source_url
                     dep.source_digest = previous.source_digest
-                    if not dep.constraint and previous.constraint:
+                    if (
+                        previous.constraint
+                        and previous.resolved_tag
+                        and previous.resolved_ref == dep.resolved_ref
+                        and previous.resolved_commit == dep.resolved_commit
+                        and not dep.constraint
+                    ):
                         dep.constraint = previous.constraint
-                    if not dep.resolved_tag and previous.resolved_tag:
                         dep.resolved_tag = previous.resolved_tag
+                        dep.version = previous.version
 
         # Fresh discovery replaces the entire snapshot, including absent fields.
         if self.ctx.marketplace_provenance:
@@ -410,6 +416,8 @@ class LockfileBuilder:
                         dep.constraint = prov.get("constraint")
                     if prov.get("resolved_tag"):
                         dep.resolved_tag = prov.get("resolved_tag")
+                    if prov.get("resolved_version"):
+                        dep.version = prov["resolved_version"]
 
     def _merge_existing(self, lockfile: LockFile) -> None:
         # Partial operations merge untouched dependencies and their canonical

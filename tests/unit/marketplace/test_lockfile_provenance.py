@@ -317,6 +317,8 @@ class TestLockFileMarketplaceLookup:
             }
         )
 
-        assert lockfile.get_dependency_by_marketplace("awesome-copilot", "accessibility-kanban") is None
+        assert (
+            lockfile.get_dependency_by_marketplace("awesome-copilot", "accessibility-kanban")
+            is None
+        )
         assert lockfile.get_dependency("_marketplace/awesome-copilot/accessibility-kanban") is None
-

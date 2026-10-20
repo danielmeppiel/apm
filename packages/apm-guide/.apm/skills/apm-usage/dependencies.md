@@ -284,6 +284,13 @@ silently become a raw ref or consult a different repository. Use
 do not accept ranges. Raw refs bypass tag resolution. The lockfile records the resolved ref, not the marketplace
 placeholder. Unknown keys in a marketplace entry are rejected.
 
+For object-form declarations, `apm audit --ci` uses recorded
+`discovered_via` + `marketplace_plugin_name` to find one locked coordinate.
+Semver selections also record `constraint`, `resolved_tag`, and the selected
+`version`; a package display version alone is not selection proof. Missing or
+ambiguous evidence fails. Audit does not fetch the catalog, so removing a local
+catalog registration does not invalidate otherwise valid installed evidence.
+
 Producer-emitted `source: url` and `source: git-subdir` objects resolve
 through the same Git dependency parser as direct object-form dependencies.
 The package URL owns its host, port, explicit transport, and SSH user during

@@ -229,6 +229,15 @@ are written by `apm install`, `apm prune`, and related commands.
 
 Each item in `dependencies` describes one resolved package.
 
+Marketplace version selections reuse the Git-semver fields: `constraint`,
+`resolved_tag`, and `version` record the requested selector, selected tag, and
+selected version. Here `version` comes from the publisher's tag pattern, not
+the package's display version. `resolved_ref` agrees with `resolved_tag`, and
+`resolved_commit` pins the installed bytes. Audit requires this locked evidence
+for version selections; it neither guesses a tag pattern nor re-resolves the
+catalog. `discovered_via` + `marketplace_plugin_name` associate a declaration
+with one locked coordinate, not a durable catalog trust identity.
+
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `repo_url` | string | yes | Canonical repository path or URL. Entry identity is derived from `repo_url`, `host`, and virtual/local markers; see [lockfile identity keys](#lockfile-identity-keys). |

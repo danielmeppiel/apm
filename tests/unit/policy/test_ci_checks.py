@@ -261,7 +261,7 @@ class TestRefConsistency:
                     discovered_via: awesome-copilot
                     marketplace_plugin_name: accessibility-kanban
                     resolved_ref: main
-                    resolved_commit: abc123def456
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -299,7 +299,8 @@ class TestRefConsistency:
                     version: "1.2.3"
                     constraint: "^1.0.0"
                     resolved_ref: accessibility-kanban-v1.2.3
-                    resolved_commit: abc123def456
+                    resolved_tag: accessibility-kanban-v1.2.3
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -337,7 +338,8 @@ class TestRefConsistency:
                     version: "1.2.3"
                     constraint: "^1.0.0"
                     resolved_ref: accessibility-kanban-v1.2.3
-                    resolved_commit: abc123def456
+                    resolved_tag: accessibility-kanban-v1.2.3
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -375,7 +377,7 @@ class TestRefConsistency:
                     discovered_via: awesome-copilot
                     marketplace_plugin_name: accessibility-kanban
                     resolved_ref: main
-                    resolved_commit: abc123def456
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -411,7 +413,7 @@ class TestRefConsistency:
                     discovered_via: awesome-copilot
                     marketplace_plugin_name: accessibility-kanban
                     resolved_ref: v1.2.0
-                    resolved_commit: abc123def456
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -447,7 +449,7 @@ class TestRefConsistency:
                     discovered_via: awesome-copilot
                     marketplace_plugin_name: accessibility-kanban
                     resolved_ref: main
-                    resolved_commit: abc123def456
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -459,9 +461,11 @@ class TestRefConsistency:
         result = _check_ref_consistency(manifest, lock)
         assert not result.passed
         assert "run 'apm install --update'" in result.message
-        assert any("manifest ref 'feature-branch' != lockfile ref 'main'" in d for d in result.details)
+        assert any(
+            "manifest ref 'feature-branch' != lockfile ref 'main'" in d for d in result.details
+        )
 
-    def test_pass_marketplace_semver_constraint_with_resolved_tag_only(self, tmp_path):
+    def test_fail_marketplace_semver_constraint_with_resolved_tag_only(self, tmp_path):
         (tmp_path / "apm.yml").write_text(
             textwrap.dedent("""\
                 name: repro
@@ -485,7 +489,7 @@ class TestRefConsistency:
                     discovered_via: awesome-copilot
                     marketplace_plugin_name: accessibility-kanban
                     resolved_tag: accessibility-kanban-v1.2.3
-                    resolved_commit: abc123def456
+                    resolved_commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     deployed_files: []
             """),
         )
@@ -495,7 +499,8 @@ class TestRefConsistency:
         manifest = APMPackage.from_apm_yml(tmp_path / "apm.yml")
         lock = LockFile.read(get_lockfile_path(tmp_path))
         result = _check_ref_consistency(manifest, lock)
-        assert result.passed
+        assert not result.passed
+        assert any("missing locked version evidence" in detail for detail in result.details)
 
 
 # -- Deployed files present -----------------------------------------
@@ -915,7 +920,6 @@ class TestNoOrphans:
         result = _check_no_orphans(manifest, lock)
         assert not result.passed
         assert "2 orphaned package(s)" in result.message
-
 
 
 # -- Config consistency ---------------------------------------------

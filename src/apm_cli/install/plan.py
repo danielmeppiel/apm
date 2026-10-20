@@ -473,21 +473,19 @@ def lockfile_satisfies_manifest(
         human-readable strings explaining each mismatch, empty when
         ``satisfied`` is True.
     """
-    from apm_cli.deps.lockfile import _SELF_KEY
     from apm_cli.deps.revision_pins import is_full_revision_pin
     from apm_cli.drift import detect_ref_change
 
-    locked_keys = {key for key in lockfile.dependencies if key != _SELF_KEY}
-
+    marketplace_index = lockfile.marketplace_index()
     reasons: list[str] = []
     for dep in manifest_deps:
         if getattr(dep, "is_local", False):
             continue
         key = _dep_ref_key(dep)
-        if key not in locked_keys:
+        locked_dep = lockfile.get_dependency(key, marketplace_index=marketplace_index)
+        if locked_dep is None or key == ".":
             reasons.append(f"  - {key} is declared in apm.yml but missing from apm.lock.yaml")
             continue
-        locked_dep = lockfile.dependencies[key]
         reference = dep.reference
         if (
             reference
