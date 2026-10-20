@@ -1,5 +1,12 @@
 # CLI Command Reference
 
+`apm --version` shows an optional commit SHA only when embedded at build time
+or verified against the source checkout containing the loaded APM package.
+Installed wheels do not borrow an enclosing repository's SHA. Source/editable
+checkouts, including forks and worktrees, show their revision when Git can
+verify it; otherwise the SHA is omitted.
+Standalone `apm --version` does not require Git to be installed.
+
 ## Project setup
 
 | Command | Purpose | Key flags |
@@ -104,6 +111,11 @@ lowercase before constructing the package-registry path.
 
 ### Install validation chain (virtual subdirectory packages)
 
+Marketplace installation supports versioned directories produced by `apm pack`,
+such as `plugins/my-plugin-1.2.3`, including positional `--dry-run` previews.
+Directory content and path validation still apply. Git directory probes reject
+files, symbolic links, and submodules.
+
 `apm install` validates subdirectory packages (`owner/repo/path#ref`) before writing to `apm.yml` using the same credential chain as the actual install. Git-source semver ranges (for example, `owner/repo/path#^1.2.0`) defer raw-ref validation to semver tag resolution; registry-routed dependencies retain registry version validation. See [Authentication > Install validation chain](../authentication/) for the full probe sequence and troubleshooting.
 
 When a default registry is configured, plain shorthand deps (`owner/repo#<ref>`) bypass the GitHub probe. `apm install` requires a version selector before writing to `apm.yml`; deps with no `#<ref>` at all are rejected. Semver selectors (`1.0.0`, `^1.2.3`) use range matching; non-semver selectors (`stable`, `v1.4.2`, any opaque label) are matched exactly against the registry's published versions.
@@ -120,6 +132,16 @@ Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
 lock state may skip the write, so repeating that install is not a migration.
+
+Codex keeps APM registry identity in TOML comments instead of an unsupported
+native `id` setting. After upgrading, `apm install --only mcp --target codex`
+reports and repairs recorded APM-owned entries; add `--global` for user scope.
+Unchanged self-defined entries matching an older lockfile's saved configuration
+can also be repaired. Unowned or edited legacy entries stay untouched. For an
+entry you maintain yourself, back up the Codex config and remove only its
+unsupported `id = ...` setting. Keep comments such as
+`# apm-registry-id: "registry-uuid"` for duplicate detection. Inline containers
+being written may expand while preserving values and comments.
 
 ### Registry MCP runtime variables
 
@@ -290,7 +312,12 @@ inside nested Git repositories or linked worktrees below its root. This also
 applies to `includes: auto`. Run `apm compile` from the nested checkout when you
 want to compile it.
 
-When `apm install --target copilot` has already deployed instructions to `.github/instructions/`, `apm compile --target copilot` omits `AGENTS.md` entirely if its only content would be the duplicated instructions section. `AGENTS.md` is still generated when it carries non-instruction content such as a constitution. Pass `--force-instructions` (alias: `--no-dedup`) to force full `AGENTS.md` output.
+When `apm install --target copilot` has already deployed no-`applyTo` instructions under `.github/instructions/`, `apm compile --target copilot` omits matching global instruction bodies from `.github/copilot-instructions.md` so Copilot does not load them twice. It also omits `AGENTS.md` when its only content would be the duplicated instructions section; `AGENTS.md` is still generated when it carries non-instruction content such as a constitution. Pass `--force-instructions` (alias: `--no-dedup`) to intentionally include the duplicated content.
+
+When no global instruction remains, Copilot compile removes a stale root file
+only if its APM header marker and Build ID verify unchanged content. Hand-authored,
+edited, legacy files without a valid Build ID, and symbolic links are retained.
+Preview cleanup with `apm compile --target copilot --dry-run`.
 
 **Distributed managed sections.** With `compilation.agents_md.mode:
 managed_section`, existing distributed `AGENTS.md` files retain content
@@ -308,6 +335,12 @@ descendants, are skipped.
 | `apm list` | List available scripts | -- |
 
 ## Security and audit
+
+For shared hook targets, drift compares only APM-owned hook entries. Ownership
+sidecars are compared as JSON: object-key order and formatting do not cause
+drift, but changed fields, ownership markers, or list order do. Malformed JSON,
+duplicate keys, and non-JSON constants (`NaN`, `Infinity`, `-Infinity`) report
+`modified`. User-owned hooks do not cause drift.
 
 Automatic `apm audit` discovers registry-recognized primitive files, including
 untracked native hook definitions in shared settings. It checks prompt

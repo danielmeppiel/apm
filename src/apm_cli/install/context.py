@@ -158,6 +158,7 @@ class InstallContext:
     # never backfilled with a sentinel.
     package_declared_licenses: dict[str, str] = field(default_factory=dict)
     content_hash_verified_deps: set[str] = field(default_factory=set)
+    callback_content_hashes: dict[str, tuple[Path, str]] = field(default_factory=dict)
     # Deps whose content hash is expected to change legitimately:
     # populated by _resolve_download_strategy in phases/integrate.py
     # (branch-ref `remote_drifted` guard and v<=0.12.2 self-heal block),

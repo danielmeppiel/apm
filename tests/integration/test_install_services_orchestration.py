@@ -31,6 +31,13 @@ def make_target(
     target.name = name
     target.root_dir = root_dir
     target.primitives = primitives or {}
+    target.supports = lambda primitive: primitive in target.primitives
+    skills_mapping = target.primitives.get("skills")
+    if skills_mapping is not None:
+        target.skills_rel_root = (
+            f"{getattr(skills_mapping, 'deploy_root', None) or root_dir}/"
+            f"{getattr(skills_mapping, 'subdir', 'skills')}"
+        )
     target.auto_create = True
     target.hooks_config_display = hooks_config_display
     target.resolved_deploy_root = resolved_deploy_root
@@ -748,9 +755,10 @@ class TestIntegratePackagePrimitives:
             tmp_path.parent / f"{tmp_path.name}-outside" / "skills" / "demo" / "SKILL.md"
         ).resolve()
 
-        with patch(
-            "apm_cli.install.services._deployed_path_entry",
-            return_value="cowork://skills/demo/SKILL.md",
+        cowork_entry = "cowork://skills/demo/SKILL.md"
+        with (
+            patch("apm_cli.install.services._deployed_path_entry", return_value=cowork_entry),
+            patch("apm_cli.install.deployed_paths.deployed_path_entry", return_value=cowork_entry),
         ):
             _, _, _, logger = invoke_integrate(
                 tmp_path,

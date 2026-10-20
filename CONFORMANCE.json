@@ -150,8 +150,12 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 6,
+      "test_count": 10,
       "tests": [
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-http]",
+        "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-stdio]",
         "tests/spec_conformance/test_lockfile_reqs.py::TestFrozenInstallNeverWritesLockfile::test_frozen_install_withholds_the_write_and_fails_instead",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_mcp_validation_fails_before_durable_mutation",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[absent-project]",
@@ -447,9 +451,11 @@
       "keyword": "MUST",
       "section": "4.3.3",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_pinned_version"
+        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_pinned_version",
+        "tests/spec_conformance/test_marketplace_directory_reqs.py::test_versioned_marketplace_directory_installs_and_replays_as_subdirectory[1.2.3]",
+        "tests/spec_conformance/test_marketplace_directory_reqs.py::test_versioned_marketplace_directory_installs_and_replays_as_subdirectory[2026.9.3]"
       ]
     },
     {
@@ -837,8 +843,10 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 3,
+      "test_count": 5,
       "tests": [
+        "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[False]",
+        "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[True]",
         "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
         "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[False]",
         "tests/spec_conformance/test_policy_reqs.py::test_project_self_replay_preserves_governed_drift[True]"
@@ -1044,8 +1052,10 @@
       "keyword": "MUST",
       "section": "7.3",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_emits_lockfile_after_successful_resolution"
       ]
     },
@@ -1165,8 +1175,16 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 1,
+      "test_count": 9,
       "tests": [
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[direct-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[direct-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[parent-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[parent-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[refresh-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[refresh-hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[shared-child-.apm/hooks]",
+        "tests/spec_conformance/test_hook_package_selection_reqs.py::test_selected_hook_update_preserves_unrelated_pins_and_bytes[shared-child-hooks]",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_records_resolved_ref_in_lockfile"
       ]
     },
@@ -1233,8 +1251,10 @@
       "keyword": "MUST",
       "section": "7.7",
       "status": "active",
-      "test_count": 15,
+      "test_count": 17,
       "tests": [
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[False]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_peeled_tag_identity_survives_shared_parser[True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin--v1.2.3]",
         "tests/spec_conformance/test_resolution_reqs.py::test_revision_pin_update_accepts_each_normative_tag_form[revision-pin-v1.2.3]",
