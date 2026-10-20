@@ -222,6 +222,19 @@ installs that deploy at least one other package still exit `0`. For this target
 exclusion, `--dry-run` succeeds as a preview without the per-package recovery
 diagnostic; it does not certify real install success.
 
+Compatibility-only `.codex-plugin/plugin.json` bundles use
+`apm install -g <package> --target codex` with exactly Codex CLI 0.163.0 on
+`PATH`. Project scope, other versions, skill subsets, and unsupported native
+shapes fail explicitly. Approve executable types through `allowExecutables`;
+new native registrations remain disabled. Reinstall/update and
+`apm install -g --frozen --target codex` preserve activation and MCP policy,
+repair owned missing/corrupt copies, and never run MCP/plugin code. Healthy
+reinstalls retain their transport generation. `apm uninstall -g <package>`
+refuses foreign or customized native settings before releasing APM ownership;
+retire those entries using Codex and retry. No loose registration or
+cross-target translation is produced. See the
+[qualified contract](../../../../../docs/src/content/docs/consumer/installing-from-marketplaces.md#codex-compatibility-bundles-through-apm).
+
 ## Cache management
 
 | Command | Purpose | Key flags |

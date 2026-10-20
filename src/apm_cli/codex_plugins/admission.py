@@ -15,6 +15,7 @@ from apm_cli.install.native_plugin_admission import (
 )
 from apm_cli.models.dependency.subsets import skill_subset_filter_tokens
 from apm_cli.security.executables import EXEC_TYPE_HOOKS, EXEC_TYPE_MCP, scan_package_executables
+from apm_cli.utils.content_hash import compute_package_hash
 
 if TYPE_CHECKING:
     from apm_cli.install.context import InstallContext
@@ -28,6 +29,8 @@ class CodexNativePlugin:
     dependency_key: str
     name: str
     source_root: Path
+    source_hash: str
+    mcp_server_names: tuple[str, ...] = ()
     target_name: ClassVar[str] = "codex"
 
 
@@ -38,6 +41,30 @@ class CodexNativeDeployment:
     plugin: CodexNativePlugin
     source_plan: DeployableSourcePlan
     source_hash: str
+
+
+def finalize_codex_native(
+    result: dict,
+    plugin: CodexNativePlugin,
+    source_plan: DeployableSourcePlan,
+    reconcile_result: dict | None,
+    ctx: InstallContext | None,
+    scratch_root: Path | None,
+) -> dict:
+    """Queue the admitted source identity only after successful loose cleanup."""
+    if reconcile_result is not None and reconcile_result.get("errors", 0):
+        raise CodexNativeError(
+            "Prior loose hooks could not be removed; fix their ownership conflict "
+            "and retry before native registration."
+        )
+    if ctx is not None and scratch_root is None and not ctx.dry_run:
+        ctx.codex_native_plugins[plugin.dependency_key] = CodexNativeDeployment(
+            plugin,
+            source_plan,
+            plugin.source_hash,
+        )
+    result["native_plugin"] = True
+    return result
 
 
 def plan_native_codex_plugin(
@@ -84,4 +111,6 @@ def plan_native_codex_plugin(
             f"Review and approve '{dependency_key}' before retrying; "
             "APM will not drop native resources to bypass approval."
         )
-    return CodexNativePlugin(dependency_key, manifest.name, root)
+    return CodexNativePlugin(
+        dependency_key, manifest.name, root, compute_package_hash(root), manifest.mcp_server_names
+    )

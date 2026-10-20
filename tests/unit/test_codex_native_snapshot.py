@@ -104,3 +104,4 @@ def test_snapshot_does_not_accept_unselected_files(tmp_path):
             "example",
             expected_hash=compute_package_hash(source),
         )
+    assert not (tmp_path / "transport").exists()

@@ -34,6 +34,7 @@ class CodexRpc:
             stderr=subprocess.DEVNULL,
         )
         self._responses: queue.Queue[dict[str, Any] | Exception] = queue.Queue(maxsize=32)
+        self._reader_error: Exception | None = None
         self._request_id = 0
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()
@@ -53,12 +54,14 @@ class CodexRpc:
                 if "id" in message:
                     self._responses.put(message, timeout=_TIMEOUT)
         except (OSError, ValueError, queue.Full) as error:
-            self._responses.put(error, timeout=_TIMEOUT)
-        else:
-            self._responses.put(
-                CodexNativeError("Codex app-server closed before completing the request."),
-                timeout=_TIMEOUT,
-            )
+            self._reader_error = error
+        error = self._reader_error or CodexNativeError(
+            "Codex app-server closed before completing the request."
+        )
+        try:
+            self._responses.put_nowait(error)
+        except queue.Full:
+            self._reader_error = error
 
     def _send(self, message: dict[str, Any]) -> None:
         stream = self._process.stdin
@@ -80,6 +83,8 @@ class CodexRpc:
             raise CodexNativeError(
                 f"Codex {method} timed out; retry the native command."
             ) from error
+        if self._reader_error is not None:
+            response = self._reader_error
         if isinstance(response, Exception):
             raise CodexNativeError(
                 f"Codex {method} failed to return a valid response."
@@ -110,8 +115,14 @@ class CodexRpc:
 
     def close(self) -> None:
         """Stop only this connection's process; never leave a helper running."""
-        if self._process.stdin is not None:
-            self._process.stdin.close()
+        try:
+            if self._process.stdin is not None:
+                self._process.stdin.close()
+        finally:
+            self._stop_process()
+
+    def _stop_process(self) -> None:
+        """Reap the helper even if closing its broken request pipe fails."""
         try:
             self._process.wait(timeout=5)
         except subprocess.TimeoutExpired:

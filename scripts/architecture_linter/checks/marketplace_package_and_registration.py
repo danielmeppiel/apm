@@ -458,6 +458,10 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "record_native_exec_status(",
             "skill_subset_filter_tokens(skill_subset)",
             "if any(not approvals.get(kind, False) for kind in types):",
+            "CodexNativeDeployment(",
+            "scratch_root is None",
+            "plugin.source_hash",
+            "compute_package_hash(root), manifest.mcp_server_names",
         ),
         _CODEX_PREFIX + "registrar.py": (
             "_preflight(",
@@ -474,14 +478,19 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
         "src/apm_cli/install/services.py": (
             "plan_native_codex_plugin(",
             "native_plugin_root=",
-            "CodexNativeDeployment(",
-            "scratch_root is None",
+            "finalize_codex_native(",
+            "read_only=scratch_root is not None",
         ),
         "src/apm_cli/install/phases/codex_plugins.py": (
             "candidates_from_lockfile(saved,",
             "LockFile.read(get_lockfile_path(ctx.apm_dir))",
             "synchronize_codex_plugins(",
             "ctx.dry_run or ctx.lockfile_only",
+            "set(ctx.codex_native_plugins).issubset(retained)",
+        ),
+        "src/apm_cli/install/sources.py": (
+            "is_codex_compatibility_manifest(install_path, detect_package_type(install_path)[1])",
+            "native_validation = validate_apm_package(install_path, source_path=install_path)",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
     }

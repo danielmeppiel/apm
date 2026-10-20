@@ -178,6 +178,14 @@ def _preflight(
     *,
     removing: bool = False,
 ) -> None:
+    if any(
+        key.endswith(f"@{marketplace}") and key != f"{name}@{marketplace}"
+        for key in _table(config, "plugins")
+    ):
+        raise CodexNativeError(
+            "Codex native ownership collision: another plugin uses the owned marketplace. "
+            "Retire that registration using Codex before retrying; native state was retained."
+        )
     actual_marketplace = _table(config, "marketplaces").get(marketplace)
     actual_plugin = _table(config, "plugins").get(f"{name}@{marketplace}")
     if record is None:
@@ -227,6 +235,16 @@ def _observed_root(
     ):
         raise CodexNativeError("Codex did not load the owned source pin; rerun apm install.")
     skills = detail.get("skills")
+    native_mcp = detail.get("mcpServers")
+    if (
+        not isinstance(native_mcp, list)
+        or not all(isinstance(name, str) for name in native_mcp)
+        or sorted(native_mcp) != list(deployment.plugin.mcp_server_names)
+    ):
+        raise CodexNativeError(
+            "Codex did not discover every declared MCP server. Inspect the native "
+            "MCP configuration and retry; APM will not claim a complete native load."
+        )
     if not isinstance(skills, list):
         raise CodexNativeError(
             "Codex did not expose installed skill paths; native loading is unqualified."
@@ -255,7 +273,13 @@ def _observed_root(
             "The qualified route requires a native-discoverable skill; no complete-load claim was made."
         )
     root = roots.pop()
-    if root.resolve() in {deployment.plugin.source_root.resolve(), record.snapshot.path.resolve()}:
+    if any(
+        root.resolve().is_relative_to(source.resolve())
+        for source in (
+            deployment.plugin.source_root,
+            record.snapshot.path,
+        )
+    ):
         raise CodexNativeError("Codex returned source content instead of its installed copy.")
     if compute_package_hash(root) != deployment.source_hash:
         raise CodexNativeError(
@@ -331,6 +355,12 @@ def synchronize_codex_plugins(
         return ()
     client = CodexNativeClient.for_scope(scope, cwd)
     desired = {item.plugin.dependency_key: item for item in deployments}
+    for key, item in desired.items():
+        if key in records and records[key].name != item.plugin.name:
+            raise CodexNativeError(
+                "Codex native plugin name changed. Uninstall the prior dependency before "
+                "installing its renamed version; its registration was retained."
+            )
     changed: list[str] = []
     with client.connect() as rpc:
         config = client.read_config(rpc)
@@ -374,6 +404,7 @@ def synchronize_codex_plugins(
                 and record.source_hash == item.source_hash
                 and record.installed_root is not None
                 and record.marketplace_path is not None
+                and record.marketplace_path.is_file()
                 and record.snapshot.path.is_dir()
                 and _table(config, "marketplaces").get(name) == _marketplace(record.snapshot)
                 and f"{record.name}@{name}" in _table(config, "plugins")
@@ -404,7 +435,16 @@ def synchronize_codex_plugins(
                     item.source_hash,
                     snapshot,
                     config.path,
-                    previous=record.snapshot if record else None,
+                    previous=(
+                        record.previous
+                        if record
+                        and record.previous
+                        and _table(config, "marketplaces").get(name)
+                        == _marketplace(record.previous)
+                        else record.snapshot
+                        if record
+                        else None
+                    ),
                 )
             elif not record.pending:
                 record = replace(

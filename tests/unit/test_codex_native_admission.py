@@ -5,16 +5,25 @@ from types import SimpleNamespace
 
 import pytest
 
-from apm_cli.codex_plugins.admission import plan_native_codex_plugin
+from apm_cli.codex_plugins.admission import (
+    CodexNativeDeployment,
+    CodexNativePlugin,
+    finalize_codex_native,
+    plan_native_codex_plugin,
+)
 from apm_cli.codex_plugins.client import CodexNativeError
 from apm_cli.codex_plugins.manifest import CodexCompatibilityPlugin
 from apm_cli.core.scope import InstallScope
+from apm_cli.install.deployable_source_plan import DeployableSourcePlan
+from apm_cli.utils.content_hash import compute_package_hash
 
 pytestmark = pytest.mark.component
 
 
 def _admit(root: Path, **overrides):
-    package = SimpleNamespace(codex_plugin=CodexCompatibilityPlugin("example", "1", True, False))
+    package = SimpleNamespace(
+        codex_plugin=CodexCompatibilityPlugin("example", "1", True, False, ("server",))
+    )
     info = SimpleNamespace(package=package, install_path=root)
     options = {
         "scope": InstallScope.USER,
@@ -52,6 +61,8 @@ def test_native_admission_keeps_canonical_identity(tmp_path):
     assert plan.source_root == tmp_path.resolve()
     assert plan.name == "example"
     assert plan.target_name == "codex"
+    assert plan.source_hash == compute_package_hash(tmp_path)
+    assert plan.mcp_server_names == ("server",)
     assert _admit(tmp_path, skill_subset=()) == plan
 
 
@@ -80,3 +91,65 @@ def test_non_codex_package_has_no_native_admission(tmp_path):
         )
         is None
     )
+
+
+def _make_plugin(root: Path) -> CodexNativePlugin:
+    return CodexNativePlugin("owner/example", "example", root, compute_package_hash(root))
+
+
+def _make_source_plan(root: Path) -> DeployableSourcePlan:
+    return DeployableSourcePlan(source_root=root, paths=frozenset())
+
+
+def _base_result():
+    return {"native_plugin": False, "deployed_files": []}
+
+
+def test_finalize_cleanup_error_raises_and_does_not_queue(tmp_path):
+    """Reconcile errors must raise before any deployment is queued."""
+    plugin = _make_plugin(tmp_path)
+    ctx = SimpleNamespace(codex_native_plugins={}, dry_run=False)
+    reconcile_result = {"errors": 1, "failed_targets": ["codex"]}
+    with pytest.raises(CodexNativeError, match="loose hooks"):
+        finalize_codex_native(
+            _base_result(), plugin, _make_source_plan(tmp_path), reconcile_result, ctx, None
+        )
+    assert "owner/example" not in ctx.codex_native_plugins
+
+
+def test_finalize_read_only_does_not_queue(tmp_path):
+    """Scratch/replay (scratch_root is not None) must never queue."""
+    plugin = _make_plugin(tmp_path)
+    ctx = SimpleNamespace(codex_native_plugins={}, dry_run=False)
+    result = finalize_codex_native(
+        _base_result(), plugin, _make_source_plan(tmp_path), None, ctx, tmp_path
+    )
+    assert result["native_plugin"] is True
+    assert "owner/example" not in ctx.codex_native_plugins
+
+
+def test_finalize_dry_run_does_not_queue(tmp_path):
+    """Dry-run installs must not queue native deployments."""
+    plugin = _make_plugin(tmp_path)
+    ctx = SimpleNamespace(codex_native_plugins={}, dry_run=True)
+    result = finalize_codex_native(
+        _base_result(), plugin, _make_source_plan(tmp_path), None, ctx, None
+    )
+    assert result["native_plugin"] is True
+    assert "owner/example" not in ctx.codex_native_plugins
+
+
+def test_finalize_queues_immutable_deployment(tmp_path):
+    """Real install queues a frozen CodexNativeDeployment on ctx."""
+    plugin = _make_plugin(tmp_path)
+    plan = _make_source_plan(tmp_path)
+    (tmp_path / "changed-after-admission.txt").write_text("Must not replace the admitted hash.")
+    ctx = SimpleNamespace(codex_native_plugins={}, dry_run=False)
+    result = finalize_codex_native(_base_result(), plugin, plan, None, ctx, None)
+    assert result["native_plugin"] is True
+    dep = ctx.codex_native_plugins["owner/example"]
+    assert isinstance(dep, CodexNativeDeployment)
+    assert dep.plugin is plugin
+    assert dep.source_plan is plan
+    assert dep.source_hash == plugin.source_hash
+    assert dep.source_hash != compute_package_hash(tmp_path)

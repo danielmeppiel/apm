@@ -348,7 +348,7 @@ def integrate_package_primitives(  # noqa: PLR0913
         if _skip_bin and bin_skip_reason_override is not None
         else _bin_skip_reason_override
     )
-    from apm_cli.codex_plugins.admission import plan_native_codex_plugin
+    from apm_cli.codex_plugins.admission import finalize_codex_native, plan_native_codex_plugin
     from apm_cli.install.deployable_source_plan import DeployableSourcePlan
     from apm_cli.install.helpers.security_scan import _pre_deploy_security_scan
 
@@ -470,25 +470,12 @@ def integrate_package_primitives(  # noqa: PLR0913
     _reconcile_excluded_targets()
 
     if codex_native is not None:
-        from apm_cli.codex_plugins.admission import CodexNativeDeployment
-        from apm_cli.codex_plugins.client import CodexNativeError
-        from apm_cli.utils.content_hash import compute_package_hash
-
-        if callable(reconcile_package_targets):
-            cleanup = reconcile_package_targets(package_info, project_root, targets)
-            if cleanup.get("errors", 0):
-                raise CodexNativeError(
-                    "Prior loose hooks could not be removed; fix their ownership conflict "
-                    "and retry before native registration."
-                )
-        if ctx is not None and scratch_root is None and not ctx.dry_run:
-            ctx.codex_native_plugins[package_name] = CodexNativeDeployment(
-                codex_native,
-                source_plan,
-                compute_package_hash(source_plan.source_root),
-            )
-        result["native_plugin"] = True
-        return result
+        _rc = (
+            reconcile_package_targets(package_info, project_root, targets)
+            if callable(reconcile_package_targets)
+            else None
+        )
+        return finalize_codex_native(result, codex_native, source_plan, _rc, ctx, scratch_root)
 
     # Aggregate per-primitive across targets so we emit ONE line per kind
     # (per the 1/2/3+ collapse rule), not one per target.

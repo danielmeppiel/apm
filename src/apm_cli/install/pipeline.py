@@ -99,14 +99,6 @@ def _run_phase(name: str, phase, ctx):
             logger.verbose_detail(f"Phase: {name} -> {elapsed:.3f}s")
 
 
-def _run_native_registration_phases(ctx: InstallContext) -> None:
-    """Publish native registrations after shared persistence and audit gates."""
-    from .phases import codex_plugins, copilot_plugins
-
-    _run_phase("copilot_plugins", copilot_plugins, ctx)
-    _run_phase("codex_plugins", codex_plugins, ctx)
-
-
 def _run_integration_phase(ctx: InstallContext) -> None:
     """Bound durable ownership reads to integration, before lockfile persistence."""
     from .phases import integrate as _integrate_phase
@@ -376,7 +368,7 @@ def _transactional_pipeline(run):
 
 
 @_transactional_pipeline
-def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
+def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     apm_package: APMPackage,
     update_refs: bool = False,
     verbose: bool = False,
@@ -671,11 +663,11 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # can be admitted and resolving the capability would be pure waste.
         # --------------------------------------------------------------
         if not lockfile_only:
-            from .phases import copilot_plugins as _copilot_plugins_phase
+            from .phases import codex_plugins, copilot_plugins
             from .phases import targets as _targets_phase
 
             _run_phase("targets", _targets_phase, ctx)
-            _run_phase("copilot_activate", _copilot_plugins_phase.ActivatePhase, ctx)
+            _run_phase("copilot_activate", copilot_plugins.ActivatePhase, ctx)
 
         # --------------------------------------------------------------
         # Phase 2.5: Post-targets target-aware policy check (#827)
@@ -954,7 +946,8 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # later gate refused.
         # ------------------------------------------------------------------
         if not lockfile_only:
-            _run_native_registration_phases(ctx)
+            _run_phase("copilot_plugins", copilot_plugins, ctx)
+            _run_phase("codex_plugins", codex_plugins, ctx)
 
         # Emit verbose integration stats + bare-success fallback + return result
         from .phases import finalize as _finalize_phase

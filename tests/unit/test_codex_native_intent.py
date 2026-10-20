@@ -44,6 +44,15 @@ def test_codex_only_manifest_keeps_native_intent_without_normalization(tmp_path)
     assert manifest.read_bytes() == original
 
 
+def test_codex_consumer_opt_in_does_not_change_producer_manifest_lookup(tmp_path):
+    """Producer lookup retains its prior contract; only consumer admission opts in."""
+    from apm_cli.utils.helpers import find_plugin_json
+
+    manifest = _plugin(tmp_path)
+    assert find_plugin_json(tmp_path) is None
+    assert find_plugin_json(tmp_path, include_codex=True) == manifest
+
+
 @pytest.mark.parametrize("location", ["plugin.json", ".claude-plugin/plugin.json"])
 def test_existing_legacy_manifest_precedes_codex_compatibility_overlay(tmp_path, location):
     _plugin(tmp_path)
@@ -71,6 +80,15 @@ def test_malformed_codex_manifest_does_not_fall_back_to_skills(tmp_path):
     result = validate_apm_package(tmp_path)
     assert not result.is_valid
     assert not (tmp_path / ".apm").exists()
+    assert not (tmp_path / "apm.yml").exists()
+
+
+@pytest.mark.parametrize("resource", ["../outside.json", "/outside.json", "./missing.json"])
+def test_codex_mcp_resource_must_be_inside_complete_bundle(tmp_path, resource):
+    manifest = _plugin(tmp_path)
+    manifest.write_text(json.dumps({"name": "example", "mcpServers": resource}))
+    result = validate_apm_package(tmp_path, read_only=True)
+    assert not result.is_valid
     assert not (tmp_path / "apm.yml").exists()
 
 

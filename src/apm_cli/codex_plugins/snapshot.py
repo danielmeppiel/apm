@@ -7,6 +7,7 @@ import os
 import shutil
 import stat
 import subprocess
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from apm_cli.utils.git_env import (
     git_no_templates_args,
     git_subprocess_env,
 )
-from apm_cli.utils.path_security import ensure_path_within, has_symlink_component
+from apm_cli.utils.path_security import ensure_path_within, has_symlink_component, safe_rmtree
 from apm_cli.utils.paths import portable_relpath
 
 
@@ -112,6 +113,21 @@ def prepare_snapshot(
             "Native snapshot destination already exists; refusing to replace it."
         )
     destination.mkdir(parents=True)
+    with ExitStack() as rollback:
+        rollback.callback(safe_rmtree, destination, destination.parent)
+        snapshot = _populate_snapshot(plan, destination, marketplace, plugin_name, expected_hash)
+        rollback.pop_all()
+        return snapshot
+
+
+def _populate_snapshot(
+    plan: DeployableSourcePlan,
+    destination: Path,
+    marketplace: str,
+    plugin_name: str,
+    expected_hash: str,
+) -> NativeSnapshot:
+    """Populate a newly owned directory while the caller holds its rollback."""
     payload = destination / "plugins" / plugin_name
     ensure_path_within(payload, destination)
     payload.mkdir(parents=True)

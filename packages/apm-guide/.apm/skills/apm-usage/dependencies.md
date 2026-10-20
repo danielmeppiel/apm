@@ -399,6 +399,13 @@ package-content validation still apply. The actual package shape -- APM package
 (including dep-only `apm.yml`), skill bundle, or plugin -- is resolved at fetch
 time. See [install validation](commands.md#install-validation-chain-virtual-subdirectory-packages).
 
+Compatibility-only `.codex-plugin/plugin.json` uses the same local or pinned
+Git dependency syntax, not a new reference format. The qualified consumer is
+Codex CLI 0.163.0 at user scope (`-g --target codex`), with the entire bundle
+and its executable types approved. Do not select a skill subset. Native
+transport generations never replace the original dependency pin or publisher
+version. Other scopes/versions fail rather than reducing the package to skills.
+
 **Gitea and Gogs (self-hosted or vendor-hosted):** virtual packages resolve via the host's `/{owner}/{repo}/raw/{ref}/{path}` URL first, then fall back to the Contents API (v1 native, v3 Gogs-compat). Direct GitLab nested-group repos (`group/subgroup/repo`) require the object form (`git: <full-url>`, `path: <virtual>`) -- shorthand is ambiguous on >2-segment paths. **Exception:** when the dep routes through a registry proxy (explicit `host/artifactory/<key>/...` FQDN, or bare shorthand under `PROXY_REGISTRY_URL` + `PROXY_REGISTRY_ONLY=1`), the install-time boundary probe HEAD-walks the candidate splits against the proxy and locks in the first one whose archive responds, so nested-group shorthand works without the object form (#1472).
 
 > **Removed (#1094):** the legacy `.collection.yml` / `.collection.yaml` virtual-package form is no longer supported. Convert any `.collection.yml` to an `apm.yml` with a `dependencies:` section, then reference the resulting subdirectory as a regular subdirectory virtual package.
