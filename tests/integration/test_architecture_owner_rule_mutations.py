@@ -1539,6 +1539,28 @@ def test_claude_cleanup_guard_preserves_unresolved_path_check() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("dry_run=True,", "dry_run=False,"),
+        (
+            'if reconcile_stats.get("errors") or reconcile_stats.get("files_removed"):',
+            'if reconcile_stats.get("errors"):',
+        ),
+    ],
+)
+def test_claude_native_transition_guard_requires_read_only_preservation(old: str, new: str) -> None:
+    path = "src/apm_cli/install/services.py"
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    rule_id = "marketplace-integrations-claude-ownership"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     """The shared-selector rule protects warnings as well as destructive pruning."""
     path = "src/apm_cli/commands/_helpers.py"

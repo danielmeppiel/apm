@@ -75,6 +75,12 @@ updates preserve activation choices. See [admission limits and outstanding
 runtime qualification](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#apm-managed-claude-user-plugins):
 registration is metadata-only, not runtime proof.
 
+An existing package-owned loose Claude hook blocks native transition without
+changing hook settings or ownership. Explicitly uninstall the package with
+`apm uninstall --global <package>`, then reinstall with the original targets;
+repair unreadable settings or ownership records first. APM never automatically
+deletes retained-target hooks to migrate them.
+
 Global uninstall retains native plugin data; APM never takes over foreign
 marketplace/plugin ownership. APM's package-replacement rollback does not cover
 Claude-owned metadata; failures retain ownership intent. After repair, reconcile

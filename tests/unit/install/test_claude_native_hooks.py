@@ -62,7 +62,9 @@ def _fixture(root: Path) -> PackageInfo:
 
 def _integrate(home: Path, info: PackageInfo, **kwargs):
     (home / ".claude").mkdir(parents=True, exist_ok=True)
-    ctx = InstallContext(project_root=home, apm_dir=home / ".apm", scope=InstallScope.USER)
+    ctx = kwargs.pop("ctx", None) or InstallContext(
+        project_root=home, apm_dir=home / ".apm", scope=InstallScope.USER
+    )
     result = integrate_package_primitives(
         info,
         home,
@@ -100,7 +102,7 @@ def test_native_hooks_remain_intact_without_loose_settings(tmp_path: Path) -> No
     native.assert_not_called()
 
 
-def test_migration_retires_owned_hooks_but_preserves_user_entries(tmp_path: Path) -> None:
+def test_native_admission_preserves_unowned_loose_hooks(tmp_path: Path) -> None:
     info = _fixture(tmp_path / ".apm/apm_modules/owned")
     config = tmp_path / ".claude/settings.json"
     config.parent.mkdir()
@@ -113,11 +115,6 @@ def test_migration_retires_owned_hooks_but_preserves_user_entries(tmp_path: Path
             }
         )
     )
-    old = HookIntegrator().integrate_package_hooks_claude(info, tmp_path, user_scope=True)
-    assert old.hooks_integrated == 1
-    assert set(json.loads(config.read_text())["hooks"]) == set(EVENTS)
-    assert len(json.loads(config.read_text())["hooks"]["SessionStart"]) == 2
-
     result, ctx = _integrate(tmp_path, info)
 
     assert result["native_plugin"] is True
@@ -133,7 +130,7 @@ def test_unsafe_migration_never_queues_native_registration(tmp_path: Path) -> No
     config = tmp_path / ".claude/settings.json"
     config.parent.mkdir()
     config.write_text("not-json", encoding="ascii")
-    with pytest.raises(ClaudeNativePluginError, match="retire previous"):
+    with pytest.raises(ClaudeNativePluginError, match="Hook settings were preserved"):
         _integrate(tmp_path, info)
     assert config.read_text() == "not-json"
 

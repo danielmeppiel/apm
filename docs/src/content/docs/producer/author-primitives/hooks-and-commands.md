@@ -32,6 +32,8 @@ registrations start disabled. APM leaves `CLAUDE_PLUGIN_ROOT` expressions and
 sibling resources intact for Claude to interpret. See
 [APM-managed Claude user plugins](../../../consumer/installing-from-marketplaces/#apm-managed-claude-user-plugins)
 for client, capability and outstanding runtime qualification limits.
+Existing package-owned loose Claude hooks are preserved and block the native
+transition until the operator explicitly uninstalls that package.
 The loose-hook rules below still apply to standalone primitives and project
 deployments.
 

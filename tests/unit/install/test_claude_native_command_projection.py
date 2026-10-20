@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from apm_cli.claude_plugins.admission import ClaudeNativePluginError
 from apm_cli.core.scope import InstallScope
 from apm_cli.install.context import InstallContext
 from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
@@ -68,17 +69,19 @@ def _integrate(
     scope: InstallScope = InstallScope.USER,
     targets: tuple[str, ...] = ("claude",),
     subset: list[str] | None = None,
+    context: InstallContext | None = None,
 ) -> tuple[dict, InstallContext]:
     """Use the real admission, security scan, dispatch and file integrators."""
     home.mkdir(parents=True, exist_ok=True)
     for target in targets:
         (home / KNOWN_TARGETS[target].root_dir).mkdir(parents=True, exist_ok=True)
-    context = InstallContext(
-        project_root=home,
-        apm_dir=home / ".apm",
-        apm_modules_dir=home / ".apm" / "apm_modules",
-        scope=scope,
-    )
+    if context is None:
+        context = InstallContext(
+            project_root=home,
+            apm_dir=home / ".apm",
+            apm_modules_dir=home / ".apm" / "apm_modules",
+            scope=scope,
+        )
     result = integrate_package_primitives(
         package,
         home,
@@ -187,6 +190,39 @@ def test_dependency_target_exclusion_does_not_activate_native_claude(tmp_path: P
     assert result["commands"] == 1
     assert (home / ".cursor" / "commands" / "status.md").is_file()
     assert not (home / ".claude" / "commands" / "status.md").exists()
+
+
+@pytest.mark.parametrize(
+    "commands", [[], ["./selected/status.md"]], ids=["empty-selection", "selected-command"]
+)
+def test_unreadable_retained_hooks_preserve_command_context(
+    tmp_path: Path, commands: list[str]
+) -> None:
+    """Failed native admission cannot rewrite command resources or user commands."""
+    home = tmp_path / "home"
+    source = home / ".apm" / "apm_modules" / "fixture"
+    package = _plugin(source, commands=commands)
+    originals = {
+        path.relative_to(source): path.read_bytes() for path in source.rglob("*") if path.is_file()
+    }
+    user_command = home / ".claude" / "commands" / "status.md"
+    user_command.parent.mkdir(parents=True)
+    user_command.write_bytes(b"# User-owned status\n")
+    settings = home / ".claude" / "settings.json"
+    settings.write_bytes(b"{not valid JSON}\n")
+    context = InstallContext(project_root=home, apm_dir=home / ".apm", scope=InstallScope.USER)
+
+    with pytest.raises(ClaudeNativePluginError, match="Hook settings were preserved") as error:
+        _integrate(home, package, context=context)
+
+    assert not context.claude_native_plugins
+    assert settings.read_bytes() == b"{not valid JSON}\n"
+    assert "settings.json" in str(error.value)
+    assert user_command.read_bytes() == b"# User-owned status\n"
+    assert sorted(path.name for path in user_command.parent.iterdir()) == ["status.md"]
+    assert {
+        path.relative_to(source): path.read_bytes() for path in source.rglob("*") if path.is_file()
+    } == originals
 
 
 def test_omitted_command_selection_retains_native_default_directory(tmp_path: Path) -> None:
