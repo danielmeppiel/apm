@@ -183,9 +183,11 @@
       "keyword": "MUST",
       "section": "5.6",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
-        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_supports_registry_source"
+        "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_supports_registry_source",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_semver_records_resolution_timestamp[False]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_semver_records_resolution_timestamp[True]"
       ]
     },
     {

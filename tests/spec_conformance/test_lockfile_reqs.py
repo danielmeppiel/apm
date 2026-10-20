@@ -443,9 +443,7 @@ def test_marketplace_semver_records_resolution_timestamp(replay: bool) -> None:
     current = LockedDependency(
         repo_url="owner/package", resolved_ref="v1.2.3", resolved_commit="a" * 40
     )
-    previous = replace(
-        current, constraint="^1.0.0", resolved_tag="v1.2.3", resolved_at=timestamp
-    )
+    previous = replace(current, constraint="^1.0.0", resolved_tag="v1.2.3", resolved_at=timestamp)
     key = current.get_unique_key()
     lock = LockFile(dependencies={key: current})
     context = SimpleNamespace(
