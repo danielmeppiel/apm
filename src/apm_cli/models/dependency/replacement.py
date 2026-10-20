@@ -21,16 +21,12 @@ No rule chaining: rules apply once to original requirements.
 from __future__ import annotations
 
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ...utils.github_host import is_supported_git_host
-from ...utils.path_security import validate_path_segments
-from .identity import (
-    _DEFAULT_SCHEME_PORTS,
-    normalize_package_repo_url,
-)
+from ...cache.url_normalize import SCP_LIKE_RE
+from .object_fields import apply_optional_dependency_fields
 
 if TYPE_CHECKING:
     from .reference import DependencyReference
@@ -82,6 +78,16 @@ class ReplacementSelector:
         """Hashable lookup key for the index."""
         return (self.host, self.port, self.repo_url, self.subpath)
 
+    @classmethod
+    def from_reference(cls, dep: DependencyReference) -> ReplacementSelector:
+        """Use the canonical dependency identity normalization."""
+        return cls(
+            (dep.host or "github.com").lower(),
+            dep.port,
+            dep.canonical_repo_url,
+            dep.virtual_path if dep.is_virtual else None,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Source descriptors: what the upstream identity is redirected to
@@ -108,12 +114,14 @@ class GitReplacementSource:
     at a different location).
     """
 
-    git: str
+    git: str = field(compare=False)
     host: str
     port: int | None
     repo_url: str
     subpath: str | None
     ref: str
+    scheme: str | None = None
+    ssh_user: str | None = None
 
 
 # Union of effective sources
@@ -133,6 +141,117 @@ class ReplacementRule:
     source: ReplacementSource
 
 
+@dataclass(frozen=True)
+class ReplacementRequest:
+    """One original incoming edge, before its complete source/ref substitution."""
+
+    parent: str | None
+    ref: str | None
+    skills: tuple[str, ...] | None
+    targets: tuple[str, ...] | None
+    dev: bool
+
+    def to_dict(self) -> dict:
+        """Preserve unset and explicitly empty selections separately."""
+        return {
+            "parent": self.parent,
+            "ref": self.ref,
+            "skills": list(self.skills) if self.skills is not None else None,
+            "targets": list(self.targets) if self.targets is not None else None,
+            "dev": self.dev,
+        }
+
+
+@dataclass
+class ReplacementBinding:
+    """Original ownership and main-thread edge evidence for one selected source."""
+
+    original: DependencyReference
+    rule: ReplacementRule
+    consumer_root: Path | None = None
+    requests: dict[ReplacementRequest, None] = field(default_factory=dict)
+
+    def record(self, dep: DependencyReference, parent: str | None, is_dev: bool) -> None:
+        """Record every incoming edge in O(1), including deduplicated diamonds."""
+        request = ReplacementRequest(
+            parent,
+            dep.reference,
+            tuple(dep.skill_subset) if dep.skill_subset is not None else None,
+            tuple(dep.target_subset) if dep.target_subset is not None else None,
+            is_dev,
+        )
+        self.requests[request] = None
+
+    def to_dict(self) -> dict:
+        """Serialize selected-source evidence independently of logical identity."""
+        return {
+            "source": replacement_rule_to_dict(self.rule)["with"],
+            "requests": [request.to_dict() for request in self.requests],
+        }
+
+    @classmethod
+    def from_dict(cls, raw: object, original: DependencyReference) -> ReplacementBinding:
+        """Validate lock evidence without accessing the selected source."""
+        if not isinstance(raw, dict) or set(raw) != {"source", "requests"}:
+            raise ReplacementConfigError("Replacement evidence requires source and requests")
+        if original.is_local or original.source == "registry" or original.artifactory_prefix:
+            raise ReplacementConfigError("Replacement evidence must belong to a Git identity")
+        source = _parse_source(raw["source"], rule_index=0)
+        requests = raw["requests"]
+        if not isinstance(requests, list) or not requests:
+            raise ReplacementConfigError("Replacement evidence requires original incoming requests")
+        binding = cls(
+            original, ReplacementRule(ReplacementSelector.from_reference(original), source)
+        )
+        for request in requests:
+            if not isinstance(request, dict) or set(request) != {
+                "parent",
+                "ref",
+                "skills",
+                "targets",
+                "dev",
+            }:
+                raise ReplacementConfigError("Malformed replacement request evidence")
+            if any(
+                request[key] is not None and (not isinstance(request[key], str) or not request[key])
+                for key in ("parent", "ref")
+            ) or not isinstance(request["dev"], bool):
+                raise ReplacementConfigError("Invalid replacement parent, ref, or dev intent")
+            edge = replace(
+                original,
+                reference=request["ref"],
+                skill_subset=None,
+                target_subset=None,
+            )
+            try:
+                # Persisted normalized selections may be explicitly contracted
+                # to empty; that must not expand back to the default "all".
+                selections = {key: request[key] for key in ("skills", "targets")}
+                for key, attribute in (("skills", "skill_subset"), ("targets", "target_subset")):
+                    if selections[key] == []:
+                        setattr(edge, attribute, [])
+                        del selections[key]
+                apply_optional_dependency_fields(edge, selections)
+            except ValueError as exc:
+                raise ReplacementConfigError(f"Invalid replacement selection: {exc}") from exc
+            if not binding.requests:
+                binding.original = edge
+            binding.record(edge, request["parent"], request["dev"])
+        return binding
+
+    def local_source_path(self, consumer_root: Path | None = None) -> Path:
+        """Anchor a root-owned local source independently of the incoming parent."""
+        if not isinstance(self.rule.source, LocalReplacementSource):
+            raise ValueError("Replacement source is not local")
+        root = consumer_root or self.consumer_root
+        path = Path(self.rule.source.path).expanduser()
+        if not path.is_absolute():
+            if root is None:
+                raise ValueError("Local replacement requires the consumer manifest directory")
+            path = root / path
+        return path.resolve()
+
+
 # ---------------------------------------------------------------------------
 # Index: O(R+E) lookup
 # ---------------------------------------------------------------------------
@@ -148,6 +267,9 @@ class ReplacementIndex:
     def __init__(self, rules: list[ReplacementRule]) -> None:
         self._rules = list(rules)
         self._by_key: dict[tuple[str, int | None, str, str | None], ReplacementRule] = {}
+        self._bindings: dict[tuple[str, int | None, str, str | None], ReplacementBinding] = {}
+        self._slots: dict[str, str] = {}
+        self._identities: dict[str, str] = {}
         for rule in self._rules:
             key = rule.selector.key
             if key in self._by_key:
@@ -167,23 +289,61 @@ class ReplacementIndex:
         host (lowercase), port, normalized repo_url, and virtual_path (subpath).
         Local, registry, marketplace, and parent-inheritance deps never match.
         """
-        if dep.is_local or dep.source == "registry" or dep.is_marketplace:
+        if (
+            dep.replacement is not None
+            or dep.is_local
+            or dep.source == "registry"
+            or dep.is_marketplace
+        ):
             return None
         if dep.is_parent_repo_inheritance:
             return None
-        host = (dep.host or "github.com").lower()
-        port = dep.port
-        repo_url = normalize_package_repo_url(
-            dep.repo_url,
-            host=dep.host,
-            source=dep.source,
-            registry_prefix=dep.artifactory_prefix,
-            is_local=dep.is_local,
-            is_marketplace=dep.is_marketplace,
-        )
-        subpath = dep.virtual_path if dep.is_virtual else None
-        key = (host, port, repo_url, subpath)
-        return self._by_key.get(key)
+        return self._by_key.get(ReplacementSelector.from_reference(dep).key)
+
+    def bind(
+        self,
+        dep: DependencyReference,
+        *,
+        consumer_root: Path,
+        modules_dir: Path,
+        parent: str | None,
+        is_dev: bool,
+    ) -> DependencyReference:
+        """Apply the consumer's table once, before graph deduplication/admission."""
+        if not self._rules or dep.replacement is not None:
+            return dep
+        identity = dep.get_identity()
+        slot = dep.get_install_path(modules_dir)
+        key = dep.get_unique_key()
+        for occupied, entry in ((self._slots, slot.as_posix()), (self._identities, key)):
+            previous = occupied.setdefault(entry, identity)
+            if previous != identity:
+                raise ReplacementCollisionError(
+                    f"Replacement graph identities {previous!r} and {identity!r} "
+                    f"share the existing materialization slot {slot}. "
+                    "Use distinct original package identities and destinations."
+                )
+        rule = self.lookup(dep)
+        if rule is None:
+            return dep
+        binding = self._bindings.get(rule.selector.key)
+        if binding is None:
+            binding = ReplacementBinding(dep, rule, consumer_root)
+            self._bindings[rule.selector.key] = binding
+        binding.record(dep, parent, is_dev)
+        effective = project_effective_reference(dep, rule)
+        effective.replacement = binding
+        if effective.is_local:
+            source = binding.local_source_path()
+            if source == consumer_root.resolve():
+                raise ReplacementCycleError("Local replacement cycle: source is the consumer root")
+            effective.anchored_local_path = source.as_posix()
+        return effective
+
+    @property
+    def unused_rules(self) -> list[ReplacementRule]:
+        """Root rules that matched no incoming edge in this resolution."""
+        return [rule for rule in self._rules if rule.selector.key not in self._bindings]
 
     @property
     def rules(self) -> list[ReplacementRule]:
@@ -212,66 +372,36 @@ _GIT_SOURCE_ALLOWED_KEYS = frozenset({"git", "path", "ref"})
 _RULE_ALLOWED_KEYS = frozenset({"for", "with"})
 
 
-def _parse_git_url_to_coordinates(
-    raw_url: str,
+def _parse_git_entry(
+    raw: dict,
     *,
     context: str,
-) -> tuple[str, int | None, str, str | None]:
-    """Parse a Git URL into (host, port, repo_url, subpath_from_path_key).
+) -> DependencyReference:
+    """Delegate provider, endpoint, subpath and transport parsing to its owner."""
+    from .reference import DependencyReference
 
-    Reuses existing ``is_supported_git_host`` and ``normalize_package_repo_url``
-    boundaries.  Only explicit ``https://`` URLs are accepted in selectors and
-    Git sources -- no shorthand, no SCP, no SSH.
-
-    Returns (host_lower, port_or_none, normalized_repo_url, None).
-    The ``path`` key is handled separately by the caller.
-    """
-    stripped = raw_url.strip()
-    lower = stripped.lower()
-    if not lower.startswith("https://") and not lower.startswith("http://"):
+    git = raw["git"].strip()
+    parsed = urllib.parse.urlparse(git)
+    scp = SCP_LIKE_RE.match(git)
+    if not scp and parsed.scheme not in {"https", "http", "ssh"}:
+        raise ReplacementConfigError(f"{context}: 'git' must be an explicit supported Git URL")
+    if (
+        "?" in git
+        or "#" in git
+        or (parsed.scheme in {"https", "http"} and (parsed.username or parsed.password))
+    ):
         raise ReplacementConfigError(
-            f"{context}: 'git' must be an explicit HTTPS URL "
-            f"(e.g. https://github.com/owner/repo.git), got {raw_url!r}"
+            f"{context}: Git URL must not contain credentials, query, or ref"
         )
-
-    parsed = urllib.parse.urlparse(stripped)
-    host = (parsed.hostname or "").lower()
-    if not host:
-        raise ReplacementConfigError(f"{context}: could not extract host from {raw_url!r}")
-    if not is_supported_git_host(host):
-        raise ReplacementConfigError(
-            f"{context}: unsupported Git host {host!r}. "
-            "Only supported Git hosting platforms are accepted."
-        )
-    port = parsed.port
-    scheme = (parsed.scheme or "").lower()
-    if port == _DEFAULT_SCHEME_PORTS.get(scheme):
-        port = None
-
-    # Extract repo path, strip .git suffix
-    path_str = parsed.path.strip("/")
-    if path_str.endswith(".git"):
-        path_str = path_str[:-4]
-    if not path_str or "/" not in path_str:
-        raise ReplacementConfigError(
-            f"{context}: invalid repository path in {raw_url!r}. Expected at least 'owner/repo'."
-        )
-    # Validate path segments
-    validate_path_segments(path_str, context=f"{context} repository path")
-
-    repo_url = normalize_package_repo_url(path_str, host=host)
-    return host, port, repo_url, None
-
-
-def _normalize_subpath(raw: str, *, context: str) -> str:
-    """Normalize a package subpath from the ``path`` field."""
-    stripped = raw.strip().replace("\\", "/").strip("/")
-    if not stripped:
-        raise ReplacementConfigError(f"{context}: 'path' must be a non-empty string")
-    # Collapse redundant separators
-    normalized = "/".join(seg for seg in stripped.split("/") if seg)
-    validate_path_segments(normalized, context=f"{context} subpath")
-    return normalized
+    try:
+        dep = DependencyReference.parse_from_dict(raw)
+        if dep.is_local or dep.artifactory_prefix or dep.is_parent_repo_inheritance:
+            raise ValueError("expected a supported Git repository")
+        if dep.is_virtual and not dep.is_virtual_subdirectory():
+            raise ValueError("replacement path must select a package directory, not a primitive")
+    except ValueError as exc:
+        raise ReplacementConfigError(f"{context}: {exc}") from exc
+    return dep
 
 
 def _parse_selector(raw: object, *, rule_index: int) -> ReplacementSelector:
@@ -291,16 +421,8 @@ def _parse_selector(raw: object, *, rule_index: int) -> ReplacementSelector:
     if not isinstance(git_url, str) or not git_url.strip():
         raise ReplacementConfigError(f"{context}: 'git' must be a non-empty string")
 
-    host, port, repo_url, _ = _parse_git_url_to_coordinates(git_url, context=context)
-
-    subpath: str | None = None
-    raw_path = raw.get("path")
-    if raw_path is not None:
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ReplacementConfigError(f"{context}: 'path' must be a non-empty string")
-        subpath = _normalize_subpath(raw_path, context=context)
-
-    return ReplacementSelector(host=host, port=port, repo_url=repo_url, subpath=subpath)
+    dep = _parse_git_entry(raw, context=context)
+    return ReplacementSelector.from_reference(dep)
 
 
 def _parse_local_source(raw: dict, *, rule_index: int) -> LocalReplacementSource:
@@ -328,8 +450,6 @@ def _parse_git_source(raw: dict, *, rule_index: int) -> GitReplacementSource:
     if not isinstance(git_url, str) or not git_url.strip():
         raise ReplacementConfigError(f"{context}: 'git' must be a non-empty string")
 
-    host, port, repo_url, _ = _parse_git_url_to_coordinates(git_url, context=context)
-
     ref_val = raw.get("ref")
     if ref_val is None:
         raise ReplacementConfigError(
@@ -338,20 +458,16 @@ def _parse_git_source(raw: dict, *, rule_index: int) -> GitReplacementSource:
     if not isinstance(ref_val, str) or not ref_val.strip():
         raise ReplacementConfigError(f"{context}: 'ref' must be a non-empty string")
 
-    subpath: str | None = None
-    raw_path = raw.get("path")
-    if raw_path is not None:
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            raise ReplacementConfigError(f"{context}: 'path' must be a non-empty string")
-        subpath = _normalize_subpath(raw_path, context=context)
-
+    dep = _parse_git_entry(raw, context=context)
     return GitReplacementSource(
         git=git_url.strip(),
-        host=host,
-        port=port,
-        repo_url=repo_url,
-        subpath=subpath,
+        host=(dep.host or "github.com").lower(),
+        port=dep.port,
+        repo_url=dep.canonical_repo_url,
+        subpath=dep.virtual_path,
         ref=ref_val.strip(),
+        scheme=dep.explicit_scheme,
+        ssh_user=dep.ssh_user,
     )
 
 
@@ -458,154 +574,13 @@ def project_effective_reference(
     """
     from .reference import DependencyReference as DepRef
 
-    source = rule.source
-    if isinstance(source, LocalReplacementSource):
-        return DepRef(
-            repo_url=dep.repo_url,
-            is_local=True,
-            local_path=source.path,
-            source="local",
-            # Preserve selection intent
-            alias=dep.alias,
-            skill_subset=dep.skill_subset,
-            target_subset=dep.target_subset,
-            # Keep virtual identity if the original was virtual
-            is_virtual=dep.is_virtual,
-            virtual_path=dep.virtual_path,
-        )
-    elif isinstance(source, GitReplacementSource):
-        effective_subpath = source.subpath if source.subpath is not None else dep.virtual_path
-        return DepRef(
-            repo_url=source.repo_url,
-            host=source.host,
-            port=source.port,
-            reference=source.ref,
-            source="git",
-            # Preserve selection intent
-            alias=dep.alias,
-            skill_subset=dep.skill_subset,
-            target_subset=dep.target_subset,
-            # Virtual path from source or original
-            is_virtual=bool(effective_subpath),
-            virtual_path=effective_subpath,
-        )
-    else:
-        raise TypeError(f"Unknown replacement source type: {type(source)}")
-
-
-# ---------------------------------------------------------------------------
-# BFS binding: central typed projection for resolver integration
-# ---------------------------------------------------------------------------
-
-
-def bind_graph_replacement(
-    dep: DependencyReference,
-    index: ReplacementIndex,
-    *,
-    consumer_root: Path,
-    is_root: bool = True,
-) -> tuple[DependencyReference, DependencyReference] | None:
-    """Bind a dependency to its replacement source before dedup/admission.
-
-    Returns ``(original, effective)`` if a rule matches, or ``None`` if the
-    dependency is not replaced.  The original keeps its identity (repo_url,
-    host, port, reference) for graph key, lock key, and provenance.  The
-    effective carries the replacement source coordinates for download, auth,
-    and immutable-obligation checking.
-
-    Args:
-        dep: The original dependency reference from the manifest.
-        index: The replacement index built from the root ``replace:`` block.
-        consumer_root: The consumer project root for local path anchoring.
-        is_root: True when called from root manifest processing. Child
-            manifests never apply replacement rules (root-only).
-
-    Returns:
-        Tuple of (original identity ref, effective source ref) or None.
-    """
-    if not is_root:
-        return None
-    rule = index.lookup(dep)
-    if rule is None:
-        return None
-    effective = project_effective_reference(dep, rule)
-    return (dep, effective)
-
-
-def validate_no_replacement_collision(
-    dep: DependencyReference,
-    effective: DependencyReference,
-    occupied_slots: dict[str, str],
-) -> None:
-    """Reject when effective source would collide with an existing physical slot.
-
-    The existing ``apm_modules/`` layout is host-blind: the filesystem path is
-    derived from ``repo_url`` alone (plus ``virtual_path``).  If a replacement
-    changes the host or port but keeps the same ``repo_url``, two logically
-    distinct packages would share one directory.  This guard rejects that
-    ambiguity rather than broadening the physical layout.
-
-    Args:
-        dep: The original dependency reference.
-        effective: The effective source reference after replacement.
-        occupied_slots: Map from repo_url-based slot key to a qualified
-            identity string.  The caller populates this as deps are bound.
-
-    Raises:
-        ReplacementCollisionError: When the effective source would land in a
-            slot already occupied by a different logical identity.
-    """
-    # Build the host-blind slot key from the effective source
-    eff_repo = effective.repo_url
-    eff_host = (effective.host or "github.com").lower()
-    eff_port = effective.port
-    eff_identity = f"{eff_host}:{eff_port}:{eff_repo}" if eff_port else f"{eff_host}:{eff_repo}"
-
-    if eff_repo in occupied_slots:
-        existing_identity = occupied_slots[eff_repo]
-        if existing_identity != eff_identity:
-            raise ReplacementCollisionError(
-                f"Replacement collision: effective source {eff_identity!r} would "
-                f"share the physical slot '{eff_repo}' with {existing_identity!r}. "
-                "The apm_modules/ layout is host-blind; use an alias or a "
-                "different repository path to avoid ambiguity."
-            )
-    else:
-        occupied_slots[eff_repo] = eff_identity
-
-
-def detect_local_replacement_cycle(
-    local_path: str,
-    *,
-    consumer_root: Path,
-    ancestor_paths: frozenset[Path],
-) -> None:
-    """Reject a local replacement that points back into the dependency chain.
-
-    Args:
-        local_path: The replacement source path (relative to consumer_root
-            or absolute).
-        consumer_root: The consumer project root.
-        ancestor_paths: Resolved absolute paths of ancestors in the current
-            dependency chain (including consumer_root).
-
-    Raises:
-        ReplacementCycleError: When the resolved local path is in the
-            ancestor set.
-    """
-    resolved = Path(local_path).expanduser()
-    if not resolved.is_absolute():
-        resolved = (consumer_root / resolved).resolve()
-    else:
-        resolved = resolved.resolve()
-
-    if resolved in ancestor_paths:
-        raise ReplacementCycleError(
-            f"Local replacement cycle: '{local_path}' resolves to "
-            f"'{resolved}' which is an ancestor in the dependency chain. "
-            "A replacement source cannot point back to a package that "
-            "depends on it."
-        )
+    effective = DepRef.parse_from_dict(replacement_rule_to_dict(rule)["with"])
+    return replace(
+        effective,
+        alias=dep.alias,
+        skill_subset=list(dep.skill_subset) if dep.skill_subset is not None else None,
+        target_subset=list(dep.target_subset) if dep.target_subset is not None else None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -615,11 +590,15 @@ def detect_local_replacement_cycle(
 
 def replacement_rule_to_dict(rule: ReplacementRule) -> dict:
     """Serialize a rule for lockfile ``replacements:`` list."""
+    from .reference import DependencyReference
+
     selector_dict: dict[str, object] = {}
     sel = rule.selector
-    # Reconstruct a canonical HTTPS URL from coordinates
-    netloc = f"{sel.host}:{sel.port}" if sel.port else sel.host
-    selector_dict["git"] = f"https://{netloc}/{sel.repo_url}.git"
+    identity = DependencyReference(
+        repo_url=sel.repo_url, host=sel.host, port=sel.port
+    ).with_derived_provider_coordinates()
+    url = identity.to_github_url()
+    selector_dict["git"] = url if identity.is_azure_devops() else f"{url}.git"
     if sel.subpath:
         selector_dict["path"] = sel.subpath
 

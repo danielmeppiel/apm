@@ -57,11 +57,7 @@ _LOCKED_DEPENDENCY_VALUES = {
     "exec_status": "deployed",
     "name": "consume-contract",
     "extensions": {"x-vendor": {"k": "v"}},
-    "replacement_source": {
-        "for": {"git": "https://github.com/apm-org/consume-contract.git"},
-        "with": {"path": "../local-consume"},
-    },
-    "replacement_original_requests": ["v1.0", "v1.1"],
+    "replacement": None,
     "_unknown_fields": {"future_consumer_field": {"enabled": True}},
 }
 
@@ -85,6 +81,7 @@ _RECONSTRUCTED_LOCK_FIELDS = {
     "allow_insecure",
     "skill_subset",
     "target_subset",
+    "replacement",
 }
 
 _REFERENCE_TO_LOCK_FIELD = {

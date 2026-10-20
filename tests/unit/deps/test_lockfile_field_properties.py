@@ -184,23 +184,8 @@ def locked_dependency_kwargs(draw: st.DrawFn) -> dict[str, Any]:
             ),
         )
     )
-    kwargs["replacement_source"] = maybe(
-        None,
-        st.just(
-            {
-                "for": {"git": "https://github.com/owner/upstream.git"},
-                "with": {"path": "./local-upstream"},
-            }
-        ),
-    )
-    kwargs["replacement_original_requests"] = maybe(
-        None,
-        st.one_of(
-            st.just([]),
-            st.just(["v1.0"]),
-            st.just(["v1.0", "v1.1"]),
-        ),
-    )
+    # Replacement evidence has cross-field constraints tested separately.
+    kwargs["replacement"] = None
     kwargs["_unknown_fields"] = draw(
         st.one_of(st.just({}), st.just({"future_consumer_field": {"enabled": True}}))
     )
