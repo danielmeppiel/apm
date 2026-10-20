@@ -1361,8 +1361,9 @@
       "keyword": "MUST",
       "section": "10.13",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_denies_unapproved_manifest_referenced_mcp",
         "tests/spec_conformance/test_manifest_reqs.py::test_consumer_must_deny_executable_primitive_without_allowexecutables_approval"
       ]
     },
@@ -1431,8 +1432,11 @@
       "oracle": "tests/fixtures/spec-conformance/source-plan/req-sc-015.json",
       "section": "10.16",
       "status": "active",
-      "test_count": 5,
+      "test_count": 8,
       "tests": [
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_scans_the_exact_whole_bundle_before_transport[blocked]",
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_scans_the_exact_whole_bundle_before_transport[safe]",
+        "tests/spec_conformance/test_codex_compatibility_admission_reqs.py::test_codex_consumer_scans_the_exact_whole_bundle_before_transport[symlink]",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_skip_diagnostic_preserves_authorized_scan_and_materialization[False]",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_skip_diagnostic_preserves_authorized_scan_and_materialization[True]",
         "tests/spec_conformance/test_manifest_reqs.py::test_authorized_source_plan_fixture_oracle_covers_symlinked_content",
