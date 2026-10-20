@@ -74,6 +74,10 @@ directory (normally `~/.apm`). Include `claude` in that manifest's `targets`,
 preserving any other targets; audit has no `--target` flag. This checks stored
 source integrity, not native activation or hook execution.
 
+Raw local plugins without a source `apm.yml` can also report a separate
+MCP configuration-consistency error. In that case, `apm audit --ci` exits 1
+even when its native drift check passes.
+
 If this package already owns loose Claude hooks, APM preserves them and refuses
 the native transition instead of deleting retained-target state or enabling both
 routes. Explicitly uninstall that package with `apm uninstall --global <package>`,
