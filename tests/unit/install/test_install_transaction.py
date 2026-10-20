@@ -24,6 +24,11 @@ from apm_cli.utils.path_security import PathTraversalError, safe_rmtree
 pytestmark = pytest.mark.windows_compat
 
 
+# Generous upper bound: spawned interpreters start slowly on loaded CI runners,
+# and a holder that times out releases the lock early.
+_PROCESS_TIMEOUT_SECONDS = 120
+
+
 def _hold_workspace_transaction(
     manifest: str,
     modules: str,
@@ -37,7 +42,7 @@ def _hold_workspace_transaction(
         logger=None,
     )
     ready.set()
-    if not release.wait(10):
+    if not release.wait(_PROCESS_TIMEOUT_SECONDS):
         raise TimeoutError("test did not release workspace transaction")
     transaction.commit(InstallResult())
 
@@ -466,7 +471,7 @@ def test_workspace_lock_serializes_concurrent_processes(tmp_path: Path) -> None:
         args=(str(manifest), str(modules), holder_ready, release_holder),
     )
     holder.start()
-    assert holder_ready.wait(10)
+    assert holder_ready.wait(_PROCESS_TIMEOUT_SECONDS)
 
     contenders = []
     contender_events = []
@@ -481,14 +486,14 @@ def test_workspace_lock_serializes_concurrent_processes(tmp_path: Path) -> None:
         contenders.append(contender)
         contender_events.append((attempting, acquired))
 
-    assert all(attempting.wait(10) for attempting, _ in contender_events)
+    assert all(attempting.wait(_PROCESS_TIMEOUT_SECONDS) for attempting, _ in contender_events)
     assert not any(acquired.wait(0.2) for _, acquired in contender_events)
 
     release_holder.set()
-    assert all(acquired.wait(10) for _, acquired in contender_events)
-    holder.join(10)
+    assert all(acquired.wait(_PROCESS_TIMEOUT_SECONDS) for _, acquired in contender_events)
+    holder.join(_PROCESS_TIMEOUT_SECONDS)
     for contender in contenders:
-        contender.join(10)
+        contender.join(_PROCESS_TIMEOUT_SECONDS)
 
     assert holder.exitcode == 0
     assert all(contender.exitcode == 0 for contender in contenders)

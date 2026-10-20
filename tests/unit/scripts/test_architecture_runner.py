@@ -666,6 +666,7 @@ install-deployment-update-plan-ref-annotation
 marketplace-integrations-agent-plugin-contract
 marketplace-integrations-bundle-format-authority
 marketplace-integrations-catalog-manifest
+marketplace-integrations-codex-native-lifecycle
 marketplace-integrations-copilot-ownership
 marketplace-integrations-generated-bundle-lf-writers
 marketplace-integrations-hash-visible-lf-writers
@@ -702,7 +703,9 @@ onboarding-metadata-only
 contracts-tooling-root-context-write-eligibility
 hooks-integrations-native-instruction-projection
 registry_delegation.agents_source_attribution
+registry_delegation.audit_target_selection
 registry_delegation.bootstrap_project_name
+registry_delegation.build_id_verification
 registry_delegation.command_machine_output
 registry_delegation.compile_inventory_authority
 registry_delegation.compiled_output_writes
@@ -721,6 +724,7 @@ registry_delegation.root_cli_output_mode
 registry_delegation.runtime_descriptors
 registry_delegation.target_vocabulary
 registry_delegation.user_invocable_resolution
+registry_delegation.version_rendering
 transport-platform-artifactory-full-commit-sha
 transport-platform-artifactory-netrc-isolation
 transport-platform-cache-cleanup-outcome

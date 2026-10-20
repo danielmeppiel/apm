@@ -2,7 +2,7 @@
 
 ## Supported package layouts
 
-APM recognizes six layouts. The shape of the package root tells APM
+APM recognizes these layouts. The shape of the package root tells APM
 how to install it:
 
 | Root signal | Author intent | Install semantic |
@@ -10,14 +10,24 @@ how to install it:
 | `.apm/` (with or without apm.yml) | Multiple independent primitives | Hoist each primitive into the consumer runtime dirs |
 | `SKILL.md` (alone, or with apm.yml = HYBRID) | One skill bundle | Copy whole tree to `<target>/skills/<name>/` |
 | `skills/<name>/SKILL.md` | Many skills in one repo | Promote each nested skill to `<target>/skills/<name>/` |
-| `hooks/*.json` only | Harness hook package | Deploy hooks to the target's hooks directory |
+| `hooks/*.json` or `.apm/hooks/*.json` only | Harness hook package | Add hook commands to each target's configuration and copy referenced files |
 | `plugin.json` (no `$schema`, or unrecognized `$schema`) / `.claude-plugin/` | Claude plugin collection | Dissect via plugin artifact mapping |
 | `plugin.json` with the recognized Agent Plugins `$schema` | Portable Agent Plugin | Acquired and locked as one opaque unit; registered when effective targets include Copilot and admission gates pass. Excluded targets create no native registration or loose primitive projection. APM does not require the runtime during lifecycle operations; loading requires supported Copilot CLI 1.0.81 or newer |
+| `.codex-plugin/plugin.json` without higher-precedence package intent | Codex compatibility bundle | Complete native bundle through Codex CLI 0.163.0, user scope only; initially disabled, no loose projection or other-target translation |
 
 When plugin signals coexist with an eligible `apm.yml`, the APM layout wins.
 An `apm.yml` is eligible when the root also has `.apm/` or the manifest
 declares APM or MCP dependencies. To intentionally select a plugin layout,
 omit `apm.yml` or keep it metadata-only, without `.apm/` or dependencies.
+
+Root `plugin.json` and `.claude-plugin/plugin.json` also precede the Codex
+compatibility overlay. The Codex route requires a native-discoverable skill
+with an unambiguous installed path. MCP declarations may be an inline server
+object or a package-relative JSON file containing `mcpServers`; referenced
+resources must be regular files inside the bundle. Symlinks and partial skill
+subsets are refused. Publisher files/version and dependency pins are preserved;
+repair generations belong only to APM transport metadata. `apm pack` output
+is unchanged. Native content discovery does not certify execution or auth.
 
 For Agent Plugins with the same declared name, a direct dependency wins over a
 transitive dependency. APM refuses same-precedence collisions and does not
@@ -129,6 +139,19 @@ Packages can ship hooks (pre/post tool-use scripts) by placing JSON
 files under `hooks/` or `.apm/hooks/`. Filename-based hook routing
 (`*-<harness>-hooks.json` and `hooks-<harness>.json`) is deprecated.
 
+Hook-only Git dependencies need neither `apm.yml` nor `SKILL.md`. Set
+`path` to the directory containing `hooks/` or `.apm/hooks/`, not the
+inner hooks directory. Discovery is non-recursive. `apm install` restores
+locked revisions; `apm update` refreshes them; `apm uninstall` removes
+managed hooks and resources. Malformed hook descriptors or invalid
+replacement packages leave the prior installation, lock, and ownership
+intact. Hook admission neither grants executable approval nor runs scripts.
+`apm update <package>` and `apm install <package> --refresh` preserve unrelated
+installed hook packages.
+For marketplace-selected versioned hook directories, use
+`apm install plugin@marketplace --refresh`; a rejected replacement also preserves
+the installed source bytes, lock, and deployment ownership.
+
 APM computes hook reach with one restriction-only intersection:
 
 `effective hook targets = project active targets INTERSECT consumer
@@ -181,8 +204,15 @@ becomes `PostToolUse` in Claude) and rewrites path variables
 the correct target-specific form. Kiro materializes one JSON document per
 hook action under `.kiro/hooks/`.
 
+For Claude, APM wraps flat command entries in `{ "matcher", "hooks": [...] }`
+groups in `.claude/settings.json` and adds the required `"type": "command"`
+when a flat command entry omits `type`. Explicit handler types are kept.
+Handlers already inside nested Claude groups and other targets are unchanged.
+
 For Codex, APM wraps flat command entries in hook groups containing a
 nested `hooks` array in `.codex/hooks.json`.
+Claude, Codex, Gemini, and Antigravity preserve nested handler and
+hook-group metadata, including `env` objects and arrays, in native JSON.
 
 For Cursor, APM writes native v1 flat command or prompt handlers using only
 verified aliases. Unsupported fields, restrictions and overlapping Claude

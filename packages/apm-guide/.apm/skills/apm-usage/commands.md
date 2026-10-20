@@ -1,5 +1,12 @@
 # CLI Command Reference
 
+`apm --version` shows an optional commit SHA only when embedded at build time
+or verified against the source checkout containing the loaded APM package.
+Installed wheels do not borrow an enclosing repository's SHA. Source/editable
+checkouts, including forks and worktrees, show their revision when Git can
+verify it; otherwise the SHA is omitted.
+Standalone `apm --version` does not require Git to be installed.
+
 ## Project setup
 
 | Command | Purpose | Key flags |
@@ -81,8 +88,10 @@ or runtime configuration.
 
 `apm update`, `apm install --update`, and `apm install --refresh` stage and
 validate replacement packages before publication. A failed download,
-validation, or activation leaves the previous package and lockfile active;
-fix the reported cause and rerun the command.
+validation, or staged activation leaves the previous package and lockfile active;
+fix the reported cause and rerun the command. Late Codex native reconciliation
+runs after APM persistence and is not part of that rollback; see its qualified
+contract below.
 
 `apm install` preserves the invoking repository's branch and HEAD when run from
 a Git hook. It rejects cross-host network rewrites for every Git host and scopes
@@ -104,6 +113,11 @@ lowercase before constructing the package-registry path.
 
 ### Install validation chain (virtual subdirectory packages)
 
+Marketplace installation supports versioned directories produced by `apm pack`,
+such as `plugins/my-plugin-1.2.3`, including positional `--dry-run` previews.
+Directory content and path validation still apply. Git directory probes reject
+files, symbolic links, and submodules.
+
 `apm install` validates subdirectory packages (`owner/repo/path#ref`) before writing to `apm.yml` using the same credential chain as the actual install. Git-source semver ranges (for example, `owner/repo/path#^1.2.0`) defer raw-ref validation to semver tag resolution; registry-routed dependencies retain registry version validation. See [Authentication > Install validation chain](../authentication/) for the full probe sequence and troubleshooting.
 
 When a default registry is configured, plain shorthand deps (`owner/repo#<ref>`) bypass the GitHub probe. `apm install` requires a version selector before writing to `apm.yml`; deps with no `#<ref>` at all are rejected. Semver selectors (`1.0.0`, `^1.2.3`) use range matching; non-semver selectors (`stable`, `v1.4.2`, any opaque label) are matched exactly against the registry's published versions.
@@ -120,6 +134,16 @@ Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
 lock state may skip the write, so repeating that install is not a migration.
+
+Codex keeps APM registry identity in TOML comments instead of an unsupported
+native `id` setting. After upgrading, `apm install --only mcp --target codex`
+reports and repairs recorded APM-owned entries; add `--global` for user scope.
+Unchanged self-defined entries matching an older lockfile's saved configuration
+can also be repaired. Unowned or edited legacy entries stay untouched. For an
+entry you maintain yourself, back up the Codex config and remove only its
+unsupported `id = ...` setting. Keep comments such as
+`# apm-registry-id: "registry-uuid"` for duplicate detection. Inline containers
+being written may expand while preserving values and comments.
 
 ### Registry MCP runtime variables
 
@@ -199,6 +223,27 @@ target today. If target exclusion leaves a non-dry-run install with no deployed 
 installs that deploy at least one other package still exit `0`. For this target
 exclusion, `--dry-run` succeeds as a preview without the per-package recovery
 diagnostic; it does not certify real install success.
+
+Compatibility-only `.codex-plugin/plugin.json` bundles use
+`apm install -g <package> --target codex` with exactly Codex CLI 0.163.0 on
+`PATH`; native qualification was measured on macOS arm64 only.
+Project scope, other versions, skill subsets, and unsupported native
+shapes fail explicitly. Approve executable types through `allowExecutables`;
+new native registrations remain disabled. Reinstall/update and
+`apm install -g --frozen --target codex` preserve activation and MCP policy,
+repair owned missing/corrupt copies, and never run MCP/plugin code. Healthy
+reinstalls retain their transport generation. `apm uninstall -g <package>`
+refuses foreign or customized native settings before releasing APM ownership;
+retire those entries using Codex and retry. No loose registration or
+cross-target translation is produced. See the
+[qualified contract](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#codex-compatibility-bundles-through-apm)
+for late-failure retry and ownership-journal recovery.
+Migration names the dependency and retained paths and refuses native registration
+while cleanup retains edited or undeletable loose files. Preserve or relocate your edits, resolve the cleanup
+conflict, then retry; APM does not register duplicate native and loose copies.
+Same-pin native cache drift fails without replacing the recorded source identity.
+From the APM user directory, `apm audit --ci --format json` reports this as a failed
+drift check without starting Codex or changing native state.
 
 ## Cache management
 
@@ -290,7 +335,12 @@ inside nested Git repositories or linked worktrees below its root. This also
 applies to `includes: auto`. Run `apm compile` from the nested checkout when you
 want to compile it.
 
-When `apm install --target copilot` has already deployed instructions to `.github/instructions/`, `apm compile --target copilot` omits `AGENTS.md` entirely if its only content would be the duplicated instructions section. `AGENTS.md` is still generated when it carries non-instruction content such as a constitution. Pass `--force-instructions` (alias: `--no-dedup`) to force full `AGENTS.md` output.
+When `apm install --target copilot` has already deployed no-`applyTo` instructions under `.github/instructions/`, `apm compile --target copilot` omits matching global instruction bodies from `.github/copilot-instructions.md` so Copilot does not load them twice. It also omits `AGENTS.md` when its only content would be the duplicated instructions section; `AGENTS.md` is still generated when it carries non-instruction content such as a constitution. Pass `--force-instructions` (alias: `--no-dedup`) to intentionally include the duplicated content.
+
+When no global instruction remains, Copilot compile removes a stale root file
+only if its APM header marker and Build ID verify unchanged content. Hand-authored,
+edited, legacy files without a valid Build ID, and symbolic links are retained.
+Preview cleanup with `apm compile --target copilot --dry-run`.
 
 **Distributed managed sections.** With `compilation.agents_md.mode:
 managed_section`, existing distributed `AGENTS.md` files retain content
@@ -308,6 +358,24 @@ descendants, are skipped.
 | `apm list` | List available scripts | -- |
 
 ## Security and audit
+
+Audit replay and coverage use current manifest targets, otherwise concrete
+recorded deployment targets, before directory discovery. Unrelated workflow
+files cannot add Copilot output to a recorded Grok Cloud installation.
+Legacy lockfiles without recorded `deployments` retain directory discovery,
+even when compatibility paths imply a target.
+`apm config target` remains an install/update default, not retroactive audit
+intent. A disabled selected experimental target exits `3` with an enable hint
+on stderr, not a JSON audit report. Missing or modified managed files retain
+the existing drift and CI-check rules; bare audit drift is advisory unless
+configured otherwise. Retained historical paths remain eligible for CI
+presence and recorded-hash checks. Audit does not repair them.
+
+For shared hook targets, drift compares only APM-owned hook entries. Ownership
+sidecars are compared as JSON: object-key order and formatting do not cause
+drift, but changed fields, ownership markers, or list order do. Malformed JSON,
+duplicate keys, and non-JSON constants (`NaN`, `Infinity`, `-Infinity`) report
+`modified`. User-owned hooks do not cause drift.
 
 Automatic `apm audit` discovers registry-recognized primitive files, including
 untracked native hook definitions in shared settings. It checks prompt
@@ -332,6 +400,8 @@ rewriting files. Explicit `--file` remains user-directed.
 | `apm audit [PKG]` | Scan installed primitives for hidden Unicode, drift, and lockfile/policy violations | `--file PATH`, `--strip`, `--dry-run`, `-v`, `-f [text\|json\|sarif\|md]`, `-o PATH`, `--ci`, `--policy SOURCE`, `--no-cache`, `--no-fail-fast`, `--no-drift`, `--external NAME` (experimental; ingest a third-party SARIF scanner, e.g. `skillspector`), `--external-sarif PATH`, `--external-llm/--no-external-llm`, `--external-args TEXT` |
 
 `apm audit` runs **drift detection by default** (issue #1071). It replays `apm install` cache-only into a temporary scratch tree and diffs the result against your working tree. It catches four failure modes: (1) `.apm/` source added without re-running `apm install`, (2) hand-edits to deployed files that diverge from canonical source, (3) orphan files left after their source was removed, and (4) `unrecorded` files that install deploys but no lockfile entry claims. The scan is read-only -- never writes to your project, lockfile, or live `apm_modules/`. Build IDs, CRLF line endings, and BOMs are normalized away so they cannot trigger false positives.
+
+Native Copilot Agent Plugins replay through the canonical package loader, with or without a plugin `apm.yml`. A clean install or reinstall can audit successfully. Set the consumer's `targets: [copilot]` in `apm.yml`; audit has no `--target` flag. Invalid native manifests fail replay instead of entering legacy conversion. Admitted local native cache units are compared with a scratch copy of their original source using install's validated copying; modified or missing cached skills fail audit. Remote native units use the recorded package content hash, including in cold-cache CI. Run `apm install` to restore drift or establish a missing remote hash. Cache files remain outside deployed-file tracking, and native registration files are not covered by this content comparison.
 
 Bare `apm audit` uses the warmed local cache and skips drift with an informational message when the cache is absent; run `apm install` before relying on non-CI drift. `apm audit --ci` is stricter: when `apm_modules/` is missing but `apm.lock.yaml` is present, it self-hydrates a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without touching the checkout. No checkout install is required first. Missing gitignored deployed outputs do not fail `deployed-files-present`, so repos that gitignore them can use audit-only CI too. Without committed deployed bytes, that pattern lacks deployed-byte integrity and drift coverage; use full-install CI when outputs need to be materialized.
 
