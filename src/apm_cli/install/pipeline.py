@@ -61,7 +61,9 @@ if TYPE_CHECKING:
     from ..core.auth import AuthResolver
     from ..core.command_logger import InstallLogger
     from ..core.target_detection import EffectiveTargetDecision
+    from ..deps.lockfile import LockFile
     from .context import InstallContext
+    from .plan import UpdatePlan
 
 
 # CRITICAL: Shadow Python builtins that share names with Click commands.
@@ -367,6 +369,25 @@ def _transactional_pipeline(run):
     return wrapped
 
 
+def _build_resolved_update_plan(ctx: InstallContext, lockfile: LockFile | None) -> UpdatePlan:
+    """Supply validated, staged local replacement hashes to the pure plan owner."""
+    from apm_cli.utils.content_hash import compute_package_hash
+
+    from .plan import build_update_plan
+
+    for dependency in ctx.deps_to_install:
+        if dependency.replacement is not None and dependency.is_local:
+            ctx.package_hashes[dependency.get_unique_key()] = compute_package_hash(
+                dependency.get_install_path(ctx.apm_modules_dir)
+            )
+    return build_update_plan(
+        lockfile,
+        ctx.deps_to_install,
+        complete_resolved_dep_keys=ctx.update_plan_complete_dep_keys if ctx.only_packages else None,
+        resolved_content_hashes=ctx.package_hashes,
+    )
+
+
 @_transactional_pipeline
 def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
     apm_package: APMPackage,
@@ -599,14 +620,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
     # collision.
     # ------------------------------------------------------------------
     if plan_callback is not None:
-        from .plan import build_update_plan
-
-        complete_dep_keys = ctx.update_plan_complete_dep_keys if ctx.only_packages else None
-        plan = build_update_plan(
-            _early_lockfile,
-            ctx.deps_to_install,
-            complete_resolved_dep_keys=complete_dep_keys,
-        )
+        plan = _build_resolved_update_plan(ctx, _early_lockfile)
         proceed = plan_callback(plan)
         if not proceed:
             transaction.rollback()

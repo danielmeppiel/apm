@@ -8,6 +8,7 @@ from typing import Any
 
 from apm_cli.install.package_selection import selected_dependency_identity
 from apm_cli.models.dependency.reference import DependencyReference
+from apm_cli.models.dependency.replacement import project_manifest_dependencies
 from apm_cli.security.executables import filter_lsp_by_allow_executables
 
 
@@ -52,6 +53,13 @@ class ProspectiveInstallPlan:
             )
         if not should_install_apm:
             selected_apm_dependencies = ()
+        else:
+            selected_keys = {dep.get_unique_key() for dep in selected_apm_dependencies}
+            selected_apm_dependencies = tuple(
+                dep
+                for dep in project_manifest_dependencies(apm_package)
+                if dep.get_unique_key() in selected_keys
+            )
         return cls(
             apm_dependencies=apm_dependencies,
             dev_apm_dependencies=dev_apm_dependencies,

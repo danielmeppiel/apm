@@ -103,10 +103,12 @@ def _check_ref_consistency(
     """Verify manifest refs match the lockfile's resolved ref and commit."""
     from ..deps.revision_pins import is_full_revision_pin
     from ..drift import detect_ref_change
+    from ..install.plan import lockfile_satisfies_replacements
+    from ..models.dependency.replacement import project_manifest_dependencies
 
-    mismatches: list[str] = []
+    _, mismatches = lockfile_satisfies_replacements(lock, manifest.replace_rules)
     requires_update = False
-    for dep_ref in manifest.get_all_apm_dependencies():
+    for dep_ref in project_manifest_dependencies(manifest):
         key = dep_ref.get_unique_key()
         locked_dep = lock.get_dependency(key)
         if locked_dep is None:

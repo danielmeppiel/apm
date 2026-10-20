@@ -68,7 +68,6 @@ def test_source_projection_does_not_inherit_original_subpath(source: dict) -> No
     ("git", "expected_scheme", "expected_user", "expected_insecure"),
     [
         ("https://github.com/fork/upstream", "https", None, False),
-        ("http://github.com/fork/upstream", "http", None, True),
         ("ssh://git@github.com:2222/fork/upstream.git", "ssh", "git", False),
     ],
 )
@@ -81,6 +80,11 @@ def test_source_projection_preserves_transport_without_granting_consent(
     assert effective.is_insecure is expected_insecure
     assert not effective.allow_insecure
     assert effective.port == urlparse(git).port
+
+
+def test_http_source_is_rejected_without_a_source_transport_consent_contract() -> None:
+    with pytest.raises(ReplacementConfigError, match="HTTP replacement sources are not supported"):
+        _binding({"git": "http://github.com/fork/upstream", "ref": "fixed"})
 
 
 def test_source_projection_uses_effective_ado_coordinates() -> None:
@@ -108,7 +112,14 @@ def test_original_lock_identity_with_nested_selected_source_evidence(source: dic
     assert locked.to_dict()["replacement"] == {
         "source": source,
         "requests": [
-            {"parent": None, "ref": "v1.0", "skills": ["alpha"], "targets": [], "dev": False}
+            {
+                "parent": None,
+                "ref": "v1.0",
+                "skills": ["alpha"],
+                "targets": [],
+                "dev": False,
+                "alias": "chosen",
+            }
         ],
     }
     lock = LockFile(replacements=[replacement_rule_to_dict(binding.rule)])
@@ -146,7 +157,7 @@ def test_lock_evidence_must_match_root_table(change: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "field", ["source", "requests", "parent", "ref", "skills", "targets", "dev"]
+    "field", ["source", "requests", "parent", "ref", "skills", "targets", "dev", "alias"]
 )
 def test_malformed_evidence_fails_closed(field: str) -> None:
     binding, _ = _binding({"path": "../local"})

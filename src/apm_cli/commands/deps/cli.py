@@ -137,6 +137,10 @@ def _dep_display_name(dep: LockedDependency) -> str:
         or dep.resolved_ref
         or "latest"
     )
+    if dep.replacement is not None:
+        return (
+            f"{key}@{version} -> {dep.to_dependency_ref().source_reference.to_display_reference()}"
+        )
     return f"{key}@{version}"
 
 
@@ -300,7 +304,7 @@ def _resolve_scope_deps(apm_dir, logger, insecure_only=False):
             lockfile = LockFile.read(lockfile_path)
             for dep in lockfile.dependencies.values():
                 # Local slots and explicit aliases retain their logical lockfile identity.
-                if dep.source == "local" or dep.alias is not None:
+                if dep.source == "local" or dep.alias is not None or dep.replacement is not None:
                     install_path = dep.to_dependency_ref().get_install_path(apm_modules_path)
                     physical_key = install_path.relative_to(apm_modules_path).as_posix()
                     dep_key = (
@@ -315,6 +319,11 @@ def _resolve_scope_deps(apm_dir, logger, insecure_only=False):
                     declared_sources[dep_key] = _deps_list_source_label(
                         dep.host,
                         lockfile_source=dep.source,
+                    )
+                if dep.replacement is not None:
+                    selected = dep.to_dependency_ref()
+                    declared_sources[dep_key] = _deps_list_source_label(
+                        selected.host, is_local=selected.is_local, lockfile_source=selected.source
                     )
                 if getattr(dep, "is_insecure", False):
                     insecure_lock_deps[dep_key] = dep

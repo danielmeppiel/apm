@@ -29,6 +29,7 @@ from ...cache.url_normalize import SCP_LIKE_RE
 from .object_fields import apply_optional_dependency_fields
 
 if TYPE_CHECKING:
+    from ..apm_package import APMPackage
     from .reference import DependencyReference
 
 
@@ -150,6 +151,7 @@ class ReplacementRequest:
     skills: tuple[str, ...] | None
     targets: tuple[str, ...] | None
     dev: bool
+    alias: str | None = None
 
     def to_dict(self) -> dict:
         """Preserve unset and explicitly empty selections separately."""
@@ -159,6 +161,7 @@ class ReplacementRequest:
             "skills": list(self.skills) if self.skills is not None else None,
             "targets": list(self.targets) if self.targets is not None else None,
             "dev": self.dev,
+            "alias": self.alias,
         }
 
 
@@ -179,6 +182,7 @@ class ReplacementBinding:
             tuple(dep.skill_subset) if dep.skill_subset is not None else None,
             tuple(dep.target_subset) if dep.target_subset is not None else None,
             is_dev,
+            alias=dep.alias,
         )
         self.requests[request] = None
 
@@ -210,6 +214,7 @@ class ReplacementBinding:
                 "skills",
                 "targets",
                 "dev",
+                "alias",
             }:
                 raise ReplacementConfigError("Malformed replacement request evidence")
             if any(
@@ -220,13 +225,14 @@ class ReplacementBinding:
             edge = replace(
                 original,
                 reference=request["ref"],
+                alias=None,
                 skill_subset=None,
                 target_subset=None,
             )
             try:
                 # Persisted normalized selections may be explicitly contracted
                 # to empty; that must not expand back to the default "all".
-                selections = {key: request[key] for key in ("skills", "targets")}
+                selections = {key: request[key] for key in ("alias", "skills", "targets")}
                 for key, attribute in (("skills", "skill_subset"), ("targets", "target_subset")):
                     if selections[key] == []:
                         setattr(edge, attribute, [])
@@ -459,6 +465,10 @@ def _parse_git_source(raw: dict, *, rule_index: int) -> GitReplacementSource:
         raise ReplacementConfigError(f"{context}: 'ref' must be a non-empty string")
 
     dep = _parse_git_entry(raw, context=context)
+    if dep.is_insecure:
+        raise ReplacementConfigError(
+            f"{context}: HTTP replacement sources are not supported; use HTTPS or SSH"
+        )
     return GitReplacementSource(
         git=git_url.strip(),
         host=(dep.host or "github.com").lower(),
@@ -516,8 +526,8 @@ def parse_replace_block(raw: object) -> list[ReplacementRule]:
     Returns a list of validated rules.  Raises ``ReplacementConfigError``
     for any structural, type, or semantic violation.
 
-    This parser is called only for the consumer root manifest.  Dependency
-    manifests may not declare ``replace:`` (enforced by the resolver, not here).
+    Dependency manifests can be parsed, but only the consumer root's table
+    is applied by the resolver.
     """
     if raw is None:
         return []
@@ -550,6 +560,31 @@ def parse_replace_block(raw: object) -> list[ReplacementRule]:
 def build_replacement_index(rules: list[ReplacementRule]) -> ReplacementIndex:
     """Build a lookup index from parsed rules; rejects duplicate selectors."""
     return ReplacementIndex(rules)
+
+
+def project_manifest_dependencies(
+    manifest: APMPackage, *, modules_dir: Path | None = None
+) -> list[DependencyReference]:
+    """Project direct root declarations without changing manifest ownership."""
+    groups = (
+        (False, manifest.get_apm_dependencies()),
+        (True, manifest.get_dev_apm_dependencies()),
+    )
+    if not manifest.replace_rules:
+        return [dep for _, dependencies in groups for dep in dependencies]
+    root = Path(manifest.source_path or manifest.package_path).resolve()
+    index = build_replacement_index(manifest.replace_rules)
+    return [
+        index.bind(
+            dep,
+            consumer_root=root,
+            modules_dir=modules_dir or root / "apm_modules",
+            parent=None,
+            is_dev=is_dev,
+        )
+        for is_dev, dependencies in groups
+        for dep in dependencies
+    ]
 
 
 # ---------------------------------------------------------------------------

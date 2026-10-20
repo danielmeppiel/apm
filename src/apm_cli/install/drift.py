@@ -254,8 +254,8 @@ def _materialize_install_path(
         corrupt-lockfile condition and MUST fail loud -- it is not caught
         by the drift gate's cache-miss soft-skip.
     """
-    if lock_dep.source == "local":
-        if not lock_dep.local_path:
+    if lock_dep.is_local_source:
+        if not lock_dep.local_path and lock_dep.replacement is None:
             raise CacheMissError(f"local dep {lock_dep.repo_url!r} has no local_path in lockfile")
         candidate = resolve_local_dep_dir(
             lock_dep,
@@ -265,6 +265,13 @@ def _materialize_install_path(
             resolved_cache=resolved_cache,
         )
         if not candidate.exists():
+            if lock_dep.replacement is not None:
+                from apm_cli.deps.path_anchoring import LocalResolutionError
+
+                raise LocalResolutionError(
+                    f"local replacement source missing for {lock_dep.get_unique_key()}: "
+                    f"expected {candidate}. Restore the source before auditing."
+                )
             raise CacheMissError(
                 f"local source missing for {lock_dep.local_path!r}: expected {candidate}"
             )
@@ -387,6 +394,8 @@ def _build_package_info(
         try:
             pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
         except Exception:
+            if lock_dep.replacement is not None:
+                raise
             pkg = APMPackage(
                 name=install_path.name,
                 version=lock_dep.version or "unknown",
@@ -619,7 +628,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                         registry_resolver=registry_resolver,
                         registries=registries,
                     )
-                    if lock_dep.source == "local":
+                    if lock_dep.is_local_source:
                         install_path = _normalize_legacy_local_plugin_for_replay(
                             lock_dep,
                             install_path,

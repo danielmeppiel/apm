@@ -28,6 +28,7 @@ from ..models.dependency.reference import (
     build_dependency_unique_key,
 )
 from ..models.dependency.replacement import (
+    LocalReplacementSource,
     ReplacementBinding,
     ReplacementConfigError,
     build_replacement_index,
@@ -871,6 +872,15 @@ class LockedDependency:
             return binding is self.replacement
         return binding.rule == self.replacement.rule
 
+    @property
+    def is_local_source(self) -> bool:
+        """Whether verification/replay uses local bytes, independent of ownership."""
+        return (
+            isinstance(self.replacement.rule.source, LocalReplacementSource)
+            if self.replacement is not None
+            else self.source == "local"
+        )
+
 
 @dataclass
 class LockFile:
@@ -972,8 +982,8 @@ class LockFile:
 
         The version bump is content-driven: only when replacement rules exist
         (including an explicitly empty list) does the lockfile require v3.
-        Released readers v0.25.0 and later reject this unsupported version.
-        Older readers do not provide that fail-closed guarantee.
+        Verified v0.25.0, v0.32.0 and v0.33.0 readers reject this version;
+        v0.24.1 does not provide that fail-closed guarantee.
         """
         return self.replacements is not None or any(
             dep.replacement is not None for dep in self.dependencies.values()
@@ -992,6 +1002,18 @@ class LockFile:
                     raise ReplacementConfigError(
                         f"Replacement evidence for {dep.get_unique_key()} disagrees with root replacements"
                     )
+                if self.replacements is not None:
+                    parents = (
+                        [request.parent for request in evidence.requests]
+                        if evidence is not None
+                        else [dep.resolved_by]
+                    )
+                    if any(
+                        parent is not None and parent not in self.dependencies for parent in parents
+                    ):
+                        raise ReplacementConfigError(
+                            f"Replacement graph parent for {dep.get_unique_key()} is absent from the lockfile"
+                        )
         except ReplacementConfigError as exc:
             raise LockfileFormatError(str(exc)) from exc
 

@@ -365,6 +365,7 @@ def prepare_materialization_path(
     on_migrate: Callable[[Path, Path], None] | None = None,
 ) -> Path:
     """Return the display-cased path, transactionally migrating stale casing."""
+    dependency = dependency.ownership_reference
     desired = dependency.get_install_path(apm_modules_dir)
     if dependency.alias is not None or not dependency.has_case_insensitive_repo_identity:
         return desired
