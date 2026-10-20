@@ -554,7 +554,6 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "records=codex_records",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
-        "src/apm_cli/commands/install.py": ("except (AgentPluginError, CodexNativeError) as e:",),
         "src/apm_cli/policy/ci_checks.py": (
             "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
         ),

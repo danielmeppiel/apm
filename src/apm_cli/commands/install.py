@@ -16,7 +16,6 @@ from apm_cli.agent_plugins.errors import (
     AgentPluginError,
     enforce_agent_plugin_deployment_boundary,
 )
-from apm_cli.codex_plugins.client import CodexNativeError
 from apm_cli.copilot_plugins.settings import CopilotSettingsCollisionError
 from apm_cli.install.argv import (
     _get_invocation_argv,
@@ -1624,7 +1623,7 @@ def install(  # noqa: PLR0913
                     symbol="info",
                 )
 
-    except (AgentPluginError, CodexNativeError) as e:
+    except AgentPluginError as e:
         logger.error(str(e))
         command_result = (
             transaction.fail(e)

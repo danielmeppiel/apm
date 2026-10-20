@@ -59,18 +59,6 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
     ("path", "original", "replacement", "refused"),
     [
         (
-            "src/apm_cli/commands/install.py",
-            "except (AgentPluginError, CodexNativeError) as e:",
-            "except AgentPluginError as e:",
-            False,
-        ),
-        (
-            "src/apm_cli/commands/install.py",
-            "except (AgentPluginError, CodexNativeError) as e:",
-            "except (AgentPluginError, Exception) as e:",
-            True,
-        ),
-        (
             "src/apm_cli/policy/ci_checks.py",
             "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
             "except AgentPluginDeploymentBoundaryError as exc:",
@@ -165,11 +153,6 @@ def test_native_typed_error_guard_retains_legacy_and_rejects_broad_handlers(
             "src/apm_cli/codex_plugins/registrar.py",
             "record = replace(record, source_commit=item.plugin.source_commit)",
             "pass",
-        ),
-        (
-            "src/apm_cli/commands/install.py",
-            "except (AgentPluginError, CodexNativeError) as e:",
-            "except AgentPluginError as e:",
         ),
         (
             "src/apm_cli/policy/ci_checks.py",
