@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -81,7 +82,7 @@ def test_selected_subtree_expands_each_graph_node_once() -> None:
     nodes = [
         SimpleNamespace(dependency_ref=ref, children=ObservedChildren()) for ref in refs
     ]
-    for parent, child in zip(nodes, nodes[1:], strict=False):
+    for parent, child in pairwise(nodes):
         parent.children.append(child)
     tree = SimpleNamespace(nodes=dict(enumerate(nodes)))
     result = selected_subtree_dependencies(["owner/package-0"], tree, refs)

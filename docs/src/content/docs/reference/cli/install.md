@@ -264,7 +264,7 @@ which are included in preview counts. Missing or unreadable metadata, changed
 remote refs, `--update` or `--refresh` requiring fetching, failed `--frozen`
 transitive pin checks, or unresolved marketplace lookups
 mark the dependency preview incomplete and suppress orphan-removal predictions.
-The final summary reports the locally known count, not a complete install plan.
+An incomplete summary reports the locally known count, not a complete install plan.
 This graph pass performs no fetching, materialization, or writes; positional
 validation may still access the network. Stale-file integration cleanup is not
 previewed.
