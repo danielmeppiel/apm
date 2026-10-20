@@ -408,7 +408,9 @@ def _build_package_info(
     except AgentPluginError as exc:
         raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
 
-    if native_detection is not None:
+    detected_type, selected_manifest = detect_package_type(install_path)
+    codex_native = is_codex_compatibility_manifest(install_path, selected_manifest)
+    if native_detection is not None or codex_native:
         validation = validate_apm_package(
             install_path,
             agent_plugin_detection=native_detection,
@@ -419,17 +421,11 @@ def _build_package_info(
                 "; ".join(validation.errors) or "Agent Plugin validation produced no package"
             )
         pkg = validation.package
-        package_type = PackageType.AGENT_PLUGIN
+        package_type = validation.package_type
     else:
-        detected_type, selected_manifest = detect_package_type(install_path)
         apm_yml = install_path / "apm.yml"
         pkg = None
-        if is_codex_compatibility_manifest(install_path, selected_manifest):
-            validation = validate_apm_package(install_path, read_only=True)
-            if not validation.is_valid or validation.package is None:
-                raise ValueError("Codex replay source is invalid: " + "; ".join(validation.errors))
-            pkg = validation.package
-        elif apm_yml.exists():
+        if apm_yml.exists():
             try:
                 pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
             except Exception:

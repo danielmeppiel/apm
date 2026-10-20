@@ -528,7 +528,8 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
         ),
         "src/apm_cli/install/drift.py": (
             "is_codex_compatibility_manifest(install_path, selected_manifest)",
-            "validation = validate_apm_package(install_path, read_only=True)",
+            "if native_detection is not None or codex_native:",
+            "agent_plugin_detection=native_detection,\n            read_only=True",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
     }
