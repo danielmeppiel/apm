@@ -241,6 +241,9 @@ for late-failure retry and ownership-journal recovery.
 Migration names the dependency and retained paths and refuses native registration
 while cleanup retains edited or undeletable loose files. Preserve or relocate your edits, resolve the cleanup
 conflict, then retry; APM does not register duplicate native and loose copies.
+Same-pin native cache drift fails without replacing the recorded source identity.
+From the APM user directory, `apm audit --ci --format json` reports this as a failed
+drift check without starting Codex or changing native state.
 
 ## Cache management
 

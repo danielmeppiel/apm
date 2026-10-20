@@ -169,10 +169,10 @@ def _audit_cache(
             if path.is_file()
         }
 
-    def audit(label: str) -> CommandResult:
+    def audit(label: str, *, json_output: bool = False) -> CommandResult:
         before = state()
         result = runner.run(
-            ("audit", "--ci", "--no-policy"),
+            ("audit", "--ci", "--no-policy", *(("--format", "json") if json_output else ())),
             cwd=Path(env["APM_HOME"]),
             env=env,
             scenario_id=label,
@@ -194,6 +194,16 @@ def _audit_cache(
             assert changed.returncode != 0, changed.stdout + changed.stderr
             assert "cache differs" in " ".join((changed.stdout + changed.stderr).split())
             assert "Traceback" not in changed.stderr
+            structured = audit(f"codex-native-cache-json-{cached.name}", json_output=True)
+            assert structured.returncode != 0, structured.stdout + structured.stderr
+            report = json.loads(structured.stdout)
+            assert report["passed"] is False
+            assert any(
+                check["name"] == "drift"
+                and check["passed"] is False
+                and "cache differs" in check["message"]
+                for check in report["checks"]
+            )
         finally:
             cached.write_bytes(original)
     if os.name != "nt":
@@ -561,6 +571,7 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
             )
             assert refused.returncode != 0, refused.stdout + refused.stderr
             assert "cache differs" in " ".join((refused.stdout + refused.stderr).split())
+            assert "Error installing dependencies:" not in refused.stdout + refused.stderr
             assert ledger.read_bytes() == ownership_before
             assert config_path.read_bytes() == config_before
             assert lock_path.read_bytes() == lock_before
@@ -582,6 +593,7 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
         )
         assert refused.returncode != 0, refused.stdout + refused.stderr
         assert "source provenance is missing" in " ".join((refused.stdout + refused.stderr).split())
+        assert "<saved-pinned-dependency>" in refused.stdout + refused.stderr
         assert ledger.read_bytes() == legacy_before
         assert config_path.read_bytes() == config_before
     finally:
@@ -621,6 +633,72 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
     assert compute_native_bundle_hash(
         Path(updated_record["installed_root"])
     ) == compute_native_bundle_hash(repository.worktree)
+    git = ApmLifecycleRunner(("git", "-c", f"core.hooksPath={os.devnull}"))
+    for repair in (False, True):
+        for command in (
+            ("commit", "--allow-empty", "-m", f"Same native payload, repair={repair}"),
+            ("push", "origin", "HEAD:refs/heads/main"),
+        ):
+            result = git.run(
+                command, cwd=repository.worktree, env=env, scenario_id="codex-empty-pin"
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
+        revision = git.run(
+            ("rev-parse", "HEAD"),
+            cwd=repository.worktree,
+            env=env,
+            scenario_id="codex-empty-pin-id",
+        )
+        assert revision.returncode == 0, revision.stdout + revision.stderr
+        selected_pin = revision.stdout.strip()
+        selected_declaration = f"{remote}#{selected_pin}"
+        document["dependencies"]["apm"] = [selected_declaration]
+        document["allowExecutables"] = {
+            str(DependencyReference.parse(selected_declaration)): {"mcp": True},
+            "loose": {"mcp": True},
+        }
+        dump_yaml(document, apm_home / "apm.yml")
+        config_before = config_path.read_bytes()
+        previous_record = updated_record
+        if repair:
+            (
+                Path(previous_record["installed_root"]) / "resources/__pycache__/asset.bin"
+            ).write_bytes(b"corrupt owned native copy, not publisher source")
+        result = _apm(
+            runner,
+            ("install", "-g", "--target", "codex", "--no-policy"),
+            tmp_path,
+            env,
+            f"codex-native-identical-source-pin-repair-{repair}",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        updated_record = next(iter(json.loads(ledger.read_bytes())["plugins"].values()))
+        assert updated_record["source_commit"] == selected_pin
+        assert updated_record["source_hash"] == previous_record["source_hash"]
+        assert compute_native_bundle_hash(
+            Path(updated_record["installed_root"])
+        ) == compute_native_bundle_hash(repository.worktree)
+        if not repair:
+            assert updated_record["snapshot"] == previous_record["snapshot"]
+            assert config_path.read_bytes() == config_before
+    ownership_before = ledger.read_bytes()
+    config_before = config_path.read_bytes()
+    asset_before = asset.read_bytes()
+    try:
+        asset.write_bytes(b"changed after same-content pin repair")
+        refused = _apm(
+            runner,
+            ("install", "-g", "--frozen", "--target", "codex", "--no-policy"),
+            tmp_path,
+            env,
+            "codex-native-repaired-pin-cache-refusal",
+        )
+        assert refused.returncode != 0, refused.stdout + refused.stderr
+        assert "cache differs" in " ".join((refused.stdout + refused.stderr).split())
+        assert ledger.read_bytes() == ownership_before
+        assert config_path.read_bytes() == config_before
+    finally:
+        asset.write_bytes(asset_before)
 
 
 def test_migration_preserves_edited_loose_skill_without_native_registration(

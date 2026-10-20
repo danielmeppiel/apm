@@ -420,8 +420,9 @@ The journal binds that fingerprint to the original Git commit. Same-pin cache
 byte or executable-bit drift is refused; remove only the dependency's disposable
 `apm_modules/` directory and retry `apm install -g --frozen --target codex`.
 Local source edits and newly selected commits remain valid updates. Remote
-records without source-pin provenance require ownership-aware uninstall followed
-by reinstalling the pinned declaration, not automatic adoption.
+records without source-pin provenance are not adopted. Save the pinned declaration,
+run `apm uninstall -g <dependency>`, then
+`apm install -g <saved-pinned-dependency> --target codex`.
 
 **Gitea and Gogs (self-hosted or vendor-hosted):** virtual packages resolve via the host's `/{owner}/{repo}/raw/{ref}/{path}` URL first, then fall back to the Contents API (v1 native, v3 Gogs-compat). Direct GitLab nested-group repos (`group/subgroup/repo`) require the object form (`git: <full-url>`, `path: <virtual>`) -- shorthand is ambiguous on >2-segment paths. **Exception:** when the dep routes through a registry proxy (explicit `host/artifactory/<key>/...` FQDN, or bare shorthand under `PROXY_REGISTRY_URL` + `PROXY_REGISTRY_ONLY=1`), the install-time boundary probe HEAD-walks the candidate splits against the proxy and locks in the first one whose archive responds, so nested-group shorthand works without the object form (#1472).
 

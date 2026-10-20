@@ -56,6 +56,49 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
 
 
 @pytest.mark.parametrize(
+    ("path", "original", "replacement", "refused"),
+    [
+        (
+            "src/apm_cli/commands/install.py",
+            "except (AgentPluginError, CodexNativeError) as e:",
+            "except AgentPluginError as e:",
+            False,
+        ),
+        (
+            "src/apm_cli/commands/install.py",
+            "except (AgentPluginError, CodexNativeError) as e:",
+            "except (AgentPluginError, Exception) as e:",
+            True,
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except AgentPluginDeploymentBoundaryError as exc:",
+            False,
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except (AgentPluginDeploymentBoundaryError, Exception) as exc:",
+            True,
+        ),
+    ],
+)
+def test_native_typed_error_guard_retains_legacy_and_rejects_broad_handlers(
+    path: str, original: str, replacement: str, refused: bool
+) -> None:
+    """Adding the Codex error must not weaken the established portable error contract."""
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert original in source
+    rule = "marketplace-integrations-projection-boundary"
+    report = run_selected_rules(
+        ROOT, (rule,), source_overrides={path: source.replace(original, replacement)}
+    )
+    assert report.failures == ()
+    assert bool(report.violations) is refused
+
+
+@pytest.mark.parametrize(
     ("path", "old", "new"),
     [
         (
@@ -117,6 +160,21 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
             "src/apm_cli/codex_plugins/admission.py",
             'result["codex_source_identity"] = plugin.source_identity()',
             "pass",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "record = replace(record, source_commit=item.plugin.source_commit)",
+            "pass",
+        ),
+        (
+            "src/apm_cli/commands/install.py",
+            "except (AgentPluginError, CodexNativeError) as e:",
+            "except AgentPluginError as e:",
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except AgentPluginDeploymentBoundaryError as exc:",
         ),
     ],
 )

@@ -508,6 +508,7 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "verify_codex_source_identity(modules_dir, records=records, **item.plugin.source_identity())",
             "record.source_commit == source_commit",
             "source_commit=item.plugin.source_commit",
+            "record = replace(record, source_commit=item.plugin.source_commit)",
         ),
         _CODEX_PREFIX + "snapshot.py": (
             "plan.paths",
@@ -553,6 +554,10 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "records=codex_records",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
+        "src/apm_cli/commands/install.py": ("except (AgentPluginError, CodexNativeError) as e:",),
+        "src/apm_cli/policy/ci_checks.py": (
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+        ),
     }
     for path, fragments in required.items():
         findings.extend(

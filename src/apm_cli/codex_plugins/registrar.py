@@ -188,7 +188,9 @@ def verify_codex_source_identity(
         if record is not None and record.source_commit is None:
             raise CodexNativeError(
                 f"Codex native source provenance is missing for {dependency_key}. "
-                f"Use 'apm uninstall -g {dependency_key}', then reinstall its pinned declaration; "
+                "Save its pinned declaration, then use "
+                f"'apm uninstall -g {dependency_key}' and "
+                "'apm install -g <saved-pinned-dependency> --target codex'; "
                 "native state was retained."
             )
     if (
@@ -523,6 +525,7 @@ def synchronize_codex_plugins(
                     previous=record.snapshot,
                     pending=True,
                 )
+            record = replace(record, source_commit=item.plugin.source_commit)
             records[key] = record
             _write_records(ledger, records)
             record = _refresh(client, rpc, item, record, name, config)

@@ -222,11 +222,13 @@ def test_pending_refresh_retries_without_replacing_native_disable(
         "mcpServers": [],
         "skills": [{"path": str(installed / "skills/example/SKILL.md")}],
     }
+    if source_commit is not None:
+        deployment = replace(deployment, plugin=replace(deployment.plugin, source_commit="b" * 40))
     assert synchronize_codex_plugins([deployment], **options) == (deployment.plugin.dependency_key,)
     settled = json.loads(ledger.read_text())["plugins"][deployment.plugin.dependency_key]
     assert settled["pending"] is False
     assert settled["snapshot"] == snapshot
-    assert settled["source_commit"] == source_commit
+    assert settled["source_commit"] == deployment.plugin.source_commit
     assert values["plugins"]["foreign@external"] == {"enabled": False}
     assert values["plugins"][f"example@{marketplace}"] == {"enabled": False}
     client.write_config.assert_called_once()
@@ -234,13 +236,13 @@ def test_pending_refresh_retries_without_replacing_native_disable(
     assert synchronize_codex_plugins([deployment], **options) == ()
     assert ledger.read_bytes() == stable
     if source_commit is not None:
-        deployment = replace(deployment, plugin=replace(deployment.plugin, source_commit="b" * 40))
+        deployment = replace(deployment, plugin=replace(deployment.plugin, source_commit="c" * 40))
         assert synchronize_codex_plugins([deployment], **options) == ()
         assert (
             json.loads(ledger.read_bytes())["plugins"][deployment.plugin.dependency_key][
                 "source_commit"
             ]
-            == "b" * 40
+            == "c" * 40
         )
         client.write_config.assert_called_once()
 

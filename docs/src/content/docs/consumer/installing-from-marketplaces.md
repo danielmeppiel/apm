@@ -82,9 +82,11 @@ commit. Changed cache bytes or executable bits at the same commit are refused,
 not adopted as an update. Remove only that dependency's disposable
 `apm_modules/` directory and rerun `apm install -g --frozen --target codex`.
 Local source edits and newly selected Git commits remain valid updates.
-A legacy remote record without source-pin provenance must be removed with
-`apm uninstall -g <dependency>` and then reinstalled from its pinned declaration;
-APM does not infer missing provenance from the current cache.
+For a legacy remote record without source-pin provenance, save its pinned
+declaration, run `apm uninstall -g <dependency>`, then
+`apm install -g <saved-pinned-dependency> --target codex`. APM does not infer
+missing provenance from the current cache. `apm audit --ci --format json`
+reports native cache refusal as a failed drift check without changing native state.
 
 Native registration runs after APM persistence. A late failure can leave the
 acquired package, lockfile, or some native changes in place: pending ownership
