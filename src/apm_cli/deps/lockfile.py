@@ -894,9 +894,46 @@ class LockFile:
         ):
             self.lockfile_version = "2"
 
-    def get_dependency(self, key: str) -> LockedDependency | None:
-        """Get a dependency by its unique key."""
+    def get_dependency(
+        self,
+        key: str,
+        *,
+        marketplace_index: dict[tuple[str, str], LockedDependency | None] | None = None,
+    ) -> LockedDependency | None:
+        """Look up a key, using a fresh provenance snapshot for marketplace keys.
+
+        Batch consumers can supply one snapshot to keep lookup linear overall.
+        No index is cached on this mutable lockfile.
+        """
+        if key.startswith("_marketplace/"):
+            parts = key.split("/", 2)
+            if len(parts) == 3:
+                index = self.marketplace_index() if marketplace_index is None else marketplace_index
+                return index.get((parts[1], parts[2]))
         return self.dependencies.get(key)
+
+    def marketplace_index(self) -> dict[tuple[str, str], LockedDependency | None]:
+        """Index recorded discovery labels, with None for ambiguous associations.
+
+        These labels associate declarations with locked coordinates; they are
+        not a catalog trust identity and never authorize a catalog refresh.
+        """
+        index: dict[tuple[str, str], LockedDependency | None] = {}
+        for dep in self.dependencies.values():
+            if dep.discovered_via and dep.marketplace_plugin_name:
+                pair = (dep.discovered_via, dep.marketplace_plugin_name)
+                index[pair] = None if pair in index else dep
+        return index
+
+    def get_dependency_by_marketplace(
+        self, marketplace_name: str, plugin_name: str
+    ) -> LockedDependency | None:
+        """Find a locked dependency by its marketplace provenance.
+
+        Fails closed (returns None) if no matching dependency is found or if
+        multiple rows share the same marketplace provenance.
+        """
+        return self.marketplace_index().get((marketplace_name, plugin_name))
 
     def rename_local_deployed_path(self, old_value: str, new_value: str) -> None:
         """Rename one locally deployed path and carry its content hash."""
@@ -906,7 +943,7 @@ class LockFile:
 
     def has_dependency(self, key: str) -> bool:
         """Check if a dependency exists."""
-        return key in self.dependencies
+        return self.get_dependency(key) is not None
 
     def get_all_dependencies(self) -> list[LockedDependency]:
         """Get all dependencies sorted by depth then repo_url."""

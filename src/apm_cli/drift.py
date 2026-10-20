@@ -93,6 +93,45 @@ def _optional_string_attr(dep: Any, name: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def marketplace_ref_mismatch(
+    dep_ref: DependencyReference,
+    locked_dep: LockedDependency,
+) -> str | None:
+    """Compare a marketplace selection to locked evidence without catalog I/O."""
+    from apm_cli.deps.revision_pins import is_full_revision_pin
+    from apm_cli.marketplace.semver import parse_semver, satisfies_range
+    from apm_cli.marketplace.version_resolver import is_version_constraint
+
+    spec = dep_ref.marketplace_version_spec
+    if not is_full_revision_pin(locked_dep.resolved_commit):
+        return "missing locked commit evidence"
+    if not spec:
+        return None
+    if is_full_revision_pin(spec):
+        if locked_dep.resolved_commit.lower() != spec.lower():
+            return (
+                f"manifest commit '{spec}' != "
+                f"lockfile resolved_commit '{locked_dep.resolved_commit}'"
+            )
+    elif is_version_constraint(spec):
+        # Git semver locks already distinguish selected versions from package
+        # inventory using constraint + resolved_tag. Never infer tag patterns
+        # from a suffix or accept the requested selector as resolution proof.
+        if (
+            not locked_dep.constraint
+            or not locked_dep.resolved_tag
+            or locked_dep.resolved_ref != locked_dep.resolved_tag
+            or not locked_dep.version
+        ):
+            return f"missing locked version evidence for manifest version '{spec}'"
+        version = parse_semver(locked_dep.version)
+        if version is None or not satisfies_range(version, spec):
+            return f"manifest version '{spec}' != lockfile selected version '{locked_dep.version}'"
+    elif spec != locked_dep.resolved_ref:
+        return f"manifest ref '{spec}' != lockfile ref '{locked_dep.resolved_ref or '(missing)'}'"
+    return None
+
+
 def detect_ref_change(
     dep_ref: DependencyReference,
     locked_dep: LockedDependency | None,
@@ -130,6 +169,8 @@ def detect_ref_change(
         return False
     if locked_dep is None:
         return False  # new package — not drift, just a first install
+    if getattr(dep_ref, "is_marketplace", False) is True:
+        return marketplace_ref_mismatch(dep_ref, locked_dep) is not None
 
     # Source flip drift: manifest changed resolver between installs (e.g.
     # was ``- git: ...``, now ``acme/foo@corp#^1.0.0``). The install path,

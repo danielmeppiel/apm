@@ -129,6 +129,11 @@ reproducible across machines and CI.
 
 ## Picking the install path
 
+After `apm install`, `apm audit --ci` checks marketplace declarations against
+their locked source and version evidence, without refreshing the catalog.
+Missing or ambiguous provenance fails rather than guessing. See
+[baseline checks](../../reference/baseline-checks/#ref-consistency).
+
 - **You are the only user on a workstation and the plugin is simple.**
   A native install is fine. Treat it as a personal tool, not project
   infrastructure.
