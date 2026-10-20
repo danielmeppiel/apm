@@ -412,6 +412,10 @@ with the entire bundle and its executable types approved. See the
 for exact version, scope, and measured-platform limits. Do not select a skill subset. Native
 transport generations never replace the original dependency pin or publisher
 version. Other scopes/versions fail rather than reducing the package to skills.
+Native integrity includes publisher cache-named assets and executable bits
+without changing existing APM lock hashes. Publisher metadata remains unchanged
+even with an absent or `0.0.0` native version. Keep the validated ownership
+journal for cold-cache frozen restores with unrelated loose MCP declarations.
 
 **Gitea and Gogs (self-hosted or vendor-hosted):** virtual packages resolve via the host's `/{owner}/{repo}/raw/{ref}/{path}` URL first, then fall back to the Contents API (v1 native, v3 Gogs-compat). Direct GitLab nested-group repos (`group/subgroup/repo`) require the object form (`git: <full-url>`, `path: <virtual>`) -- shorthand is ambiguous on >2-segment paths. **Exception:** when the dep routes through a registry proxy (explicit `host/artifactory/<key>/...` FQDN, or bare shorthand under `PROXY_REGISTRY_URL` + `PROXY_REGISTRY_ONLY=1`), the install-time boundary probe HEAD-walks the candidate splits against the proxy and locks in the first one whose archive responds, so nested-group shorthand works without the object form (#1472).
 

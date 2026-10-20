@@ -1,5 +1,6 @@
 """Codex admission consumes canonical format, target, and executable decisions."""
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,7 @@ from apm_cli.codex_plugins.client import CodexNativeError
 from apm_cli.codex_plugins.manifest import CodexCompatibilityPlugin
 from apm_cli.core.scope import InstallScope
 from apm_cli.install.deployable_source_plan import DeployableSourcePlan
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 
 pytestmark = pytest.mark.component
 
@@ -61,9 +62,33 @@ def test_native_admission_keeps_canonical_identity(tmp_path):
     assert plan.source_root == tmp_path.resolve()
     assert plan.name == "example"
     assert plan.target_name == "codex"
-    assert plan.source_hash == compute_package_hash(tmp_path)
+    assert plan.source_hash == compute_native_bundle_hash(tmp_path)
     assert plan.mcp_server_names == ("server",)
     assert _admit(tmp_path, skill_subset=()) == plan
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "cache-directory-bytes",
+        pytest.param(
+            "executable-mode",
+            marks=pytest.mark.skipif(os.name == "nt", reason="POSIX executable mode"),
+        ),
+    ],
+)
+def test_native_admission_fingerprints_every_publisher_asset(tmp_path: Path, fault: str) -> None:
+    """Native identity includes publisher cache-named assets and executable mode."""
+    asset = tmp_path / "resources/__pycache__/asset.bin"
+    asset.parent.mkdir(parents=True)
+    asset.write_bytes(b"publisher bytes")
+    asset.chmod(0o644)
+    original = _admit(tmp_path).source_hash
+    if fault == "executable-mode":
+        asset.chmod(0o755)
+    else:
+        asset.write_bytes(b"changed publisher bytes")
+    assert _admit(tmp_path).source_hash != original
 
 
 def test_read_only_projection_does_not_qualify_or_start_native_client(tmp_path, monkeypatch):
@@ -94,7 +119,7 @@ def test_non_codex_package_has_no_native_admission(tmp_path):
 
 
 def _make_plugin(root: Path) -> CodexNativePlugin:
-    return CodexNativePlugin("owner/example", "example", root, compute_package_hash(root))
+    return CodexNativePlugin("owner/example", "example", root, compute_native_bundle_hash(root))
 
 
 def _make_source_plan(root: Path) -> DeployableSourcePlan:
@@ -152,7 +177,7 @@ def test_finalize_queues_immutable_deployment(tmp_path):
     assert dep.plugin is plugin
     assert dep.source_plan is plan
     assert dep.source_hash == plugin.source_hash
-    assert dep.source_hash != compute_package_hash(tmp_path)
+    assert dep.source_hash != compute_native_bundle_hash(tmp_path)
 
 
 def test_final_native_phase_refuses_unsaved_candidate_before_native_writes(tmp_path, monkeypatch):
@@ -172,3 +197,37 @@ def test_final_native_phase_refuses_unsaved_candidate_before_native_writes(tmp_p
     )
     with pytest.raises(CodexNativeError, match="saved executable/ownership state"):
         codex_plugins.run(ctx)
+
+
+def test_final_native_phase_refuses_retained_loose_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup-retained user edits must not coexist with a new native registration."""
+    from apm_cli.install.phases import codex_plugins
+
+    loose = tmp_path / ".codex/skills/example/SKILL.md"
+    loose.parent.mkdir(parents=True)
+    loose.write_text("User edited the old loose installation")
+    original = loose.read_bytes()
+    monkeypatch.setattr(
+        codex_plugins,
+        "candidates_from_lockfile",
+        lambda *args: [SimpleNamespace(dependency_key="owner/example")],
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("retained loose deployment reached native synchronization")
+
+    monkeypatch.setattr(codex_plugins, "synchronize_codex_plugins", forbidden)
+    ctx = SimpleNamespace(
+        dry_run=False,
+        lockfile_only=False,
+        apm_modules_dir=tmp_path / "apm_modules",
+        apm_dir=tmp_path,
+        scope=InstallScope.USER,
+        codex_native_plugins={"owner/example": object()},
+        package_deployed_files={"owner/example": [".codex/skills/example/SKILL.md"]},
+    )
+    with pytest.raises(CodexNativeError, match="retained loose"):
+        codex_plugins.run(ctx)
+    assert loose.read_bytes() == original

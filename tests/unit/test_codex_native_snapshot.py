@@ -9,7 +9,7 @@ import pytest
 
 from apm_cli.codex_plugins.snapshot import prepare_snapshot
 from apm_cli.install.deployable_source_plan import DeployableSourcePlan
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 
 pytestmark = pytest.mark.component
 
@@ -61,11 +61,11 @@ def test_snapshot_keeps_ignored_resources_and_does_not_rewrite_manifest(tmp_path
     (source / "resource.bin").write_bytes(b"\x00\x01\x02")
     paths = frozenset({".codex-plugin/plugin.json", ".gitignore", "resource.bin"})
     plan = DeployableSourcePlan(source_root=source, paths=paths)
-    expected = compute_package_hash(source)
+    expected = compute_native_bundle_hash(source)
     snapshot = prepare_snapshot(
         plan, tmp_path / "transport", "apm-owned", "example", expected_hash=expected
     )
-    assert compute_package_hash(snapshot.path / "plugins/example") == expected
+    assert compute_native_bundle_hash(snapshot.path / "plugins/example") == expected
     assert (
         snapshot.path / "plugins/example/.codex-plugin/plugin.json"
     ).read_bytes() == manifest.read_bytes()
@@ -81,7 +81,7 @@ def test_snapshot_rejects_changed_source_after_admission(tmp_path):
     source.mkdir()
     (source / "resource").write_text("admitted")
     plan = DeployableSourcePlan(source_root=source, paths=frozenset({"resource"}))
-    expected = compute_package_hash(source)
+    expected = compute_native_bundle_hash(source)
     (source / "resource").write_text("changed after scan")
     with pytest.raises(ValueError, match="changed"):
         prepare_snapshot(
@@ -102,6 +102,6 @@ def test_snapshot_does_not_accept_unselected_files(tmp_path):
             tmp_path / "transport",
             "apm-owned",
             "example",
-            expected_hash=compute_package_hash(source),
+            expected_hash=compute_native_bundle_hash(source),
         )
     assert not (tmp_path / "transport").exists()

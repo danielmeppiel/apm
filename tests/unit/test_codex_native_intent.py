@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -136,3 +137,27 @@ def test_read_only_schema_plugin_reuses_canonical_detection(tmp_path, monkeypatc
     info = _build_package_info(locked, tmp_path)
     assert info.package_type is PackageType.AGENT_PLUGIN
     assert info.package.codex_plugin is None
+
+
+@pytest.mark.parametrize("version", [None, "0.0.0"])
+def test_git_version_stamping_preserves_codex_publisher_metadata(
+    tmp_path: Path, version: str | None
+) -> None:
+    from apm_cli.deps.package_validator import stamp_plugin_version
+
+    manifest = _plugin(tmp_path)
+    data = json.loads(manifest.read_text())
+    if version is None:
+        del data["version"]
+    else:
+        data["version"] = version
+    manifest.write_text(json.dumps(data))
+    metadata = tmp_path / "apm.yml"
+    metadata.write_text("name: publisher-metadata\nversion: 0.0.0\n")
+    before = {path: path.read_bytes() for path in (manifest, metadata)}
+    validation = validate_apm_package(tmp_path, read_only=True)
+    assert validation.is_valid, validation.errors
+    assert validation.package.codex_plugin is not None
+    stamp_plugin_version(validation.package, validation.package_type, "a" * 40, tmp_path)
+    assert validation.package.version == "0.0.0"
+    assert {path: path.read_bytes() for path in before} == before

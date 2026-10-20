@@ -469,6 +469,8 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
     for name, owner in (
         ("synchronize_codex_plugins", _CODEX_PREFIX + "registrar.py"),
         ("plan_native_codex_plugin", _CODEX_PREFIX + "admission.py"),
+        ("compute_native_bundle_hash", "src/apm_cli/utils/content_hash.py"),
+        ("owns_codex_dependency", _CODEX_PREFIX + "registrar.py"),
     ):
         count = _count_across(
             provider,
@@ -491,7 +493,8 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "CodexNativeDeployment(",
             "scratch_root is None",
             "plugin.source_hash",
-            "compute_package_hash(root), manifest.mcp_server_names",
+            "compute_native_bundle_hash(root)",
+            "manifest.mcp_server_names",
         ),
         _CODEX_PREFIX + "registrar.py": (
             "_preflight(",
@@ -499,10 +502,11 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "client.upgrade(rpc, marketplace)",
             'actual_plugin != {"enabled": False}',
             "prepare_snapshot(",
+            "compute_native_bundle_hash(",
         ),
         _CODEX_PREFIX + "snapshot.py": (
             "plan.paths",
-            "compute_package_hash(",
+            "compute_native_bundle_hash(",
             "git_no_hooks_args()",
         ),
         "src/apm_cli/install/services.py": (
@@ -517,6 +521,7 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "synchronize_codex_plugins(",
             "ctx.dry_run or ctx.lockfile_only",
             "set(ctx.codex_native_plugins).issubset(retained)",
+            "ctx.package_deployed_files.get(key)",
         ),
         "src/apm_cli/install/sources.py": (
             "is_codex_compatibility_manifest(install_path, detect_package_type(install_path)[1])",
@@ -525,6 +530,14 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
         "src/apm_cli/integration/mcp_config_view.py": (
             "is_codex_compatibility_manifest(package_dir, selected_manifest)",
             "dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value",
+            "owns_codex_dependency(",
+        ),
+        "src/apm_cli/utils/content_hash.py": (
+            "_package_files(package_path, native=True)",
+            "path.stat().st_mode & stat.S_IXUSR",
+        ),
+        "src/apm_cli/deps/package_validator.py": (
+            'getattr(package, "codex_plugin", None) is not None',
         ),
         "src/apm_cli/install/drift.py": (
             "is_codex_compatibility_manifest(install_path, selected_manifest)",

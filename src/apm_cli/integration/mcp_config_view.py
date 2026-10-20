@@ -223,6 +223,8 @@ def _allows_missing_manifest(
     dependency: LockedDependency,
     package_dir: Path,
     logger: _McpViewLogger | None = None,
+    *,
+    modules_root: Path | None = None,
 ) -> bool:
     """Return whether the package contract permits an absent apm.yml."""
     from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
@@ -235,6 +237,12 @@ def _allows_missing_manifest(
         # from lock pins after frozen validation completes.
         if dependency.source == "local":
             return False
+        if dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value:
+            from apm_cli.codex_plugins.registrar import owns_codex_dependency
+
+            return modules_root is not None and owns_codex_dependency(
+                modules_root, dependency.get_unique_key()
+            )
         accepted_types = {
             PackageType.APM_PACKAGE.value: "APM package",
             PackageType.CLAUDE_SKILL.value: "Claude skill",
@@ -325,7 +333,9 @@ def _collect_locked_dependencies(
             continue
 
         if not manifest_path.exists():
-            if _allows_missing_manifest(dependency, manifest_path.parent, logger):
+            if _allows_missing_manifest(
+                dependency, manifest_path.parent, logger, modules_root=modules_root
+            ):
                 continue
             problems.append(
                 McpSourceProblem(

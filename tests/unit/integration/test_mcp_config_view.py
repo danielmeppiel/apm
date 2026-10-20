@@ -66,6 +66,43 @@ def _derive(
     )
 
 
+@pytest.mark.parametrize(
+    "record_key,package_type,expected_problem",
+    [
+        ("matching", "marketplace_plugin", False),
+        ("foreign", "marketplace_plugin", True),
+        ("absent", "marketplace_plugin", True),
+        ("matching", "hook_package", True),
+    ],
+)
+def test_cold_codex_cache_uses_owned_identity_without_waiving_legacy(
+    tmp_path: Path, record_key: str, package_type: str, expected_problem: bool
+) -> None:
+    from apm_cli.codex_plugins.registrar import _Record, _write_records, ledger_path_for
+    from apm_cli.codex_plugins.snapshot import NativeSnapshot
+
+    root = _write_manifest(tmp_path, name="consumer", mcp=[_self_defined("loose", "inert")])
+    dependency = LockedDependency(
+        name="example",
+        version="0.0.0",
+        repo_url="owner/example",
+        resolved_ref="main",
+        resolved_commit="a" * 40,
+        package_type=package_type,
+    )
+    modules = tmp_path / "apm_modules"
+    key = dependency.get_unique_key()
+    journal = ledger_path_for(modules)
+    if record_key != "absent":
+        snapshot = NativeSnapshot(journal.parent / "snapshots/owned", "a" * 40, "b" * 40)
+        record = _Record("example", "sha256:" + "c" * 64, snapshot, tmp_path / ".codex/config.toml")
+        _write_records(journal, {key if record_key == "matching" else "foreign": record})
+    view = _derive(root, _lock(dependency), modules)
+    assert bool(view.problems) is expected_problem
+    assert list(view.configs) == ["loose"]
+    assert not modules.exists()
+
+
 class _RecordingLogger:
     """Capture compatibility-path verbose diagnostics."""
 

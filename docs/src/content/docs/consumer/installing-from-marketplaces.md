@@ -70,6 +70,11 @@ selected native marketplace refresh with a new transport generation. Publisher
 bytes, publisher version, and original dependency pins remain unchanged;
 a healthy reinstall does not create a new generation. Keep the ownership
 journal: APM refuses to adopt a matching native registration without it.
+Native fingerprints include publisher `__pycache__` assets and executable
+bits; existing APM lockfile hashes are unchanged. The validated ownership
+journal also identifies native bundles during a cold-cache frozen restore
+alongside unrelated loose MCP declarations. A missing or `0.0.0` native
+version does not authorize rewriting publisher `apm.yml` metadata.
 Running `apm audit --ci` from the APM user directory checks the cached source
 bundle without starting Codex. Native-copy verification happens during install.
 
@@ -77,6 +82,9 @@ Native registration runs after APM persistence. A late failure can leave the
 acquired package, lockfile, or some native changes in place: pending ownership
 supports retry, not atomic rollback across APM and Codex. Keep the journal,
 resolve the reported native error, then rerun `apm install -g --target codex`.
+Migration also refuses native registration if cleanup retains edited or
+undeletable loose files. Preserve or relocate your edits and resolve that
+cleanup conflict before retrying; APM does not register both copies.
 
 Removal fails and retains APM declarations when native ownership has changed,
 another plugin shares the owned marketplace, or the entry contains activation

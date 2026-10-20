@@ -238,6 +238,9 @@ retire those entries using Codex and retry. No loose registration or
 cross-target translation is produced. See the
 [qualified contract](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#codex-compatibility-bundles-through-apm)
 for late-failure retry and ownership-journal recovery.
+Migration refuses native registration while cleanup retains edited or
+undeletable loose files. Preserve or relocate your edits, resolve the cleanup
+conflict, then retry; APM does not register duplicate native and loose copies.
 
 ## Cache management
 

@@ -21,7 +21,7 @@ from apm_cli.install.services import IntegratorBundle, integrate_package_primiti
 from apm_cli.integration.targets import resolve_targets
 from apm_cli.models.apm_package import DependencyReference
 from apm_cli.models.validation import validate_apm_package
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 from apm_cli.utils.diagnostics import DiagnosticCollector
 
 pytestmark = pytest.mark.component
@@ -125,5 +125,8 @@ def test_codex_consumer_scans_the_exact_whole_bundle_before_transport(
                 "example",
                 expected_hash=deployment.source_hash,
             )
-            assert compute_package_hash(snapshot.path / "plugins/example") == deployment.source_hash
+            assert (
+                compute_native_bundle_hash(snapshot.path / "plugins/example")
+                == deployment.source_hash
+            )
     assert list(home.iterdir()) == []

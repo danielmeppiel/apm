@@ -19,7 +19,7 @@ from apm_cli.codex_plugins.registrar import (
 from apm_cli.codex_plugins.snapshot import NativeSnapshot
 from apm_cli.core.scope import InstallScope
 from apm_cli.install.deployable_source_plan import DeployableSourcePlan
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 
 pytestmark = pytest.mark.component
 
@@ -37,10 +37,10 @@ def _deployment(root: Path) -> CodexNativeDeployment:
     )
     return CodexNativeDeployment(
         CodexNativePlugin(
-            "owner/example", "example", source.resolve(), compute_package_hash(source)
+            "owner/example", "example", source.resolve(), compute_native_bundle_hash(source)
         ),
         plan,
-        compute_package_hash(source),
+        compute_native_bundle_hash(source),
     )
 
 

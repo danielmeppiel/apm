@@ -27,7 +27,7 @@ from apm_cli.codex_plugins.snapshot import NativeSnapshot, prepare_snapshot, rep
 from apm_cli.core.scope import InstallScope
 from apm_cli.deps.plugin_parser import _bounded_read_json
 from apm_cli.utils.atomic_io import atomic_write_text
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 from apm_cli.utils.path_security import ensure_path_within, has_symlink_component, safe_rmtree
 
 
@@ -139,6 +139,11 @@ def _read_records(path: Path) -> dict[str, _Record]:
     ):
         raise CodexNativeError(f"Invalid Codex ownership journal; inspect {path} before retrying.")
     return {key: _Record.read(value, path.parent) for key, value in data["plugins"].items()}
+
+
+def owns_codex_dependency(modules_dir: Path, dependency_key: str) -> bool:
+    """Read durable native identity for cold-cache preflight without launching Codex."""
+    return dependency_key in _read_records(ledger_path_for(modules_dir))
 
 
 def _write_records(path: Path, records: dict[str, _Record]) -> None:
@@ -279,7 +284,7 @@ def _observed_root(
         )
     ):
         raise CodexNativeError("Codex returned source content instead of its installed copy.")
-    if compute_package_hash(root) != deployment.source_hash:
+    if compute_native_bundle_hash(root) != deployment.source_hash:
         raise CodexNativeError(
             "Codex installed bundle is incomplete or changed; rerun apm install."
         )
@@ -406,7 +411,7 @@ def synchronize_codex_plugins(
                 and record.snapshot.path.is_dir()
                 and _table(config, "marketplaces").get(name) == _marketplace(record.snapshot)
                 and f"{record.name}@{name}" in _table(config, "plugins")
-                and compute_package_hash(record.installed_root) == item.source_hash
+                and compute_native_bundle_hash(record.installed_root) == item.source_hash
             )
             if healthy:
                 detail = client.read_plugin(rpc, record.marketplace_path, record.name)

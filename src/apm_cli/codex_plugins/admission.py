@@ -15,7 +15,7 @@ from apm_cli.install.native_plugin_admission import (
 )
 from apm_cli.models.dependency.subsets import skill_subset_filter_tokens
 from apm_cli.security.executables import EXEC_TYPE_HOOKS, EXEC_TYPE_MCP, scan_package_executables
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 
 if TYPE_CHECKING:
     from apm_cli.install.context import InstallContext
@@ -112,5 +112,9 @@ def plan_native_codex_plugin(
             "APM will not drop native resources to bypass approval."
         )
     return CodexNativePlugin(
-        dependency_key, manifest.name, root, compute_package_hash(root), manifest.mcp_server_names
+        dependency_key,
+        manifest.name,
+        root,
+        compute_native_bundle_hash(root),
+        manifest.mcp_server_names,
     )

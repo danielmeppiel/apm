@@ -16,7 +16,7 @@ import tomlkit
 
 from apm_cli.codex_plugins.registrar import marketplace_name
 from apm_cli.models.apm_package import DependencyReference
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash, compute_package_hash
 from apm_cli.utils.path_security import safe_rmtree
 from apm_cli.utils.yaml_io import dump_yaml
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
@@ -145,6 +145,10 @@ def _source(root: Path, marker: str) -> None:
         encoding="utf-8",
     )
     (root / "sibling.txt").write_text(marker, encoding="utf-8")
+    asset = root / "resources/__pycache__/asset.bin"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_bytes(marker.encode())
+    asset.chmod(0o644)
 
 
 def _audit_cache(
@@ -295,7 +299,36 @@ def test_installed_cli_registers_complete_codex_bundle_disabled(
     assert ledger.read_bytes() == original_ledger
     assert config_path.read_bytes() == managed_config
 
+    (source / "resources/__pycache__/asset.bin").chmod(0o755)
+    result = _apm(
+        runner,
+        ("install", "-g", "--target", "codex", "--no-policy"),
+        tmp_path,
+        env,
+        "codex-native-executable-mode-update",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    record = next(iter(json.loads(ledger.read_bytes())["plugins"].values()))
+    installed = Path(record["installed_root"])
+    assert compute_native_bundle_hash(installed) == compute_native_bundle_hash(source)
+    assert (
+        record["source_hash"]
+        != next(iter(json.loads(original_ledger)["plugins"].values()))["source_hash"]
+    )
+    assert tomlkit.parse(config_path.read_text()).unwrap()["plugins"][owned[0]] == {
+        "enabled": False,
+        "mcp_servers": {"example": {"enabled": False}},
+    }
+
     for label, method, params in (
+        (
+            "cache-named-resource",
+            "fs/writeFile",
+            {
+                "path": str(installed / "resources/__pycache__/asset.bin"),
+                "dataBase64": base64.b64encode(b"CORRUPTED").decode(),
+            },
+        ),
         (
             "corrupt",
             "fs/writeFile",
@@ -307,7 +340,7 @@ def test_installed_cli_registers_complete_codex_bundle_disabled(
         ("missing", "fs/remove", {"path": str(installed), "recursive": True, "force": False}),
     ):
         _native(codex, env, tmp_path, method, params)
-        assert compute_package_hash(installed) != compute_package_hash(source)
+        assert compute_native_bundle_hash(installed) != compute_native_bundle_hash(source)
         before = next(iter(json.loads(ledger.read_bytes())["plugins"].values()))
         result = _apm(
             runner,
@@ -320,7 +353,9 @@ def test_installed_cli_registers_complete_codex_bundle_disabled(
         after = next(iter(json.loads(ledger.read_bytes())["plugins"].values()))
         assert after["snapshot"]["content_commit"] == before["snapshot"]["content_commit"]
         assert after["snapshot"]["catalog_commit"] != before["snapshot"]["catalog_commit"]
-        assert compute_package_hash(Path(after["installed_root"])) == compute_package_hash(source)
+        assert compute_native_bundle_hash(
+            Path(after["installed_root"])
+        ) == compute_native_bundle_hash(source)
         state = tomlkit.parse(config_path.read_text()).unwrap()
         assert state["plugins"][owned[0]] == {
             "enabled": False,
@@ -404,8 +439,9 @@ def test_installed_cli_registers_complete_codex_bundle_disabled(
     assert json.loads(ledger.read_bytes())["plugins"] == {}
 
 
+@pytest.mark.parametrize("version", [None, "0.0.0"])
 def test_git_pinned_install_and_missing_apm_cache_restore(
-    tmp_path: Path, apm_binary_path: Path
+    tmp_path: Path, apm_binary_path: Path, version: str | None
 ) -> None:
     """Git materialization, original source pin, and native transport identity stay separate."""
     codex = shutil.which("codex")
@@ -421,6 +457,15 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
     )
     source = tmp_path / "publisher"
     _source(source, "PINNED_GIT")
+    manifest = source / ".codex-plugin/plugin.json"
+    document = json.loads(manifest.read_text())
+    if version is None:
+        del document["version"]
+    else:
+        document["version"] = version
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+    publisher_metadata = "name: publisher-metadata\nversion: 0.0.0\n"
+    (source / "apm.yml").write_text(publisher_metadata, encoding="utf-8")
     factory = LocalGitRepositoryFactory(tmp_path / "repositories", env=env)
     repository = factory.create("codex-fixture", source_tree=source)
     commit = factory.commit(repository, message="Inert native compatibility fixture")
@@ -435,10 +480,23 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
             "name": "git-consumer",
             "version": "1.0.0",
             "targets": ["codex"],
-            "dependencies": {"apm": [declaration]},
-            "allowExecutables": {str(reference): {"mcp": True}},
+            "dependencies": {
+                "apm": [declaration],
+                "mcp": [
+                    {
+                        "name": "loose",
+                        "registry": False,
+                        "command": "DO_NOT_EXECUTE",
+                        "transport": "stdio",
+                    }
+                ],
+            },
+            "allowExecutables": {str(reference): {"mcp": True}, "loose": {"mcp": True}},
         },
         apm_home / "apm.yml",
+    )
+    _native_write(
+        codex, env, tmp_path, {"mcp_servers.loose": {"command": "DO_NOT_EXECUTE", "enabled": False}}
     )
     runner = ApmLifecycleRunner((str(apm_binary_path),))
     result = _apm(
@@ -457,6 +515,13 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
     record = next(iter(json.loads(ownership_before)["plugins"].values()))
     assert compute_package_hash(Path(record["installed_root"])) == compute_package_hash(source)
     materialized = reference.get_install_path(apm_home / "apm_modules")
+    assert (materialized / "apm.yml").read_text() == publisher_metadata
+    assert (
+        tomlkit.parse((Path(env["CODEX_HOME"]) / "config.toml").read_text()).unwrap()[
+            "mcp_servers"
+        ]["loose"]["enabled"]
+        is False
+    )
     _audit_cache(runner, tmp_path, env, materialized)
     safe_rmtree(materialized, apm_home / "apm_modules")
     result = _apm(
@@ -470,6 +535,54 @@ def test_git_pinned_install_and_missing_apm_cache_restore(
     assert lock_path.read_bytes() == lock_before
     assert ledger.read_bytes() == ownership_before
     assert compute_package_hash(materialized) == compute_package_hash(source)
+
+
+def test_migration_preserves_edited_loose_skill_without_native_registration(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """A real old loose install cannot acquire duplicate native ownership."""
+    env = _environment(tmp_path)
+    source = tmp_path / "source"
+    _source(source, "OLD_LOOSE")
+    manifest = source / ".codex-plugin/plugin.json"
+    native_manifest = manifest.read_bytes()
+    manifest.unlink()
+    (source / "SKILL.md").write_bytes((source / "skills/example/SKILL.md").read_bytes())
+    apm_home = Path(env["APM_HOME"])
+    apm_home.mkdir()
+    reference = DependencyReference.parse(str(source))
+    dump_yaml(
+        {
+            "name": "migration-consumer",
+            "version": "1.0.0",
+            "targets": ["codex"],
+            "dependencies": {"apm": [str(source)]},
+            "allowExecutables": {str(reference): {"mcp": True}},
+        },
+        apm_home / "apm.yml",
+    )
+    runner = ApmLifecycleRunner((str(apm_binary_path),))
+    args = ("install", "-g", "--target", "codex", "--no-policy")
+    old = _apm(runner, args, tmp_path, env, "codex-old-loose-install")
+    assert old.returncode == 0, old.stdout + old.stderr
+    home = Path(env["HOME"])
+    loose = [
+        path
+        for root in (home / ".agents/skills", home / ".codex/skills")
+        for path in root.glob("*/SKILL.md")
+        if ".system" not in path.parts
+    ]
+    assert len(loose) == 1
+    loose[0].write_text("User-edited loose skill\n", encoding="utf-8")
+    edited = loose[0].read_bytes()
+    manifest.write_bytes(native_manifest)
+    (source / "SKILL.md").unlink()
+    migrated = _apm(runner, args, tmp_path, env, "codex-migration-user-edit-refusal")
+    assert migrated.returncode != 0, migrated.stdout + migrated.stderr
+    assert "retained loose" in " ".join((migrated.stdout + migrated.stderr).split())
+    assert loose[0].read_bytes() == edited
+    assert not (apm_home / ".codex-native/ownership.json").exists()
+    assert not (home / ".codex/config.toml").exists()
 
 
 def test_project_refusal_and_foreign_collision_do_not_cross_write(

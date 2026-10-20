@@ -59,6 +59,53 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
     ("path", "old", "new"),
     [
         (
+            "src/apm_cli/utils/content_hash.py",
+            "_package_files(package_path, native=True)",
+            "_package_files(package_path, native=False)",
+        ),
+        (
+            "src/apm_cli/utils/content_hash.py",
+            "path.stat().st_mode & stat.S_IXUSR",
+            "False",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "def owns_codex_dependency(",
+            "def duplicate_owns_codex_dependency(",
+        ),
+        (
+            "src/apm_cli/install/phases/codex_plugins.py",
+            "ctx.package_deployed_files.get(key)",
+            "False",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "owns_codex_dependency(",
+            "noncanonical_ownership(",
+        ),
+        (
+            "src/apm_cli/deps/package_validator.py",
+            'getattr(package, "codex_plugin", None) is not None',
+            "False",
+        ),
+    ],
+)
+def test_codex_native_content_and_ownership_gates_cannot_be_bypassed(
+    path: str, old: str, new: str
+) -> None:
+    """Native integrity and cold-cache identity use their canonical owners."""
+    rule_id = "marketplace-integrations-codex-native-lifecycle"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert old in source
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: source.replace(old, new)})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
             "src/apm_cli/install/phases/resolve.py",
             "selected_dependency_identity(p, resolved_refs)",
             "DependencyReference.parse(p).get_identity()",

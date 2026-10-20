@@ -14,7 +14,7 @@ from pathlib import Path
 from apm_cli.codex_plugins.client import CodexNativeError
 from apm_cli.install.deployable_source_plan import DeployableSourcePlan
 from apm_cli.utils.atomic_io import atomic_write_text
-from apm_cli.utils.content_hash import compute_package_hash
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 from apm_cli.utils.git_env import (
     clear_git_auth_env,
     clear_git_platform_token_env,
@@ -106,7 +106,7 @@ def prepare_snapshot(
     expected_hash: str,
 ) -> NativeSnapshot:
     """Materialize only admitted bytes; Codex owns every native-cache mutation."""
-    if compute_package_hash(plan.source_root) != expected_hash:
+    if compute_native_bundle_hash(plan.source_root) != expected_hash:
         raise CodexNativeError("Codex plugin source changed after admission; rerun apm install.")
     if destination.exists() or destination.is_symlink():
         raise CodexNativeError(
@@ -142,7 +142,7 @@ def _populate_snapshot(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied.append(target)
-    if compute_package_hash(payload) != expected_hash:
+    if compute_native_bundle_hash(payload) != expected_hash:
         raise CodexNativeError(
             "Native source plan does not contain the complete admitted bundle; registration refused."
         )
