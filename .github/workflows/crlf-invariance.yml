@@ -49,6 +49,38 @@ env:
   PYTHON_VERSION: '3.12'
 
 jobs:
+  issue-2927-qualification:
+    name: Issue 2927 qualification (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'danielmeppiel-issue-delivery-2927'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Identify exact source and installed runtime
+        run: |
+          git rev-parse HEAD
+          uv run --frozen --extra dev python -c "import sys, platform, apm_cli; from importlib.metadata import version; print(platform.platform()); print(sys.executable); print(apm_cli.__file__); print(version('apm-cli'))"
+      - name: Run reported-shape native lifecycle
+        run: >-
+          uv run --frozen --extra dev pytest -p no:cacheprovider -vv
+          tests/integration/test_opencode_local_bundle_audit.py
+          --junitxml=issue-2927.xml
+      - name: Retain qualification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: issue-2927-${{ matrix.os }}
+          path: issue-2927.xml
+          if-no-files-found: error
+
   probe:
     name: Probe (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
