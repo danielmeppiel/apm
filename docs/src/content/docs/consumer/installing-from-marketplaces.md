@@ -35,6 +35,43 @@ who enable both outputs reach every runtime from one repo.
 
 ## What you give up with native installs
 
+### APM-managed Claude user plugins
+
+With Claude Code **2.1.291** on `PATH`, `apm install --global --target claude`
+prepares eligible intact Claude plugins through a local `apm-claude`
+marketplace. APM still owns dependency acquisition, the lockfile, source
+security checks, and the materialized package under `~/.apm/apm_modules`.
+Claude owns native registration and activation. It reads the package in place;
+do not remove or edit its source while Claude uses it.
+
+New plugins are **disabled**, not activated by `apm install`. Review them and
+enable them in Claude, then restart Claude or reload its plugins. Existing
+native enabled/disabled choices survive updates. APM does not run hooks to
+verify installation, complete onboarding, or grant workspace trust.
+Authenticated hook execution remains a separate runtime qualification step.
+
+This route preserves native command selection, namespacing, frontmatter, and
+plugin-root expressions rather than generating duplicate loose Claude
+commands or merging plugin hooks into user settings. Standalone APM
+primitives, project installs, and other explicitly selected targets keep
+their existing deployment behavior.
+
+The bounded route supports commands, skills, agents, and approved hooks.
+Partial skill selections, symlinks, MCP/LSP, bin scripts, and unqualified
+manifest capabilities are refused rather than silently activated. A missing
+or different Claude version also fails without a loose-file fallback.
+Resolve the reported restriction or exclude Claude from that dependency's
+targets.
+
+Updates and global uninstalls use the same native reconciliation owner.
+Uninstall preserves native plugin data. An interrupted metadata operation
+retains APM's ownership intent for a retry; it does not promise rollback of
+Claude-owned state. Repair the reported problem, then rerun
+`apm install --global`. A conflicting `apm-claude` marketplace or plugin
+identity is never adopted or overwritten.
+
+### Direct native installs
+
 Native runtime commands install the plugin and stop there. They do
 not produce a project-scoped lockfile, do not run the APM security
 scan, and do not participate in `apm audit --ci` drift detection. If

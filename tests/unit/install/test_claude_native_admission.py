@@ -155,3 +155,30 @@ def test_native_plan_scans_nontextual_hook_resource_dependencies(tmp_path: Path)
     assert source_plan.includes("hooks/probe.cjs")
     assert source_plan.includes("resources/runtime-owned.json")
     assert source_plan.includes(".claude-plugin/plugin.json")
+
+
+def test_native_source_selection_omits_only_transport_metadata(tmp_path: Path) -> None:
+    from apm_cli.install.cache_pin import MARKER_FILENAME
+    from apm_cli.install.deployable_source_plan import DeployableSourcePlan
+    from apm_cli.integration.targets import KNOWN_TARGETS
+
+    info = _plugin(tmp_path)
+    root = info.install_path
+    (root / ".git").mkdir()
+    (root / ".git/config").write_text("transport metadata\n")
+    (root / MARKER_FILENAME).write_text("generated pin\n")
+    (root / "resources").mkdir()
+    (root / "resources" / MARKER_FILENAME).write_text("publisher resource\n")
+    (root / "SKILL.md").write_text("# Publisher root skill\n")
+    source_plan = DeployableSourcePlan.create(
+        info,
+        [KNOWN_TARGETS["claude"]],
+        skill_subset=None,
+        hooks_approved=True,
+        canvas_approved=False,
+        skip_bin=True,
+        native_plugin_root=root.resolve(),
+    )
+    assert not source_plan.includes(".git/config")
+    assert not source_plan.includes(MARKER_FILENAME)
+    assert source_plan.includes(f"resources/{MARKER_FILENAME}")

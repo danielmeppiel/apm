@@ -10,6 +10,7 @@ from apm_cli.claude_plugins.registrar import (
     CATALOG_RELATIVE,
     LEDGER_RELATIVE,
     MARKETPLACE_NAME,
+    resync_claude_plugins,
     synchronize_claude_plugins,
 )
 from apm_cli.core.scope import InstallScope
@@ -169,3 +170,12 @@ def test_client_cannot_activate_or_run_plugins(args, monkeypatch):
     monkeypatch.setattr("shutil.which", lambda name: "/native/claude")
     with pytest.raises(ClaudeNativePluginError, match="non-metadata"):
         ClaudePluginCLI().run(*args)
+
+
+def test_missing_lock_cannot_remove_owned_native_plugins(tmp_path, native):
+    _sync(tmp_path, ["alpha"])
+    native["calls"].clear()
+    with pytest.raises(ClaudeNativePluginError, match="canonical lockfile"):
+        resync_claude_plugins(modules_dir=tmp_path, scope=InstallScope.USER, lockfile=None)
+    assert native["calls"] == []
+    assert set(native["plugins"]) == {"alpha@" + MARKETPLACE_NAME}

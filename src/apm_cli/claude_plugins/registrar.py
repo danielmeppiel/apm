@@ -250,6 +250,11 @@ def resync_claude_plugins(
     ledger = modules_dir / LEDGER_RELATIVE
     if not prepared and not ledger.exists():
         return
+    if lockfile is None:
+        raise ClaudeNativePluginError(
+            "Native Claude reconciliation requires a readable canonical lockfile. "
+            "Repair the lockfile before changing native registration."
+        )
     if has_symlink_component(modules_dir, ledger):
         raise ClaudeNativePluginError("Refusing symlinked native Claude ownership ledger.")
     previous = _read_ledger(ledger, modules_dir)
