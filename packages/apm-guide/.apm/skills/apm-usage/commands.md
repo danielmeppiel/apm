@@ -336,6 +336,13 @@ descendants, are skipped.
 
 ## Security and audit
 
+Audit replay and coverage use current manifest targets, otherwise concrete
+recorded deployment targets, before directory discovery. Unrelated workflow
+files cannot add Copilot output to a recorded Grok Cloud installation.
+`apm config target` remains an install/update default, not retroactive audit
+intent. A disabled selected experimental target fails with an enable hint;
+missing or modified managed files still fail, and audit does not repair them.
+
 For shared hook targets, drift compares only APM-owned hook entries. Ownership
 sidecars are compared as JSON: object-key order and formatting do not cause
 drift, but changed fields, ownership markers, or list order do. Malformed JSON,

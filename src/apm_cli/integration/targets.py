@@ -21,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from apm_cli.core.target_catalog import (
     TARGET_CAPABILITIES,
@@ -33,6 +34,9 @@ from apm_cli.utils.path_security import (
     ensure_path_within,
     has_symlink_component,
 )
+
+if TYPE_CHECKING:
+    from apm_cli.deps.lockfile import LockFile
 
 RULE_FORMATS: frozenset[str] = frozenset(
     {"cursor_rules", "claude_rules", "windsurf_rules", "kiro_steering", "antigravity_rules"}
@@ -1487,3 +1491,55 @@ def materialize_project_target_profiles(
             deploy_path.mkdir(parents=True, exist_ok=True)
         profiles.append(profile)
     return profiles
+
+
+def resolve_audit_targets(
+    project_root: Path,
+    *,
+    user_scope: bool = False,
+    lockfile: LockFile | None = None,
+) -> list[TargetProfile]:
+    """Resolve read-only audit profiles through target and deployment owners."""
+    import click
+
+    from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
+    from apm_cli.core.scope import get_workspace_deploy_root
+    from apm_cli.core.target_detection import (
+        read_manifest_target,
+        resolve_audit_target_decision,
+    )
+    from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+
+    lock = lockfile if lockfile is not None else LockFile.read(get_lockfile_path(project_root))
+    recorded = (
+        DeploymentLedgerCodec.recorded_target_names(
+            lock,
+            scope="user" if user_scope else "project",
+            supported_targets=KNOWN_TARGETS,
+        )
+        if lock is not None
+        else ()
+    )
+    decision = resolve_audit_target_decision(
+        manifest_target=read_manifest_target(project_root),
+        recorded_targets=recorded,
+    )
+    for name in decision.canonical_targets or ():
+        profile = KNOWN_TARGETS.get(name)
+        if (
+            profile is not None
+            and profile.requires_flag is not None
+            and not _flag_gated(profile, create_config=False)
+        ):
+            flag = profile.requires_flag.replace("_", "-")
+            raise click.ClickException(
+                f"Cannot audit target '{name}': experimental feature "
+                f"'{flag}' is disabled. Run "
+                f"'apm experimental enable {flag}' to audit this installation."
+            )
+    return resolve_targets(
+        get_workspace_deploy_root(project_root),
+        user_scope=user_scope,
+        explicit_target=decision.value,
+        create_config=False,
+    )

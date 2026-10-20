@@ -87,6 +87,27 @@ class DeploymentLedgerCodec:
     """Translate canonical deployment records to and from lockfile views."""
 
     @staticmethod
+    def recorded_target_names(
+        lockfile: LockFile,
+        *,
+        scope: str,
+        supported_targets: Collection[str],
+    ) -> tuple[str, ...]:
+        """Project concrete target identities, never infer them from shared paths."""
+        ledger = lockfile.deployment_ledger
+        if ledger is None:
+            return ()
+        return tuple(
+            sorted(
+                {
+                    record.locator.target
+                    for record in ledger.records.values()
+                    if record.locator.scope == scope and record.locator.target in supported_targets
+                }
+            )
+        )
+
+    @staticmethod
     def legacy_deployed_file_claims(lockfile: LockFile) -> dict[str, str]:
         """Return the compatibility ``deployed_files`` view by owning package."""
         claims: dict[str, str] = {}

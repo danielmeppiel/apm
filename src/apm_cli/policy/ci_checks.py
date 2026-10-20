@@ -207,8 +207,14 @@ def _resolve_deployed_file_path(
     candidate = Path(value.rstrip("/"))
     if not candidate.is_absolute():
         rel_path = candidate.as_posix()
-        allowed_prefixes = BaseIntegrator._get_integration_prefixes(targets=targets or None)
-        if ".." in rel_path or not rel_path.startswith(allowed_prefixes):
+        # Historical claims remain verifiable after current replay intent changes.
+        allowed_prefixes = (
+            *BaseIntegrator._get_integration_prefixes(),
+            *BaseIntegrator._get_integration_prefixes(targets=targets),
+        )
+        if not BaseIntegrator.validate_deploy_path(
+            rel_path, project_root, allowed_prefixes=allowed_prefixes
+        ):
             return None
         return project_root / candidate
     for target in targets:
@@ -772,11 +778,10 @@ def _check_drift(
         CacheMissError,
         CheckLogger,
         ReplayConfig,
-        _read_apm_yml_target,
         diff_scratch_against_project,
         run_replay,
     )
-    from ..integration.targets import resolve_targets
+    from ..integration.targets import resolve_audit_targets
 
     logger = CheckLogger(verbose=verbose)
     deployment_root = get_workspace_deploy_root(project_root)
@@ -835,11 +840,10 @@ def _check_drift(
                 ),
                 [],
             )
-        resolved_targets = resolve_targets(
+        resolved_targets = resolve_audit_targets(
             project_root,
             user_scope=user_scope,
-            explicit_target=_read_apm_yml_target(project_root),
-            create_config=False,
+            lockfile=lockfile,
         )
         tracked_files = None
     else:
@@ -931,13 +935,11 @@ def run_baseline_checks(
     result = CIAuditResult()
     deployment_root = get_workspace_deploy_root(project_root)
     user_scope = deployment_root != project_root.resolve()
-    from ..install.drift import _read_apm_yml_target
-    from ..integration.targets import resolve_targets
+    from ..integration.targets import resolve_audit_targets
 
-    resolved_targets = resolve_targets(
-        deployment_root,
+    resolved_targets = resolve_audit_targets(
+        project_root,
         user_scope=user_scope,
-        explicit_target=_read_apm_yml_target(project_root),
     )
     apm_yml_path = project_root / "apm.yml"
 
