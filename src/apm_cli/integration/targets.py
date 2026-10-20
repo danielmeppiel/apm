@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from click import ClickException
+
 from apm_cli.core.target_catalog import (
     TARGET_CAPABILITIES,
     TargetCapability,
@@ -1493,6 +1495,12 @@ def materialize_project_target_profiles(
     return profiles
 
 
+class AuditTargetDisabledError(ClickException):
+    """Report an unavailable audit target as a configuration error."""
+
+    exit_code = 3
+
+
 def resolve_audit_targets(
     project_root: Path,
     *,
@@ -1500,8 +1508,6 @@ def resolve_audit_targets(
     lockfile: LockFile | None = None,
 ) -> list[TargetProfile]:
     """Resolve read-only audit profiles through target and deployment owners."""
-    import click
-
     from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
     from apm_cli.core.scope import get_workspace_deploy_root
     from apm_cli.core.target_detection import (
@@ -1532,7 +1538,7 @@ def resolve_audit_targets(
             and not _flag_gated(profile, create_config=False)
         ):
             flag = profile.requires_flag.replace("_", "-")
-            raise click.ClickException(
+            raise AuditTargetDisabledError(
                 f"Cannot audit target '{name}': experimental feature "
                 f"'{flag}' is disabled. Run "
                 f"'apm experimental enable {flag}' to audit this installation."

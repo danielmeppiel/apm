@@ -35,12 +35,15 @@ The saved `apm config target` is an install/update default, not a request to
 retarget an existing installation during audit.
 
 Experimental targets remain opt-in. If a selected target's experiment is
-disabled, audit fails with an enable instruction instead of replaying it as
-another target or silently skipping verification. Changing the manifest can
-still expose missing requested output; missing or modified managed files still
-fail. Audit does not install, repair, or rewrite that state.
-Retained files recorded under a previous target are still checked for presence
-and hash integrity, even when that target is no longer selected for replay.
+disabled, audit exits with code `3` and an enable instruction on stderr, such
+as `apm experimental enable grok-cloud`, instead of silently skipping verification.
+Configuration errors do not produce a JSON audit report.
+Changing the manifest can still expose missing requested output; the existing
+[drift exit rules](#drift-detection) apply. Audit does not install, repair, or
+rewrite that state. Retained paths recorded under a previous target remain
+eligible for [CI presence and recorded-hash checks](../../baseline-checks/),
+subject to those checks' existing exclusions and hash baselines, even when
+that target is no longer selected for replay.
 
 This is the explicit power tool. Built-in protection against critical Unicode findings already runs automatically in `apm install`, `apm compile`, and `apm unpack`; you do not need to call `apm audit` to be safe by default. See [Drift and secure by default](../../../consumer/drift-and-secure-by-default/) for the consumer-side overview and [Enforce in CI](../../../enterprise/enforce-in-ci/) for the gating workflow. For marketplace plugin transitive-dependency pinning, see [`apm marketplace audit`](../marketplace/#apm-marketplace-audit-name).
 

@@ -157,9 +157,10 @@ def test_audit_preserves_current_intent_and_experimental_boundary(
     assert json.loads(run(*audit_args).stdout)["passed"] is True
 
     run("experimental", "disable", "grok-cloud")
-    disabled = run(*audit_args, expected=1)
-    assert "grok-cloud" in disabled.stderr
-    assert "apm experimental enable grok-cloud" in disabled.stderr
+    for args in (audit_args, ("audit", "--format", "json")):
+        disabled = run(*args, expected=3)
+        assert "grok-cloud" in disabled.stderr
+        assert "apm experimental enable grok-cloud" in disabled.stderr
     assert not (project.root / ".agents").exists()
     run("experimental", "enable", "grok-cloud")
     assert json.loads(run(*audit_args).stdout)["passed"] is True

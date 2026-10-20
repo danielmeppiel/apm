@@ -937,9 +937,12 @@ def run_baseline_checks(
     user_scope = deployment_root != project_root.resolve()
     from ..integration.targets import resolve_audit_targets
 
+    lockfile_path = get_lockfile_path(project_root)
+    lock = LockFile.read(lockfile_path)
     resolved_targets = resolve_audit_targets(
         project_root,
         user_scope=user_scope,
+        lockfile=lock if lock is not None else LockFile(),
     )
     apm_yml_path = project_root / "apm.yml"
 
@@ -956,8 +959,6 @@ def run_baseline_checks(
     # If lockfile doesn't exist or isn't needed, remaining checks can't run
     if not result.checks[0].passed:
         return result
-
-    lockfile_path = get_lockfile_path(project_root)
 
     # If there's no apm.yml or no lockfile, the first check already passed
     # (no deps needed).  Skip remaining checks -- but warn if APM artifacts
@@ -986,7 +987,6 @@ def run_baseline_checks(
         )
         return result
 
-    lock = LockFile.read(lockfile_path)
     if lock is None or manifest is None:
         return result
 
