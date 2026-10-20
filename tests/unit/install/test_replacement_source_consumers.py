@@ -438,6 +438,7 @@ def test_update_auth_preflight_never_uses_original_source_coordinates(tmp_path: 
         downloader.return_value._build_repo_url.return_value = "https://gitlab.com/new/fork.git"
         probe.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
         _preflight_auth_check(SimpleNamespace(deps_to_install=[selected]), auth, False)
+        auth.resolve_for_dep.assert_called()
         reference = auth.resolve_for_dep.call_args.args[0]
         assert reference.replacement is None
         assert (reference.host, reference.repo_url) == ("gitlab.com", "new/fork")
