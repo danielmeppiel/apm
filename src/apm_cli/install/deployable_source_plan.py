@@ -83,6 +83,7 @@ class DeployableSourcePlan:
         canvas_approved: bool,
         skip_bin: bool,
         plugin_bin_deployable: bool = False,
+        native_plugin_root: Path | None = None,
         diagnostics: DiagnosticCollector | None = None,
         package_name: str = "",
     ) -> DeployableSourcePlan:
@@ -171,6 +172,19 @@ class DeployableSourcePlan:
             )
             for path in hook_source_selection.files:
                 add_file(path)
+
+        if native_plugin_root is not None:
+            if native_plugin_root != source_root:
+                raise ValueError("Native source plan must use the admitted package root.")
+            for parent, directories, files in os.walk(source_root, followlinks=False):
+                for name in (*directories, *files):
+                    path = Path(parent) / name
+                    if not _is_safe_source_path(path, source_root):
+                        raise ValueError(
+                            "Native plugin contains an unsafe path or symlink; "
+                            "a live loader cannot honor partial source exclusions."
+                        )
+                    add_file(path)
 
         if canvas_approved and "canvas" in target_primitives:
             from apm_cli.integration.canvas_integrator import CanvasIntegrator

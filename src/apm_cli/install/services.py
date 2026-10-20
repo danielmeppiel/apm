@@ -233,6 +233,7 @@ def integrate_package_primitives(  # noqa: PLR0913
     dep_target_subset: list[str] | None = None,
     trust_bin: bool | None = None,
     bin_skip_reason_override: str | None = None,
+    native_claude_user_scope: bool = False,
 ) -> dict:
     """Run the full integration pipeline for a single package.
 
@@ -348,8 +349,19 @@ def integrate_package_primitives(  # noqa: PLR0913
         if _skip_bin and bin_skip_reason_override is not None
         else _bin_skip_reason_override
     )
+    from apm_cli.claude_plugins.admission import plan_native_claude_plugin
     from apm_cli.install.deployable_source_plan import DeployableSourcePlan
     from apm_cli.install.helpers.security_scan import _pre_deploy_security_scan
+
+    native_claude_plugin = plan_native_claude_plugin(
+        package_info,
+        package_name=package_name,
+        targets=targets,
+        scope=InstallScope.USER if native_claude_user_scope else scope,
+        skill_subset=skill_subset,
+        hooks_approved=_hooks_approved,
+        skip_bin=_skip_bin,
+    )
 
     source_plan = DeployableSourcePlan.create(
         package_info,
@@ -360,6 +372,7 @@ def integrate_package_primitives(  # noqa: PLR0913
         skip_bin=_skip_bin,
         diagnostics=diagnostics,
         package_name=package_name,
+        native_plugin_root=native_claude_plugin.source_root if native_claude_plugin else None,
         plugin_bin_deployable=_plugin_bin_deployable(
             package_info,
             targets,
@@ -377,6 +390,22 @@ def integrate_package_primitives(  # noqa: PLR0913
         logger=logger,
     ):
         return result
+
+    if native_claude_plugin is not None:
+        result["native_plugin"] = True
+        if callable(reconcile_package_targets):
+            reconcile_stats = reconcile_package_targets(
+                package_info,
+                project_root,
+                [t for t in targets if t.name == "claude"],
+            )
+            _warn_target_reconcile_failure(diagnostics, package_name, reconcile_stats)
+        targets = [target for target in targets if target.name != "claude"]
+        if not targets:
+            _reconcile_excluded_targets()
+            if ctx is not None:
+                ctx.claude_native_plugins[package_name] = native_claude_plugin
+            return result
 
     # A natively registered Agent Plugin stays opaque: Copilot loads the whole
     # unit live from apm_modules, so decomposing its skills or MCP servers here
@@ -678,6 +707,8 @@ def integrate_package_primitives(  # noqa: PLR0913
     if _total_integrated == 0:
         _log_integration("  |-- (files unchanged)")
 
+    if native_claude_plugin is not None and ctx is not None:
+        ctx.claude_native_plugins[package_name] = native_claude_plugin
     return result
 
 

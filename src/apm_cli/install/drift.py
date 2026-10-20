@@ -655,6 +655,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     package_name=dep_key,
                     logger=None,
                     scope=None,
+                    native_claude_user_scope=config.user_scope,
                     skill_subset=(
                         tuple(package_info.dependency_ref.skill_subset or ()) or None
                         if package_info.dependency_ref
