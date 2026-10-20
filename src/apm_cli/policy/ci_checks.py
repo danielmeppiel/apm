@@ -102,16 +102,31 @@ def _check_ref_consistency(
 ) -> CheckResult:
     """Verify manifest refs match the lockfile's resolved ref and commit."""
     from ..deps.revision_pins import is_full_revision_pin
-    from ..drift import detect_ref_change
+    from ..drift import detect_ref_change, marketplace_ref_mismatch
 
     mismatches: list[str] = []
     requires_update = False
+    marketplace_index = lock.marketplace_index()
     for dep_ref in manifest.get_all_apm_dependencies():
         key = dep_ref.get_unique_key()
-        locked_dep = lock.get_dependency(key)
+        display = dep_ref.get_display_name() if dep_ref.is_marketplace else key
+        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None:
-            mismatches.append(f"{key}: not found in lockfile")
+            if dep_ref.is_marketplace:
+                pair = (dep_ref.marketplace_name, dep_ref.marketplace_plugin_name)
+                reason = "ambiguous" if pair in marketplace_index else "missing"
+                mismatches.append(
+                    f"{display}: {reason} marketplace provenance in lockfile; "
+                    "inspect the locked sources before reinstalling"
+                )
+            else:
+                mismatches.append(f"{key}: not found in lockfile")
             requires_update = requires_update or bool(lock.dependencies)
+            continue
+        if dep_ref.is_marketplace:
+            if reason := marketplace_ref_mismatch(dep_ref, locked_dep):
+                mismatches.append(f"{display}: {reason}")
+                requires_update = True
             continue
         if is_full_revision_pin(dep_ref.reference) and (
             locked_dep.resolved_commit != dep_ref.reference
@@ -323,11 +338,22 @@ def _check_no_orphans(
     sub-package's manifest, not the root manifest, so the root manifest
     cannot make them go away by editing its dependency lists.
     """
-    manifest_keys = {dep.get_unique_key() for dep in manifest.get_all_apm_dependencies()}
+    declared_lock_keys: set[str] = set()
+    marketplace_index = lock.marketplace_index()
+    for dep in manifest.get_all_apm_dependencies():
+        key = dep.get_unique_key()
+        declared_lock_keys.add(key)
+        if dep.is_marketplace or key.startswith("_marketplace/"):
+            locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
+            if locked_dep is not None:
+                declared_lock_keys.add(locked_dep.get_unique_key())
+
     orphaned = [
         dep_key
         for dep_key, locked_dep in lock.dependencies.items()
-        if dep_key not in manifest_keys and dep_key != _SELF_KEY and locked_dep.resolved_by is None
+        if dep_key not in declared_lock_keys
+        and dep_key != _SELF_KEY
+        and locked_dep.resolved_by is None
     ]
     if not orphaned:
         return CheckResult(
@@ -369,9 +395,10 @@ def _check_skill_subset_consistency(
         else project_root / APM_MODULES_DIR
     )
     mismatches: list[str] = []
+    marketplace_index = lock.marketplace_index()
     for dep_ref in manifest.get_all_apm_dependencies():
         key = dep_ref.get_unique_key()
-        locked_dep = lock.get_dependency(key)
+        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None:
             continue
         if not dep_ref.skill_subset and not locked_dep.skill_subset:
