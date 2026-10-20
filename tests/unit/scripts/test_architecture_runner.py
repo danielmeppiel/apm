@@ -722,6 +722,7 @@ registry_delegation.root_cli_output_mode
 registry_delegation.runtime_descriptors
 registry_delegation.target_vocabulary
 registry_delegation.user_invocable_resolution
+registry_delegation.version_rendering
 transport-platform-artifactory-full-commit-sha
 transport-platform-artifactory-netrc-isolation
 transport-platform-cache-cleanup-outcome
