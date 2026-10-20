@@ -46,8 +46,8 @@ def test_pack_archive_repack_and_rejection_preserve_complete_hook_bundle(
     marker = isolated.work_root / "hook-executed.txt"
     script_content = f"from pathlib import Path\nPath({str(marker)!r}).write_text('ran')\n"
     for name, event, reference in (
-        ("script", "Stop", "script/run.py"),
-        ("skill", "PostToolUse", ".apm/skills/demo/scripts/check.py"),
+        ("script", "Stop", "script/run file.py"),
+        ("skill", "PostToolUse", ".apm/skills/demo/scripts/check file.py"),
     ):
         factory.add_hook(
             package,
@@ -68,7 +68,7 @@ def test_pack_archive_repack_and_rejection_preserve_complete_hook_bundle(
             },
         )
     script = factory.add_hook_asset(
-        package, "script", PurePosixPath("run.py"), script_content, executable=True
+        package, "script", PurePosixPath("run file.py"), script_content, executable=True
     )
     resource = factory.add_hook_asset(
         package, "script", PurePosixPath("support.json"), '{"fixture":"v1"}'
@@ -78,7 +78,7 @@ def test_pack_archive_repack_and_rejection_preserve_complete_hook_bundle(
     (skill / "SKILL.md").write_text(
         "---\nname: demo\ndescription: Fixture skill\n---\n# Demo\n", encoding="utf-8"
     )
-    (skill / "scripts/check.py").write_text(script_content, encoding="utf-8")
+    (skill / "scripts/check file.py").write_text(script_content, encoding="utf-8")
     runner = ApmLifecycleRunner((str(apm_binary_path),))
     environment = isolated.subprocess_env()
     output = package.root / "build/hook-producer-1.0.0"
@@ -104,7 +104,7 @@ def test_pack_archive_repack_and_rejection_preserve_complete_hook_bundle(
         assert result.returncode == 0, result.stdout + result.stderr
         _read_claude_hooks(output)
         assert (output / "hooks/script/support.json").read_bytes() == resource.read_bytes()
-        assert (output / "hooks/script/run.py").read_bytes() == script.read_bytes()
+        assert (output / "hooks/script/run file.py").read_bytes() == script.read_bytes()
         assert not (output / "stale.txt").exists()
         assert not marker.exists()
 
@@ -120,8 +120,8 @@ def test_pack_archive_repack_and_rejection_preserve_complete_hook_bundle(
         manifest = json.loads(packed.read(prefix + ".claude-plugin/plugin.json"))
         assert manifest["hooks"] == "./hooks.json"
         assert packed.read(prefix + "hooks/script/support.json") == resource.read_bytes()
-        assert packed.read(prefix + "hooks/script/run.py") == script.read_bytes()
-        assert packed.read(prefix + "skills/demo/scripts/check.py") == script_content.encode()
+        assert packed.read(prefix + "hooks/script/run file.py") == script.read_bytes()
+        assert packed.read(prefix + "skills/demo/scripts/check file.py") == script_content.encode()
     before = {
         path.relative_to(output): path.read_bytes() for path in output.rglob("*") if path.is_file()
     }

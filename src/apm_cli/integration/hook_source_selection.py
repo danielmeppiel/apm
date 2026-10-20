@@ -89,11 +89,11 @@ def resolve_plugin_root_hook_script(
     resolved = ensure_path_within(candidate, package_path)
     if hook_file_dir is None:
         return resolved
-    if candidate.is_file():
+    if candidate.exists() or candidate.is_symlink():
         return candidate
     fallback = hook_file_dir / rel_path
     ensure_path_within(fallback, package_path)
-    return fallback if fallback.is_file() else candidate
+    return fallback if fallback.exists() or fallback.is_symlink() else candidate
 
 
 def _referenced_hook_source_files(

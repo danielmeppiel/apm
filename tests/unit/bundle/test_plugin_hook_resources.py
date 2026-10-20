@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import shutil
 from pathlib import Path
 
@@ -192,13 +193,18 @@ def test_root_native_hooks_keep_paths_and_use_descriptor_relative_fallback(
     assert (result.bundle_path / "hooks/scripts/support.txt").is_file()
 
 
-def test_hook_resource_reference_does_not_override_apm_source_authority(hook_project: Path) -> None:
+@pytest.mark.parametrize("reference", ["skills/private/run.py", "skills/private"])
+def test_hook_resource_reference_does_not_override_apm_source_authority(
+    hook_project: Path, reference: str
+) -> None:
     root_skill = hook_project / "skills/private/run.py"
     root_skill.parent.mkdir(parents=True)
     root_skill.write_text("not for publication", encoding="utf-8")
     descriptor = hook_project / ".apm/hooks/script.json"
     descriptor.write_text(
-        '{"hooks":{"Stop":[{"command":"python ${CLAUDE_PLUGIN_ROOT}/skills/private/run.py"}]}}',
+        json.dumps(
+            {"hooks": {"Stop": [{"command": f"python ${{CLAUDE_PLUGIN_ROOT}}/{reference}"}]}}
+        ),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="selected layout"):
@@ -224,29 +230,157 @@ def test_split_quoted_root_and_multiple_flat_command_fields(hook_project: Path) 
     ]
 
 
+@pytest.mark.parametrize("quoting", ["bare", "full", "split"])
 @pytest.mark.parametrize("name", ["check file.py", "check;file.py"])
-def test_hook_relocation_preserves_authored_shell_escapes(hook_project: Path, name: str) -> None:
+def test_hook_relocation_preserves_authored_shell_escapes(
+    hook_project: Path, name: str, quoting: str
+) -> None:
     source = hook_project / ".apm/hooks/scripts" / name
     source.write_text("raise RuntimeError('must not run')", encoding="utf-8")
     escaped = name.replace(" ", "\\ ").replace(";", "\\;")
+    reference = {
+        "bare": f"${{CLAUDE_PLUGIN_ROOT}}/scripts/{escaped}",
+        "full": f'"${{CLAUDE_PLUGIN_ROOT}}/scripts/{name}"',
+        "split": f'"${{CLAUDE_PLUGIN_ROOT}}"/scripts/{escaped}',
+    }[quoting]
     (hook_project / ".apm/hooks/script.json").write_text(
-        json.dumps(
-            {
-                "hooks": {
-                    "PostToolUse": [
-                        {"command": f"python ${{CLAUDE_PLUGIN_ROOT}}/scripts/{escaped}"}
-                    ]
-                }
-            }
-        ),
+        json.dumps({"hooks": {"PostToolUse": [{"command": f"python {reference}"}]}}),
         encoding="utf-8",
     )
     result = export_plugin_bundle(hook_project, hook_project / "dist")
     command = json.loads((result.bundle_path / "hooks.json").read_text())["hooks"]["PostToolUse"][
         0
     ]["command"]
-    assert command == f"python ${{CLAUDE_PLUGIN_ROOT}}/hooks/scripts/{escaped}"
+    expected = (
+        f"${{CLAUDE_PLUGIN_ROOT}}/hooks/scripts/{escaped}"
+        if quoting == "bare"
+        else f'"${{CLAUDE_PLUGIN_ROOT}}/hooks/scripts/{name}"'
+    )
+    assert command == f"python {expected}"
+    assert shlex.split(command) == ["python", f"${{CLAUDE_PLUGIN_ROOT}}/hooks/scripts/{name}"]
     assert (result.bundle_path / "hooks/scripts" / name).read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize("layout", ["apm", "root"])
+@pytest.mark.parametrize("include_directory", [True, False])
+def test_hook_directory_reference_uses_only_selected_materialized_files(
+    hook_project: Path, layout: str, include_directory: bool
+) -> None:
+    source_relative = ".apm/skills/demo"
+    if layout == "root":
+        shutil.move(hook_project / ".apm/skills", hook_project / "skills")
+        source_relative = "skills/demo"
+    descriptor = hook_project / ".apm/hooks/script.json"
+    descriptor.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "Stop": [
+                        {
+                            "command": (
+                                f'cd "${{CLAUDE_PLUGIN_ROOT}}/{source_relative}" '
+                                "&& python scripts/check.py"
+                            )
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_yaml(hook_project / "apm.yml")
+    manifest["includes"] = [".apm/hooks/script.json"]
+    if include_directory:
+        manifest["includes"].append(source_relative)
+    dump_yaml(manifest, hook_project / "apm.yml")
+    if not include_directory:
+        with pytest.raises(ValueError, match="includes"):
+            export_plugin_bundle(hook_project, hook_project / "dist", dry_run=True)
+        assert not (hook_project / "dist").exists()
+        return
+
+    result = export_plugin_bundle(hook_project, hook_project / "dist")
+    command = json.loads((result.bundle_path / "hooks.json").read_text())["hooks"]["Stop"][0][
+        "command"
+    ]
+    assert command == 'cd "${CLAUDE_PLUGIN_ROOT}/skills/demo" && python scripts/check.py'
+    assert (result.bundle_path / "skills/demo/scripts/check.py").is_file()
+    assert "skills/demo" not in result.files
+    assert not (result.bundle_path / "hooks/scripts").exists()
+
+
+@pytest.mark.parametrize("script_relative", ["scripts/run.js", "run.js"])
+@pytest.mark.parametrize("local_metadata", [True, False])
+def test_root_script_keeps_node_module_scope_without_publishing_package_tree(
+    hook_project: Path, script_relative: str, local_metadata: bool
+) -> None:
+    source = hook_project / script_relative
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("throw new Error('must not run');\n", encoding="utf-8")
+    (hook_project / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    if local_metadata:
+        (source.parent / "package.json").write_text('{"type":"commonjs"}', encoding="utf-8")
+    (hook_project / "private.txt").write_text("do not publish", encoding="utf-8")
+    (hook_project / ".apm/hooks/script.json").write_text(
+        json.dumps(
+            {"hooks": {"Stop": [{"command": f'node "${{CLAUDE_PLUGIN_ROOT}}/{script_relative}"'}]}}
+        ),
+        encoding="utf-8",
+    )
+    result = export_plugin_bundle(hook_project, hook_project / "dist")
+    metadata = json.loads(
+        (result.bundle_path / Path(script_relative).parent / "package.json").read_text()
+    )
+    assert metadata["type"] == ("commonjs" if local_metadata else "module")
+    assert (result.bundle_path / script_relative).read_bytes() == source.read_bytes()
+    assert not (result.bundle_path / "private.txt").exists()
+
+
+@pytest.mark.parametrize(
+    "reserved_path", ["plugin.json", "hooks.json", "plugin.json/probe.py", "hooks.json/probe.py"]
+)
+def test_hook_resource_cannot_replace_generated_output(
+    hook_project: Path, reserved_path: str
+) -> None:
+    resource = hook_project / reserved_path
+    resource.parent.mkdir(parents=True, exist_ok=True)
+    resource.write_text("{}", encoding="utf-8")
+    (hook_project / ".apm/hooks/script.json").write_text(
+        json.dumps(
+            {"hooks": {"Stop": [{"command": f"cat ${{CLAUDE_PLUGIN_ROOT}}/{reserved_path}"}]}}
+        ),
+        encoding="utf-8",
+    )
+    output = hook_project / "dist/demo-1.0.0"
+    output.mkdir(parents=True)
+    sentinel = output / "keep.txt"
+    sentinel.write_text("previous bundle", encoding="utf-8")
+    with pytest.raises(ValueError, match="conflicts with generated output"):
+        export_plugin_bundle(hook_project, output.parent)
+    assert sentinel.read_text() == "previous bundle"
+
+
+def test_generated_hook_metadata_cannot_replace_a_dependency_file(hook_project: Path) -> None:
+    script = hook_project / ".apm/skills/demo/scripts/run.js"
+    script.write_text("throw new Error('must not run');\n", encoding="utf-8")
+    (hook_project / ".apm/hooks/skill.json").write_text(
+        '{"hooks":{"Stop":[{"command":"node ${CLAUDE_PLUGIN_ROOT}/.apm/skills/demo/scripts/run.js"}]}}',
+        encoding="utf-8",
+    )
+    deployed = hook_project / ".claude/skills/demo/scripts/package.json"
+    deployed.parent.mkdir(parents=True)
+    deployed.write_text('{"type":"commonjs"}', encoding="utf-8")
+    lockfile = LockFile()
+    lockfile.add_dependency(
+        LockedDependency(
+            repo_url="acme/metadata",
+            deployed_files=[".claude/skills/demo/scripts/package.json"],
+        )
+    )
+    lockfile.write(hook_project / "apm.lock.yaml")
+    with pytest.raises(ValueError, match="metadata collides"):
+        export_plugin_bundle(hook_project, hook_project / "dist")
+    assert not (hook_project / "dist").exists()
 
 
 def test_dependency_collision_cannot_substitute_a_first_party_hook_resource(

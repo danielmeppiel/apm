@@ -342,7 +342,8 @@ def _collect_hooks_from_apm(
                 if isinstance(data, dict):
                     if documents is not None:
                         documents.append((f, deepcopy(data)))
-                    _deep_merge(hooks, data, overwrite=False)
+                    else:
+                        _deep_merge(hooks, data, overwrite=False)
             except (OSError, ValueError, RecursionError):
                 # Untrusted .apm/hooks/*.json: oversized-int -> bare ValueError,
                 # deep nest -> RecursionError. Fail closed (skip this file).
@@ -363,7 +364,8 @@ def _collect_hooks_from_root(
             if isinstance(data, dict):
                 if documents is not None:
                     documents.append((hooks_file, deepcopy(data)))
-                _deep_merge(hooks, data, overwrite=False)
+                else:
+                    _deep_merge(hooks, data, overwrite=False)
         except (OSError, ValueError, RecursionError):
             # Untrusted root hooks.json: fail closed (oversized-int ValueError /
             # deep-nest RecursionError are not JSONDecodeError).
@@ -383,7 +385,8 @@ def _collect_hooks_from_root(
                     if isinstance(data, dict):
                         if documents is not None:
                             documents.append((f, deepcopy(data)))
-                        _deep_merge(hooks, data, overwrite=False)
+                        else:
+                            _deep_merge(hooks, data, overwrite=False)
                 except (OSError, ValueError, RecursionError):
                     # Untrusted .../hooks/*.json: fail closed (skip this file).
                     pass
@@ -655,7 +658,8 @@ def _collect_explicit_local_components(
                     )
                 if documents is not None:
                     documents.append((file_path, deepcopy(hook_data)))
-                _deep_merge(hooks, hook_data, overwrite=False)
+                else:
+                    _deep_merge(hooks, hook_data, overwrite=False)
                 continue
             plugin_relative = _plugin_rel_for_deployed_path(repo_relative, None)
             if plugin_relative is None:
@@ -1051,7 +1055,9 @@ def export_plugin_bundle(
     if merged_hooks:
         write_text_lf(bundle_dir / "hooks.json", json.dumps(merged_hooks, indent=2, sort_keys=True))
     for relative, content in hook_resources.generated.items():
-        write_text_lf(bundle_dir / relative, content)
+        destination = bundle_dir / relative
+        ensure_path_within(destination, bundle_dir)
+        write_text_lf(destination, content)
 
     # 13. Write merged .mcp.json
     if merged_mcp:

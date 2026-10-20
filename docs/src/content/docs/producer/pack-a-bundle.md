@@ -131,6 +131,11 @@ descriptor's directory; `.apm/hooks/scripts/check.py` is then packed as
 are preserved, with Node module type retained when needed. No hook or package
 script is executed during packing.
 
+Quoted filenames and split-quoted roots retain their shell meaning.
+References to selected directories, such as `cd "${CLAUDE_PLUGIN_ROOT}/.apm/skills/demo"`,
+follow the packed directory without adding unselected files. Root-level scripts
+retain their Node module type without publishing the rest of the repository.
+
 An explicit `includes` list remains exhaustive: include the hook descriptor
 and its resource directories. Missing, excluded, symlinked, escaping or
 collision-displaced referenced resources fail before replacing the existing
