@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -63,12 +64,16 @@ def test_installed_hook_source_reinstall_and_removal(
         }
     }
     (source / "hooks/hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+    (source / "__pycache__").mkdir()
+    (source / "__pycache__/resource.bin").write_bytes(b"publisher-owned resource")
+    (source / "hooks/resource.cjs").write_text("// inert publisher resource\n", encoding="ascii")
     revision = factory.commit(repository, message="Owned inert hook fixture").sha
     dependency = "fixture/native-hooks"
     env = factory.url_rewrite_subprocess_env(repository, f"https://github.com/{dependency}.git")
     manifest = {
         "name": "hook-consumer",
         "version": "1.0.0",
+        "targets": ["claude"],
         "dependencies": {"apm": [{"git": dependency, "ref": revision, "path": "plugins/context"}]},
         "allowExecutables": {
             f"github.com/{dependency}/plugins/context#{revision}": {"hooks": True}
@@ -79,7 +84,10 @@ def test_installed_hook_source_reinstall_and_removal(
 
     def run(*args: str, expected: int = 0) -> str:
         result = runner.run(
-            args, scenario_id="claude-native-hook-lifecycle", cwd=isolated.work_root, env=env
+            args,
+            scenario_id="claude-native-hook-lifecycle",
+            cwd=isolated.config_root if args[0] == "audit" else isolated.work_root,
+            env=env,
         )
         assert result.returncode == expected, result.stdout + result.stderr
         return " ".join((result.stdout + result.stderr).split())
@@ -105,6 +113,30 @@ def test_installed_hook_source_reinstall_and_removal(
         assert lock["dependencies"][0]["resolved_commit"] == revision
         assert not (isolated.home / ".claude/settings.json").exists()
         assert not (isolated.home / ".claude/hooks").exists()
+
+    if not failure:
+        audit = ("audit", "--ci", "--no-policy", "--format", "json")
+        run(*audit)
+        ledger = isolated.config_root / "apm_modules/.claude-plugin/apm-registration.json"
+        baseline = ledger.read_bytes()
+        calls_before = state_file.read_bytes()
+        asset = live_source / "__pycache__/resource.bin"
+        original = asset.read_bytes()
+        asset.write_bytes(b"tampered publisher resource")
+        output = run(*audit, expected=1)
+        assert "fingerprint changed" in output
+        assert asset.read_bytes() == b"tampered publisher resource"
+        asset.write_bytes(original)
+        if os.name != "nt":
+            script = live_source / "hooks/resource.cjs"
+            mode = script.stat().st_mode
+            script.chmod(mode ^ stat.S_IXUSR)
+            assert "fingerprint changed" in run(*audit, expected=1)
+            assert script.stat().st_mode & stat.S_IXUSR != mode & stat.S_IXUSR
+            script.chmod(mode)
+        run(*audit)
+        assert ledger.read_bytes() == baseline
+        assert state_file.read_bytes() == calls_before
 
     fails_removal = failure == "uninstall"
     env["APM_NATIVE_FAIL"] = "uninstall" if fails_removal else ""

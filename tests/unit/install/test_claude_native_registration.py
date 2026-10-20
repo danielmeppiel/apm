@@ -2,13 +2,20 @@
 
 import json
 import os
+import shutil
+import stat
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
-from apm_cli.claude_plugins.admission import ClaudeNativePlugin, ClaudeNativePluginError
+from apm_cli.claude_plugins.admission import (
+    ClaudeNativePlugin,
+    ClaudeNativePluginError,
+    fingerprint_native_claude_source,
+)
 from apm_cli.claude_plugins.client import ClaudePluginCLI
 from apm_cli.claude_plugins.registrar import (
     CATALOG_RELATIVE,
@@ -68,7 +75,13 @@ def test_native_transport_failure_keeps_targets_without_echoing_native_stderr(mo
 
 @pytest.fixture
 def native(monkeypatch, tmp_path):
-    state = {"plugins": {}, "marketplaces": [], "calls": [], "fail": False}
+    state = {
+        "plugins": {},
+        "marketplaces": [],
+        "calls": [],
+        "fail": False,
+        "modules_root": tmp_path,
+    }
     monkeypatch.setattr(ClaudePluginCLI, "__init__", lambda self: None)
 
     def run(self, *args):
@@ -95,7 +108,7 @@ def native(monkeypatch, tmp_path):
             state["plugins"].pop(plugin_id)
             return ""
         assert args[1] in {"install", "update"}
-        catalog = json.loads((tmp_path / CATALOG_RELATIVE).read_text())
+        catalog = json.loads((state["modules_root"] / CATALOG_RELATIVE).read_text())
         entry = next(item for item in catalog["plugins"] if item["name"] == plugin_id.split("@")[0])
         assert entry["defaultEnabled"] is False
         previous = state["plugins"].get(plugin_id)
@@ -103,7 +116,7 @@ def native(monkeypatch, tmp_path):
             "id": plugin_id,
             "scope": "user",
             "enabled": previous["enabled"] if previous else False,
-            "readFromFolder": str((tmp_path / entry["source"]).resolve()),
+            "readFromFolder": str((state["modules_root"] / entry["source"]).resolve()),
             "installPath": "/not/the/effective/root",
         }
         if state["fail"]:
@@ -119,7 +132,11 @@ def _sync(root, names, **kwargs):
     for name in names:
         source = root / name
         source.mkdir(exist_ok=True)
-        plans.append(ClaudeNativePlugin("owner/" + name, name, source))
+        plans.append(
+            ClaudeNativePlugin(
+                "owner/" + name, name, source, fingerprint_native_claude_source(source), "fixture"
+            )
+        )
     synchronize_claude_plugins(
         modules_dir=root,
         scope=InstallScope.USER,
@@ -189,7 +206,15 @@ def test_name_collision_refused(tmp_path, native):
         synchronize_claude_plugins(
             modules_dir=tmp_path,
             scope=InstallScope.USER,
-            plugins=[ClaudeNativePlugin("another/identity", "alpha", tmp_path / "alpha")],
+            plugins=[
+                ClaudeNativePlugin(
+                    "another/identity",
+                    "alpha",
+                    tmp_path / "alpha",
+                    fingerprint_native_claude_source(tmp_path / "alpha"),
+                    "fixture",
+                )
+            ],
         )
 
 
@@ -232,7 +257,12 @@ def test_missing_lock_cannot_remove_owned_native_plugins(tmp_path, native):
 def test_prepared_plugin_missing_from_lock_cannot_report_success(tmp_path, native):
     from apm_cli.deps.lockfile import LockFile
 
-    plan = ClaudeNativePlugin("owner/alpha", "alpha", tmp_path / "alpha")
+    plan = ClaudeNativePlugin(
+        "owner/alpha",
+        "alpha",
+        tmp_path / "alpha",
+        fingerprint_native_claude_source(tmp_path / "alpha"),
+    )
     with pytest.raises(ClaudeNativePluginError, match="authorized locked set"):
         resync_claude_plugins(
             modules_dir=tmp_path,
@@ -241,3 +271,351 @@ def test_prepared_plugin_missing_from_lock_cannot_report_success(tmp_path, nativ
             prepared={plan.dependency_key: plan},
         )
     assert native["calls"] == []
+
+
+def _locked_native_fixture(project: Path, native, *, local: bool = False):
+    """Prepare a real normalized remote plugin without executing its hooks."""
+    from apm_cli.claude_plugins.admission import plan_native_claude_plugin
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
+    from apm_cli.install.cache_pin import write_marker
+    from apm_cli.integration.targets import KNOWN_TARGETS
+    from apm_cli.utils.content_hash import compute_package_hash
+    from tests.unit.install.test_claude_native_hooks import _fixture
+
+    modules = project / "apm_modules"
+    native["modules_root"] = modules
+    locked = LockedDependency(
+        repo_url="../publisher" if local else "owner/hooks",
+        source="local" if local else "github",
+        local_path="../publisher" if local else None,
+        resolved_commit=None if local else "a" * 40,
+        package_type="marketplace_plugin",
+        target_subset=["claude"],
+    )
+    info = _fixture(locked.to_dependency_ref().get_install_path(modules))
+    (project / "apm.yml").write_text("name: native-audit\nversion: 1.0.0\ntarget: claude\n")
+    asset = info.install_path / "__pycache__/publisher-resource.bin"
+    asset.parent.mkdir()
+    asset.write_bytes(b"owned resource before admission\n")
+    (info.install_path / "hooks/probe.cjs").chmod(0o644)
+    locked.content_hash = compute_package_hash(info.install_path)
+    if local:
+        shutil.copytree(info.install_path, project.parent / "publisher")
+    else:
+        write_marker(info.install_path, locked.resolved_commit)
+    plan = plan_native_claude_plugin(
+        info,
+        package_name=locked.get_unique_key(),
+        targets=[KNOWN_TARGETS["claude"]],
+        scope=InstallScope.USER,
+        skill_subset=None,
+        hooks_approved=True,
+        skip_bin=True,
+    )
+    assert plan is not None
+    lock = LockFile(dependencies={locked.get_unique_key(): locked})
+    lock.write(project / "apm.lock.yaml")
+    return modules, lock, plan
+
+
+def _change_native_resource(root: Path, change: str) -> None:
+    """Change a publisher-controlled input excluded by the legacy lock digest."""
+    if change == "cache-resource":
+        (root / "__pycache__/publisher-resource.bin").write_bytes(b"changed owned resource\n")
+    else:
+        script = root / "hooks/probe.cjs"
+        script.chmod(script.stat().st_mode | stat.S_IXUSR)
+
+
+def _readmit_native(locked, root: Path) -> ClaudeNativePlugin:
+    from apm_cli.claude_plugins.admission import plan_native_claude_plugin
+    from apm_cli.integration.targets import KNOWN_TARGETS
+    from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType
+
+    plan = plan_native_claude_plugin(
+        PackageInfo(
+            package=APMPackage.from_apm_yml(root / "apm.yml"),
+            install_path=root,
+            package_type=PackageType(locked.package_type),
+            dependency_ref=locked.to_dependency_ref(),
+        ),
+        package_name=locked.get_unique_key(),
+        targets=[KNOWN_TARGETS["claude"]],
+        scope=InstallScope.USER,
+        skill_subset=None,
+        hooks_approved=True,
+        skip_bin=True,
+    )
+    assert plan is not None
+    return plan
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "cache-resource",
+        pytest.param(
+            "executable",
+            marks=pytest.mark.skipif(os.name == "nt", reason="POSIX owner-execute-bit witness"),
+        ),
+    ],
+)
+@pytest.mark.parametrize("boundary", ["prepared", "survivor", "readback", "audit", "readmit"])
+def test_complete_native_bundle_drift_is_not_legacy_hash_equivalence(
+    tmp_path: Path, native, monkeypatch, change: str, boundary: str
+) -> None:
+    """Exercise admission, ownership, metadata readback and replay with real files."""
+    from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+    from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
+    from apm_cli.utils.content_hash import compute_package_hash
+
+    project = tmp_path / "project"
+    modules, lock, plan = _locked_native_fixture(project, native)
+    kwargs = {"modules_dir": modules, "scope": InstallScope.USER, "lockfile": lock}
+    prepared = {plan.dependency_key: plan}
+    legacy_hash = compute_package_hash(plan.source_root)
+    replay = ReplayConfig(
+        project_root=project,
+        lockfile_path=project / "apm.lock.yaml",
+        targets=frozenset({"claude"}),
+        user_scope=True,
+        scratch_root=tmp_path / "scratch",
+    )
+    if boundary in {"survivor", "audit", "readmit"}:
+        resync_claude_plugins(**kwargs, prepared=prepared)
+    if boundary == "audit":
+        run_replay(replay, CheckLogger(verbose=False))
+    native["calls"].clear()
+    if boundary == "readback":
+        original = ClaudePluginCLI.run
+
+        def mutate_after_native_write(self, *args):
+            result = original(self, *args)
+            if args[:2] == ("plugin", "install"):
+                _change_native_resource(plan.source_root, change)
+            return result
+
+        monkeypatch.setattr(ClaudePluginCLI, "run", mutate_after_native_write)
+    else:
+        _change_native_resource(plan.source_root, change)
+        assert compute_package_hash(plan.source_root) == legacy_hash
+        if boundary == "readmit":
+            locked = lock.dependencies[plan.dependency_key]
+            fresh = _readmit_native(locked, plan.source_root)
+            prepared = {plan.dependency_key: fresh}
+    with pytest.raises(
+        (ClaudeNativePluginError, AgentPluginDeploymentBoundaryError),
+        match=r"fingerprint|integrity|changed",
+    ):
+        if boundary == "audit":
+            run_replay(replay, CheckLogger(verbose=False))
+        else:
+            resync_claude_plugins(**kwargs, prepared=None if boundary == "survivor" else prepared)
+    if boundary != "readback":
+        assert native["calls"] == []
+    assert compute_package_hash(plan.source_root) == legacy_hash
+
+
+@pytest.mark.parametrize("local", [False, True])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "unchanged",
+        "cache-resource",
+        pytest.param("executable", marks=pytest.mark.skipif(os.name == "nt", reason="POSIX mode")),
+    ],
+)
+def test_native_fingerprint_allows_readmitted_updates_and_preserves_activation(
+    tmp_path: Path, native, local: bool, change: str
+) -> None:
+    from apm_cli.install.cache_pin import write_marker
+
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native, local=local)
+    kwargs = {"modules_dir": modules, "scope": InstallScope.USER, "lockfile": lock}
+    resync_claude_plugins(**kwargs, prepared={plan.dependency_key: plan})
+    plugin_id = f"{plan.name}@{MARKETPLACE_NAME}"
+    native["plugins"][plugin_id]["enabled"] = True
+    locked = lock.dependencies[plan.dependency_key]
+    if change != "unchanged":
+        _change_native_resource(plan.source_root, change)
+        if local:
+            _change_native_resource(tmp_path / "publisher", change)
+        else:
+            locked.resolved_commit = "b" * 40
+            write_marker(plan.source_root, locked.resolved_commit)
+    fresh = _readmit_native(locked, plan.source_root)
+    resync_claude_plugins(**kwargs, prepared={plan.dependency_key: fresh})
+    entry = json.loads((modules / LEDGER_RELATIVE).read_text())["plugins"][plugin_id]
+    assert entry["bundle_hash"] == fresh.bundle_hash
+    assert (entry["bundle_hash"] == plan.bundle_hash) == (change == "unchanged")
+    assert entry["source_pin"] == f"{locked.source}:{locked.local_path or locked.resolved_commit}"
+    assert native["plugins"][plugin_id]["enabled"] is True
+
+
+def test_legacy_native_ownership_requires_explicit_removal_before_attestation(
+    tmp_path: Path, native
+) -> None:
+    from apm_cli.deps.lockfile import LockFile
+
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native)
+    kwargs = {"modules_dir": modules, "scope": InstallScope.USER, "lockfile": lock}
+    resync_claude_plugins(**kwargs, prepared={plan.dependency_key: plan})
+    ledger = modules / LEDGER_RELATIVE
+    document = json.loads(ledger.read_text())
+    document["version"] = 1
+    for entry in document["plugins"].values():
+        del entry["bundle_hash"], entry["source_pin"]
+    ledger.write_text(json.dumps(document))
+    before = ledger.read_bytes()
+    native["calls"].clear()
+    with pytest.raises(ClaudeNativePluginError, match="no complete native fingerprint"):
+        resync_claude_plugins(**kwargs, prepared={plan.dependency_key: plan})
+    assert ledger.read_bytes() == before
+    assert native["calls"] == []
+    shutil.rmtree(plan.source_root)
+    resync_claude_plugins(modules_dir=modules, scope=InstallScope.USER, lockfile=LockFile())
+    assert json.loads(ledger.read_text())["plugins"] == {}
+    assert native["plugins"] == {}
+
+
+@pytest.mark.parametrize("damage", ["fingerprint", "pin", "source", "missing-source"])
+def test_native_ownership_damage_is_not_replayed_or_silently_retired(
+    tmp_path: Path, native, damage: str
+) -> None:
+    from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+    from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
+
+    project = tmp_path / "project"
+    modules, lock, plan = _locked_native_fixture(project, native)
+    resync_claude_plugins(
+        modules_dir=modules,
+        scope=InstallScope.USER,
+        lockfile=lock,
+        prepared={plan.dependency_key: plan},
+    )
+    ledger = modules / LEDGER_RELATIVE
+    document = json.loads(ledger.read_text())
+    entry = next(iter(document["plugins"].values()))
+    if damage == "missing-source":
+        shutil.rmtree(plan.source_root)
+    else:
+        entry[{"fingerprint": "bundle_hash", "pin": "source_pin", "source": "source"}[damage]] = (
+            "wrong"
+        )
+        ledger.write_text(json.dumps(document))
+    before = ledger.read_bytes()
+    native["calls"].clear()
+    with pytest.raises(ClaudeNativePluginError, match=r"ledger|missing|changed"):
+        resync_claude_plugins(modules_dir=modules, scope=InstallScope.USER, lockfile=lock)
+    assert ledger.read_bytes() == before
+    assert native["calls"] == []
+    if damage != "missing-source":
+        with pytest.raises(AgentPluginDeploymentBoundaryError, match=r"ledger|changed"):
+            run_replay(
+                ReplayConfig(
+                    project_root=project,
+                    lockfile_path=project / "apm.lock.yaml",
+                    targets=frozenset({"claude"}),
+                    user_scope=True,
+                    scratch_root=tmp_path / "scratch",
+                ),
+                CheckLogger(verbose=False),
+            )
+        assert ledger.read_bytes() == before
+
+
+@pytest.mark.parametrize("change_at", ["source", "cache"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "cache-resource",
+        pytest.param("executable", marks=pytest.mark.skipif(os.name == "nt", reason="POSIX mode")),
+    ],
+)
+def test_local_native_audit_checks_source_and_live_cache_without_repairing_either(
+    tmp_path: Path, native, change_at: str, change: str
+) -> None:
+    from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+    from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
+
+    project = tmp_path / "project"
+    modules, lock, plan = _locked_native_fixture(project, native, local=True)
+    resync_claude_plugins(
+        modules_dir=modules,
+        scope=InstallScope.USER,
+        lockfile=lock,
+        prepared={plan.dependency_key: plan},
+    )
+    config = ReplayConfig(
+        project_root=project,
+        lockfile_path=project / "apm.lock.yaml",
+        targets=frozenset({"claude"}),
+        user_scope=True,
+        scratch_root=tmp_path / "scratch",
+    )
+    run_replay(config, CheckLogger(verbose=False))
+    source = tmp_path / "publisher"
+    _change_native_resource(source if change_at == "source" else plan.source_root, change)
+    before = {root: fingerprint_native_claude_source(root) for root in (source, plan.source_root)}
+    ledger_before = (modules / LEDGER_RELATIVE).read_bytes()
+    native["calls"].clear()
+    with pytest.raises(AgentPluginDeploymentBoundaryError, match="fingerprint changed"):
+        run_replay(config, CheckLogger(verbose=False))
+    assert {root: fingerprint_native_claude_source(root) for root in before} == before
+    assert (modules / LEDGER_RELATIVE).read_bytes() == ledger_before
+    assert native["calls"] == []
+
+
+def test_cold_native_fingerprint_replay_keeps_the_saved_pin_and_never_registers(
+    tmp_path: Path, native
+) -> None:
+    from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+    from apm_cli.claude_plugins.registrar import verify_claude_native_cache
+
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native)
+    resync_claude_plugins(
+        modules_dir=modules,
+        scope=InstallScope.USER,
+        lockfile=lock,
+        prepared={plan.dependency_key: plan},
+    )
+    restored = tmp_path / "restored"
+    shutil.copytree(plan.source_root, restored)
+    shutil.rmtree(plan.source_root)
+    native["calls"].clear()
+    kwargs = {
+        "modules_dir": modules,
+        "locked": lock.dependencies[plan.dependency_key],
+        "source_root": restored,
+    }
+    verify_claude_native_cache(**kwargs)
+    _change_native_resource(restored, "cache-resource")
+    with pytest.raises(AgentPluginDeploymentBoundaryError, match="fingerprint changed"):
+        verify_claude_native_cache(**kwargs)
+    assert not plan.source_root.exists()
+    assert native["calls"] == []
+
+
+def test_post_readback_mutation_retains_baseline_until_original_bytes_are_restored(
+    tmp_path: Path, native
+) -> None:
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native)
+    kwargs = {"modules_dir": modules, "scope": InstallScope.USER, "lockfile": lock}
+    native["fail"] = True
+    with pytest.raises(ClaudeNativePluginError, match="interrupted"):
+        resync_claude_plugins(**kwargs, prepared={plan.dependency_key: plan})
+    ledger = modules / LEDGER_RELATIVE
+    before = ledger.read_bytes()
+    asset = plan.source_root / "__pycache__/publisher-resource.bin"
+    original = asset.read_bytes()
+    _change_native_resource(plan.source_root, "cache-resource")
+    native["fail"] = False
+    native["calls"].clear()
+    with pytest.raises(ClaudeNativePluginError, match="fingerprint changed"):
+        resync_claude_plugins(**kwargs)
+    assert ledger.read_bytes() == before
+    assert native["calls"] == []
+    asset.write_bytes(original)
+    resync_claude_plugins(**kwargs)
+    assert ledger.read_bytes() == before
+    assert native["plugins"][f"{plan.name}@{MARKETPLACE_NAME}"]["enabled"] is False

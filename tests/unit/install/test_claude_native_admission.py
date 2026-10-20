@@ -102,12 +102,14 @@ def test_unqualified_capabilities_fail_closed(tmp_path: Path, field: str) -> Non
 
 
 def test_source_symlink_is_not_native_loadable(tmp_path: Path) -> None:
+    from apm_cli.claude_plugins.admission import ClaudeNativePluginError
     from apm_cli.install.deployable_source_plan import DeployableSourcePlan
     from apm_cli.integration.targets import KNOWN_TARGETS
 
     info = _plugin(tmp_path)
     (info.install_path / "linked").symlink_to(tmp_path, target_is_directory=True)
-    plan = _plan(info)
+    with pytest.raises(ClaudeNativePluginError, match="symlink"):
+        _plan(info)
     with pytest.raises(ValueError, match="symlink"):
         DeployableSourcePlan.create(
             info,
@@ -116,7 +118,7 @@ def test_source_symlink_is_not_native_loadable(tmp_path: Path) -> None:
             hooks_approved=True,
             canvas_approved=False,
             skip_bin=True,
-            native_plugin_root=plan.source_root,
+            native_plugin_root=info.install_path.resolve(),
         )
 
 

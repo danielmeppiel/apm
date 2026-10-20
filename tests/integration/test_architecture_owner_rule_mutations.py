@@ -1572,6 +1572,49 @@ def test_claude_native_transition_guard_requires_read_only_preservation(old: str
     assert any(violation.rule_id == rule_id for violation in report.violations)
 
 
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/claude_plugins/admission.py",
+            "return compute_native_bundle_hash(root)",
+            "return compute_package_hash(root)",
+        ),
+        (
+            "src/apm_cli/claude_plugins/registrar.py",
+            "fingerprint_native_claude_source(root) != expected",
+            "False",
+        ),
+        (
+            "src/apm_cli/install/services.py",
+            'result["native_claude_plugin"] = True',
+            'result["native_claude_plugin"] = False',
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            'scratch_root / "normalized-local-sources"',
+            "apm_modules_dir",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "verify_claude_native_cache(",
+            "ignore_native_fingerprint(",
+        ),
+    ],
+)
+def test_claude_native_fingerprint_guard_cannot_fall_back_to_legacy_hash_or_mutate_cache(
+    path: str, old: str, new: str
+) -> None:
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    rule_id = "marketplace-integrations-claude-ownership"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 def test_orphan_selection_guard_rejects_warning_bypass() -> None:
     """The shared-selector rule protects warnings as well as destructive pruning."""
     path = "src/apm_cli/commands/_helpers.py"

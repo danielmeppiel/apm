@@ -118,8 +118,8 @@
     },
     {
       "id": "claude-native-plugin-registration",
-      "decision": "Intact legacy Claude plugin admission and native user marketplace lifecycle without automatic activation",
-      "owner": "claude_plugins/admission.py (plan_native_claude_plugin); claude_plugins/registrar.py (synchronize_claude_plugins, resync_claude_plugins)",
+      "decision": "Intact legacy Claude plugin admission, complete native fingerprint ownership and read-only verification, and native user marketplace lifecycle without automatic activation",
+      "owner": "claude_plugins/admission.py (plan_native_claude_plugin); claude_plugins/registrar.py (synchronize_claude_plugins, resync_claude_plugins, verify_claude_native_cache)",
       "selectors": [
         "src/apm_cli/claude_plugins/admission.py",
         "src/apm_cli/claude_plugins/client.py",
