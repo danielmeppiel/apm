@@ -268,6 +268,68 @@ def test_replacement_failure_preserves_previous_owned_bytes_without_fallback(
 
 
 @pytest.mark.parametrize("cold", [False, True], ids=["existing", "cold"])
+def test_replacement_frozen_rejects_original_commit_as_selected_fork_pin(
+    tmp_path: Path, apm_binary_path: Path, cold: bool
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.replace({"git": _FORK, "ref": fixture.fork_sha})
+    fixture.install()
+    fixture.assert_bytes("FORK")
+    target = fixture.consumer.root
+    if cold:
+        target = target.parent / "cold-consumer"
+        target.mkdir()
+        shutil.copy2(fixture.consumer.manifest_path, target / "apm.yml")
+        shutil.copy2(fixture.consumer.root / "apm.lock.yaml", target / "apm.lock.yaml")
+    lock_path = target / "apm.lock.yaml"
+    locked = load_yaml(lock_path)
+    assert locked["dependencies"][0]["resolved_commit"] == fixture.fork_sha
+    locked["dependencies"][0]["resolved_commit"] = fixture.upstream_sha
+    dump_yaml(locked, lock_path)
+    before = _snapshot(target)
+    result = fixture.run(*_INSTALL, "--frozen", root=target)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "incompatible immutable" in " ".join((result.stdout + result.stderr).lower().split())
+    assert _snapshot(target) == before
+
+
+def test_replacement_selected_fork_children_keep_immutable_obligations(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.install()
+    before = _snapshot(fixture.consumer.root)
+    leaf = fixture.work_factory.create("leaf")
+    repository = fixture.repositories.create("leaf", source_tree=leaf.root)
+    first = fixture.repositories.commit(repository, message="First leaf")
+    leaf_manifest = repository.worktree / "apm.yml"
+    leaf_data = load_yaml(leaf_manifest)
+    leaf_data["version"] = "1.0.1"
+    dump_yaml(leaf_data, leaf_manifest)
+    second = fixture.repositories.commit(repository, message="Conflicting leaf")
+    remote = "https://github.com/apm-replacement-fixture/leaf"
+    fork_manifest = fixture.fork.worktree / "apm.yml"
+    fork_data = load_yaml(fork_manifest)
+    fork_data["dependencies"] = {"apm": [{"git": remote, "ref": second.sha}]}
+    dump_yaml(fork_data, fork_manifest)
+    fork_pin = fixture.repositories.commit(fixture.fork, message="Fork requires second leaf")
+    fixture.environment.update(
+        fixture.repositories.url_rewrite_subprocess_env_many(
+            ((fixture.upstream, _UPSTREAM), (fixture.fork, _FORK), (repository, remote))
+        )
+    )
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["dependencies"]["apm"].append({"git": remote, "ref": first.sha})
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    fixture.replace({"git": _FORK, "ref": fork_pin.sha})
+    result = fixture.run()
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "incompatible immutable" in " ".join((result.stdout + result.stderr).lower().split())
+    assert _snapshot(fixture.consumer.root) == before
+    fixture.assert_bytes("UPSTREAM")
+
+
+@pytest.mark.parametrize("cold", [False, True], ids=["existing", "cold"])
 @pytest.mark.parametrize(
     "failure", ["modified", "added", "removed", "missing-hash", "missing-source"]
 )
