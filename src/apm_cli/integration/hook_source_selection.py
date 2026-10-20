@@ -143,6 +143,8 @@ def select_hook_sources(
     merge_target_names: Iterable[str],
 ) -> HookSourceSelection:
     """Select descriptors and bundle assets for every supported target."""
+    package_path = package_path.resolve()
+    hook_files = [path.absolute() for path in hook_files]
     all_descriptors = set(hook_files)
     descriptors_by_target: dict[str, frozenset[Path]] = {}
     bundles_by_target: dict[str, frozenset[Path]] = {}

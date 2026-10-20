@@ -73,6 +73,19 @@ def test_root_and_deep_metadata_are_selected_before_materialization(tmp_path: Pa
     assert root / "nested/package.json" in result.target_paths
 
 
+def test_relative_package_path_preserves_root_and_nested_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    package = _package(Path("source"))
+    project = tmp_path / "project"
+    project.mkdir()
+    HookIntegrator().integrate_hooks_for_target(KNOWN_TARGETS["claude"], package, project)
+    root = project / ".claude/hooks/source/hooks"
+    assert json.loads((root / "package.json").read_text()) == {"type": "module"}
+    assert json.loads((root / "nested/package.json").read_text()) == {"type": "commonjs"}
+
+
 def test_metadata_excluded_by_source_plan_cannot_influence_generation(tmp_path: Path) -> None:
     package = _package(tmp_path / "source")
     selected = _plan(package)
