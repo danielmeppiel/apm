@@ -35,6 +35,7 @@ on `PATH`. APM preserves the full `.codex-plugin/plugin.json` bundle and
 its manifest-referenced MCP resources, without loose skill/MCP registration
 or translation for other targets. Executable approval is required; fresh
 registrations stay disabled and existing native settings are preserved.
+Native qualification was measured on macOS arm64 only.
 
 The qualified shape needs a native-discoverable skill with an unambiguous
 installed path, plus either inline MCP servers or a package-relative JSON

@@ -8,6 +8,7 @@ from typing import Any
 
 import click
 
+from ...codex_plugins.client import CodexNativeError
 from ...constants import APM_YML_FILENAME
 from ...core.command_logger import CommandLogger
 from ...install.locking import serialized_lifecycle
@@ -187,11 +188,18 @@ def _abort_if_retained_target_cleanup_paths(retained_cleanup_paths: set[Any], lo
 
 def _report_package_removal_failure(
     logger: CommandLogger,
-    error: OSError | PathTraversalError | LocalSurvivorRefreshError,
+    error: OSError | PathTraversalError | LocalSurvivorRefreshError | CodexNativeError,
     *,
     user_scope: bool,
 ) -> None:
     """Explain recoverable metadata without promising filesystem rollback."""
+    if isinstance(error, CodexNativeError):
+        logger.error(
+            f"Codex native removal incomplete: {error} "
+            "APM package files, declarations, and lockfile ownership were retained. "
+            "Resolve the native error and retry the same uninstall command."
+        )
+        return
     recovery = "apm install --global" if user_scope else "apm install"
     failure = (
         "shared-slot refresh failed"
@@ -456,7 +464,7 @@ def uninstall(ctx, packages, dry_run, verbose, global_):
             orphan_removed, actual_orphans = _cleanup_transitive_orphans(
                 lockfile, packages_to_remove, modules_dir, apm_yml_path, logger
             )
-        except (OSError, PathTraversalError, LocalSurvivorRefreshError) as exc:
+        except (OSError, PathTraversalError, LocalSurvivorRefreshError, CodexNativeError) as exc:
             _report_package_removal_failure(logger, exc, user_scope=scope is InstallScope.USER)
             sys.exit(1)
         removed_from_modules += orphan_removed

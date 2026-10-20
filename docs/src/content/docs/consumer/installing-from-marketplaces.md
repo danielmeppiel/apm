@@ -45,6 +45,9 @@ apm install -g --frozen --target codex
 apm uninstall -g <package>
 ```
 
+Native qualification was measured on **macOS arm64 only**. Other platforms
+are not qualified by that evidence; APM checks the version and scope, not the OS.
+
 Approve the package's executable types in `allowExecutables` first. APM scans
 and transfers the complete bundle, including sibling assets and referenced MCP
 resources, then uses Codex's public app-server configuration and marketplace
@@ -69,6 +72,11 @@ a healthy reinstall does not create a new generation. Keep the ownership
 journal: APM refuses to adopt a matching native registration without it.
 Running `apm audit --ci` from the APM user directory checks the cached source
 bundle without starting Codex. Native-copy verification happens during install.
+
+Native registration runs after APM persistence. A late failure can leave the
+acquired package, lockfile, or some native changes in place: pending ownership
+supports retry, not atomic rollback across APM and Codex. Keep the journal,
+resolve the reported native error, then rerun `apm install -g --target codex`.
 
 Removal fails and retains APM declarations when native ownership has changed,
 another plugin shares the owned marketplace, or the entry contains activation

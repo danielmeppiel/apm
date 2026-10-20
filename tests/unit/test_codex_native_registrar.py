@@ -10,10 +10,13 @@ import pytest
 from apm_cli.codex_plugins.admission import CodexNativeDeployment, CodexNativePlugin
 from apm_cli.codex_plugins.client import CodexNativeClient, CodexNativeError, NativeUserConfig
 from apm_cli.codex_plugins.registrar import (
+    _observed_root,
     _preflight,
+    _Record,
     marketplace_name,
     synchronize_codex_plugins,
 )
+from apm_cli.codex_plugins.snapshot import NativeSnapshot
 from apm_cli.core.scope import InstallScope
 from apm_cli.install.deployable_source_plan import DeployableSourcePlan
 from apm_cli.utils.content_hash import compute_package_hash
@@ -93,6 +96,65 @@ def test_foreign_plugin_in_owned_namespace_blocks_removal(tmp_path):
     )
     with pytest.raises(CodexNativeError, match="ownership"):
         _preflight(config, "apm-owned", "example", None, removing=True)
+
+
+@pytest.mark.parametrize(
+    "fault, diagnostic",
+    [
+        ("source-pin", "owned source pin"),
+        ("mcp-names", "every declared MCP server"),
+        ("missing-skills", "installed skill paths"),
+        ("symlink", "symlink"),
+        ("ambiguous-roots", "unambiguous"),
+        ("source-root", "source content"),
+        ("content-hash", "incomplete or changed"),
+    ],
+)
+def test_observed_root_refuses_invalid_native_evidence(
+    tmp_path: Path, fault: str, diagnostic: str
+) -> None:
+    """Native readback cannot certify a foreign or incomplete installed bundle."""
+    deployment = _deployment(tmp_path)
+    installed = tmp_path / "installed"
+    shutil.copytree(deployment.plugin.source_root, installed)
+    snapshot = NativeSnapshot(tmp_path / "transport", "a" * 40, "b" * 40)
+    record = _Record("example", deployment.source_hash, snapshot, tmp_path / "config.toml")
+    detail = {
+        "summary": {
+            "id": "example@apm-owned",
+            "installed": True,
+            "source": {
+                "type": "git",
+                "url": snapshot.path.as_uri(),
+                "sha": snapshot.content_commit,
+            },
+        },
+        "mcpServers": [],
+        "skills": [{"path": str(installed / "skills/example/SKILL.md")}],
+    }
+    assert _observed_root(detail, deployment, record, "apm-owned") == installed
+    if fault == "source-pin":
+        detail["summary"]["source"]["sha"] = "c" * 40
+    elif fault == "mcp-names":
+        detail["mcpServers"] = ["undeclared"]
+    elif fault == "missing-skills":
+        del detail["skills"]
+    elif fault == "symlink":
+        link = tmp_path / "linked-install"
+        link.symlink_to(installed, target_is_directory=True)
+        detail["skills"] = [{"path": str(link / "skills/example/SKILL.md")}]
+    elif fault == "ambiguous-roots":
+        other = tmp_path / "other-install"
+        shutil.copytree(installed, other)
+        detail["skills"].append({"path": str(other / "skills/example/SKILL.md")})
+    elif fault == "source-root":
+        detail["skills"] = [
+            {"path": str(deployment.plugin.source_root / "skills/example/SKILL.md")}
+        ]
+    else:
+        (installed / "skills/example/SKILL.md").write_text("changed native content")
+    with pytest.raises(CodexNativeError, match=diagnostic):
+        _observed_root(detail, deployment, record, "apm-owned")
 
 
 def test_pending_refresh_retries_without_replacing_native_disable(tmp_path, monkeypatch):

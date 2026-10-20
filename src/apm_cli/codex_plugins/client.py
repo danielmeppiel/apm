@@ -172,7 +172,7 @@ class CodexNativeClient:
         executable = shutil.which("codex")
         if executable is None:
             raise CodexNativeError(
-                "Codex native registration requires Codex CLI 0.163.0 on PATH. "
+                f"Codex native registration requires Codex CLI {QUALIFIED_CODEX_VERSION} on PATH. "
                 "Install that qualified client and retry."
             )
         try:
@@ -186,11 +186,11 @@ class CodexNativeClient:
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise CodexNativeError(
-                "Cannot start Codex CLI 0.163.0. Check 'codex --version' and retry."
+                f"Cannot start Codex CLI {QUALIFIED_CODEX_VERSION}. Check 'codex --version' and retry."
             ) from error
         if result.returncode or result.stdout.strip() != f"codex-cli {QUALIFIED_CODEX_VERSION}":
             raise CodexNativeError(
-                "Codex native registration is qualified only for Codex CLI 0.163.0. "
+                f"Codex native registration is qualified only for Codex CLI {QUALIFIED_CODEX_VERSION}. "
                 "Check 'codex --version'; other versions are not silently admitted."
             )
         return cls(Path(executable), cwd)

@@ -45,7 +45,7 @@ def ledger_path_for(modules_dir: Path) -> Path:
 def _safe_owned_path(path: Path, root: Path) -> Path:
     ensure_path_within(path, root)
     if has_symlink_component(root.parent, path):
-        raise CodexNativeError("Codex transport ownership contains a symlink; inspect APM state.")
+        raise CodexNativeError(f"Codex transport ownership contains a symlink; inspect {path}.")
     return path
 
 
@@ -68,7 +68,7 @@ def _read_snapshot(data: Any, root: Path) -> NativeSnapshot:
         )
     ):
         raise CodexNativeError(
-            "Invalid Codex transport ownership; inspect APM state before retrying."
+            f"Invalid Codex transport ownership; inspect {root / 'ownership.json'} before retrying."
         )
     path = _safe_owned_path(Path(data["path"]), root / "snapshots")
     return NativeSnapshot(path, data["content_commit"], data["catalog_commit"])
@@ -113,7 +113,7 @@ class _Record:
             )
         ):
             raise CodexNativeError(
-                "Invalid Codex ownership record; inspect APM state before retrying."
+                f"Invalid Codex ownership record; inspect {root / 'ownership.json'} before retrying."
             )
         return cls(
             data["name"],
@@ -137,9 +137,7 @@ def _read_records(path: Path) -> dict[str, _Record]:
         or data.get("version") != 1
         or not isinstance(data.get("plugins"), dict)
     ):
-        raise CodexNativeError(
-            "Invalid Codex ownership journal; inspect APM state before retrying."
-        )
+        raise CodexNativeError(f"Invalid Codex ownership journal; inspect {path} before retrying.")
     return {key: _Record.read(value, path.parent) for key, value in data["plugins"].items()}
 
 

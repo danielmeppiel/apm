@@ -47,6 +47,7 @@ from functools import wraps
 from typing import TYPE_CHECKING
 
 from ..agent_plugins.errors import AgentPluginError
+from ..codex_plugins.client import CodexNativeError
 from ..copilot_plugins.settings import CopilotSettingsCollisionError
 from ..models.dependency.materialization import MaterializationPathCollisionError
 from ..models.results import InstallDisposition, InstallResult
@@ -955,7 +956,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
         _perf_stats.render_summary(logger, project_root=str(ctx.project_root))
         return _run_phase("finalize", _finalize_phase, ctx)
 
-    except AgentPluginError:
+    except (AgentPluginError, CodexNativeError):
         # Preserve schema-routing and native-boundary diagnostics verbatim.
         raise
     except AuthenticationError:
@@ -983,13 +984,8 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     except InstallFailureAlreadyRendered:
         raise
     except (PathTraversalError, MaterializationPathCollisionError, CopilotSettingsCollisionError):
-        # Path-safety, package-directory collision, and Copilot settings
-        # collision errors already include actionable guidance; re-raise them
-        # verbatim. A settings collision in particular means dependency
-        # resolution SUCCEEDED and the lockfile is written -- only the Copilot
-        # merge collided -- so wrapping it into "Failed to resolve APM
-        # dependencies: ..." would mis-attribute the failure and double-wrap
-        # once commands/install.py prefixes again.
+        # These actionable failures can occur after resolution and persistence.
+        # Preserve their diagnostics rather than misreporting a resolution error.
         raise
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")  # noqa: B904

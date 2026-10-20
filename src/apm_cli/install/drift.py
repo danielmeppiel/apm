@@ -373,11 +373,7 @@ def _build_package_info(
     lock_dep: LockedDependency,
     install_path: Path,
 ):
-    """Construct a real ``PackageInfo`` for the integrators.
-
-    Loads ``apm.yml`` when present so integrators that read
-    ``package_info.package.name`` see the right package identity.
-    """
+    """Construct ``PackageInfo`` with the selected manifest's package identity."""
     from apm_cli.agent_plugins.errors import (
         AgentPluginDeploymentBoundaryError,
         AgentPluginError,
@@ -408,8 +404,10 @@ def _build_package_info(
     except AgentPluginError as exc:
         raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
 
-    detected_type, selected_manifest = detect_package_type(install_path)
-    codex_native = is_codex_compatibility_manifest(install_path, selected_manifest)
+    codex_native = False
+    if native_detection is None:
+        detected_type, selected_manifest = detect_package_type(install_path)
+        codex_native = is_codex_compatibility_manifest(install_path, selected_manifest)
     if native_detection is not None or codex_native:
         validation = validate_apm_package(
             install_path,

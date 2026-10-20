@@ -109,3 +109,30 @@ def test_read_only_drift_projection_keeps_native_intent(tmp_path):
     assert info.package.codex_plugin is not None
     assert not (tmp_path / "apm.yml").exists()
     assert not (tmp_path / ".apm").exists()
+
+
+def test_read_only_schema_plugin_reuses_canonical_detection(tmp_path, monkeypatch):
+    from apm_cli.install.drift import _build_package_info
+    from apm_cli.models.apm_package import DependencyReference
+    from tests.unit.copilot_plugins._builders import write_agent_plugin
+
+    write_agent_plugin(tmp_path, name="schema-example")
+    locked = SimpleNamespace(
+        version="1.0.0",
+        repo_url="owner/example",
+        resolved_ref="main",
+        resolved_commit="abc",
+        package_type="agent_plugin",
+        to_dependency_ref=lambda: DependencyReference.parse("owner/example"),
+    )
+
+    def reuse_detection(*args, **kwargs):
+        assert kwargs.get("agent_plugin_detection") is not None, (
+            "canonical schema selection must not rerun legacy detection"
+        )
+        return detect_package_type(*args, **kwargs)
+
+    monkeypatch.setattr("apm_cli.models.validation.detect_package_type", reuse_detection)
+    info = _build_package_info(locked, tmp_path)
+    assert info.package_type is PackageType.AGENT_PLUGIN
+    assert info.package.codex_plugin is None
