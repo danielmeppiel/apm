@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from apm_cli.core.scope import is_user_scope
 from apm_cli.deps.plugin_parser import (
@@ -27,6 +27,7 @@ class ClaudeNativePlugin:
     dependency_key: str
     name: str
     source_root: Path
+    target_name: ClassVar[str] = "claude"
 
 
 _MANIFEST_FIELDS = frozenset(

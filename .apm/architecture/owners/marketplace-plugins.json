@@ -115,6 +115,17 @@
       "guards": ["marketplace-integrations-native-registration"]
     },
     {
+      "id": "claude-native-plugin-registration",
+      "decision": "Intact legacy Claude plugin admission and native user marketplace lifecycle without automatic activation",
+      "owner": "claude_plugins/admission.py (plan_native_claude_plugin); claude_plugins/registrar.py (synchronize_claude_plugins, resync_claude_plugins)",
+      "selectors": [
+        "src/apm_cli/claude_plugins/admission.py",
+        "src/apm_cli/claude_plugins/client.py",
+        "src/apm_cli/claude_plugins/registrar.py"
+      ],
+      "guards": ["marketplace-integrations-claude-ownership"]
+    },
+    {
       "id": "copilot-marketplace-ownership",
       "decision": "APM-owned Copilot marketplace catalog, settings entries, and ownership ledger",
       "owner": "copilot_plugins/registrar.py (synchronize_copilot_plugins, resync_native_plugins)",
