@@ -65,6 +65,12 @@ parent's remote host/repo/ref and fetches the sibling from the same origin.
 Absolute paths, paths that escape the repo root, and cross-repo local paths
 are rejected.
 
+Individual-file dependencies, including inherited `git: parent` references,
+can recover from confirmed GitHub API throttling through sparse Git. A separate
+Git authentication challenge may use an existing resolver-selected credential
+(such as `gh` login). The lockfile records the commit actually fetched, not a
+different revision observed by an earlier API request.
+
 **GitLab `path:` fetch transport:** GitLab `path:` files use Git first, so
 self-hosted instances with the API disabled still install. Restricted REST
 fallback requires an exhausted plan with an executed same-origin effective
