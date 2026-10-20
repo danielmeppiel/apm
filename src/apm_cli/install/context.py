@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from apm_cli.codex_plugins.admission import CodexNativeDeployment
     from apm_cli.core.target_detection import EffectiveTargetDecision
     from apm_cli.deps.tiered_ref_resolver import RefFreshnessPolicy
     from apm_cli.install.helpers.ref_reuse import RefResolverCacheKey
@@ -195,6 +196,7 @@ class InstallContext:
     # once per install so the deployment boundary and the registrar agree.
     copilot_registration: Any = None  # Optional[NativeRegistrationCapability]
     _copilot_registration_token: Any = field(default=None, repr=False, compare=False)
+    codex_native_plugins: dict[str, CodexNativeDeployment] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # policy_gate
