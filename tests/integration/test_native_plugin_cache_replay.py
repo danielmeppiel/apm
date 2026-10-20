@@ -6,7 +6,7 @@ import pytest
 
 from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.deps.lockfile import LockedDependency
-from apm_cli.install.drift import _verify_native_plugin_cache
+from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
 from apm_cli.install.phases.local_content import _copy_tree_dereferencing_validated
 from apm_cli.utils.content_hash import compute_package_hash
 from tests.unit.copilot_plugins._builders import write_agent_plugin
@@ -32,7 +32,7 @@ def test_local_native_replay_uses_install_symlink_materialization(tmp_path: Path
     assert not (candidate / "alias.txt").is_symlink()
     assert (candidate / "alias.txt").read_bytes() == resource.read_bytes()
     replay = lock.to_dependency_ref().get_install_path(scratch / "apm_modules")
-    _verify_native_plugin_cache(lock, source, replay, modules, scratch)
+    verify_native_plugin_cache(lock, source, replay, modules, scratch)
     assert compute_package_hash(replay) == compute_package_hash(candidate)
     assert compute_package_hash(source) != compute_package_hash(candidate)
 
@@ -55,7 +55,7 @@ def test_remote_native_replay_requires_matching_recorded_digest(
     write_agent_plugin(materialized, name="remote-witness", with_mcp=False)
     lock.content_hash = compute_package_hash(materialized)
     replay = scratch / "replay"
-    _verify_native_plugin_cache(lock, materialized, replay, modules, scratch)
+    verify_native_plugin_cache(lock, materialized, replay, modules, scratch)
     skill = materialized / "skills/remote-witness-skill/SKILL.md"
     if tamper == "modified":
         skill.write_bytes(skill.read_bytes() + b"\nChanged cached bytes.\n")
@@ -65,4 +65,4 @@ def test_remote_native_replay_requires_matching_recorded_digest(
         lock.content_hash = None
     expected = "has no content hash" if tamper == "missing-hash" else "cache differs"
     with pytest.raises(AgentPluginDeploymentBoundaryError, match=expected):
-        _verify_native_plugin_cache(lock, materialized, replay, modules, scratch)
+        verify_native_plugin_cache(lock, materialized, replay, modules, scratch)

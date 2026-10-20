@@ -10,6 +10,7 @@ pytestmark = pytest.mark.component
 
 ROOT = Path(__file__).resolve().parents[2]
 REPLAY = "src/apm_cli/install/drift.py"
+ADMISSION = "src/apm_cli/install/native_plugin_admission.py"
 RULE = "marketplace-integrations-package-projection"
 BOUNDARY = "marketplace-integrations-projection-boundary"
 
@@ -22,26 +23,31 @@ def test_native_replay_owner_rules_pass() -> None:
 
 
 @pytest.mark.parametrize(
-    ("before", "after"),
+    ("path", "before", "after"),
     [
-        ("native_detection = route_agent_plugin_package(install_path)", "native_detection = None"),
-        ("agent_plugin_detection=native_detection", "agent_plugin_detection=None"),
-        ("read_only=True", "read_only=False"),
-        ("with native_registration_scope(targets):", "with native_registration_scope([]):"),
-        ('if result.get("native_plugin"):', "if False:"),
         (
+            REPLAY,
+            "native_detection = route_agent_plugin_package(install_path)",
+            "native_detection = None",
+        ),
+        (REPLAY, "agent_plugin_detection=native_detection", "agent_plugin_detection=None"),
+        (REPLAY, "read_only=True", "read_only=False"),
+        (REPLAY, "with native_registration_scope(targets):", "with native_registration_scope([]):"),
+        (REPLAY, 'if result.get("native_plugin"):', "if False:"),
+        (
+            ADMISSION,
             "_copy_tree_dereferencing_validated(source, replay_path, source)",
             "_copy_install_tree(source, replay_path)",
         ),
-        ("verify_package_hash(candidate, expected_hash)", "True"),
+        (ADMISSION, "verify_package_hash(candidate, expected_hash)", "True"),
     ],
 )
-def test_native_replay_owner_bypass_is_rejected(before: str, after: str) -> None:
+def test_native_replay_owner_bypass_is_rejected(path: str, before: str, after: str) -> None:
     """Each canonical replay route has a mutation-sensitive static witness."""
-    source = (ROOT / REPLAY).read_text(encoding="utf-8")
+    source = (ROOT / path).read_text(encoding="utf-8")
     assert before in source
     report = run_selected_rules(
-        ROOT, (RULE,), source_overrides={REPLAY: source.replace(before, after, 1)}
+        ROOT, (RULE,), source_overrides={path: source.replace(before, after, 1)}
     )
     assert {item.rule_id for item in report.violations} == {RULE}
 

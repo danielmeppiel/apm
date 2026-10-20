@@ -181,11 +181,23 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
                 "read_only=True",
                 "with native_registration_scope(targets):",
                 'if result.get("native_plugin"):',
-                "_verify_native_plugin_cache(",
+                "from apm_cli.install.native_plugin_admission import verify_native_plugin_cache",
+                "verify_native_plugin_cache(\n                            lock_dep,",
+            ),
+            "Native replay must use canonical read-only projection, admission and integrity",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_PROJECTION,
+            "src/apm_cli/install/native_plugin_admission.py",
+            (
                 "_copy_tree_dereferencing_validated(source, replay_path, source)",
                 "verify_package_hash(candidate, expected_hash)",
             ),
-            "Native replay must use canonical read-only projection, admission, copy and integrity",
+            "Native cache verification must reuse canonical copying and package hashing",
         )
     )
     return tuple(findings)
