@@ -12,12 +12,14 @@ if TYPE_CHECKING:
 
 def locked_parent_identity(ctx: InstallContext, node: DependencyNode | None) -> str | None:
     """Use exact original parent keys in the replacement-enabled lock contract."""
+    from apm_cli.deps.lockfile import lockfile_parent_identity
+
     if node is None or node.parent is None:
         return None
-    parent = node.parent.dependency_ref
-    if ctx.apm_package is not None and ctx.apm_package.replace_rules is not None:
-        return parent.get_unique_key()
-    return parent.repo_url
+    return lockfile_parent_identity(
+        node.parent.dependency_ref,
+        ctx.apm_package.replace_rules if ctx.apm_package is not None else None,
+    )
 
 
 def format_package_type_label(pkg_type: Any) -> str | None:

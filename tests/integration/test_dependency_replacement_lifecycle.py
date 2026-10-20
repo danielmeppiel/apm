@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -9,8 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from apm_cli.copilot_plugins.registrar import catalog_path_for
 from apm_cli.models.dependency.replacement import parse_replace_block
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
+from tests.unit.copilot_plugins._builders import write_agent_plugin
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_git_repository import LocalGitRepository, LocalGitRepositoryFactory
@@ -97,8 +100,7 @@ class ReplacementFixture:
         return entry
 
 
-@pytest.fixture
-def replacement_fixture(tmp_path: Path, apm_binary_path: Path) -> ReplacementFixture:
+def _replacement_fixture(tmp_path: Path, apm_binary_path: Path) -> ReplacementFixture:
     isolated = IsolatedApmEnvironment.create(tmp_path / "replacement", base_env=dict(os.environ))
     environment = isolated.subprocess_env()
     source_factory = LocalPackageFactory(isolated.package_root)
@@ -135,9 +137,10 @@ def replacement_fixture(tmp_path: Path, apm_binary_path: Path) -> ReplacementFix
 
 
 def test_replacement_upstream_local_fork_upstream_owns_one_slot(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.install()
     fixture.assert_bytes("UPSTREAM")
     assert fixture.locked_entry()["resolved_commit"] == fixture.upstream_sha
@@ -173,9 +176,10 @@ def test_replacement_upstream_local_fork_upstream_owns_one_slot(
 
 
 def test_replacement_same_named_ref_invalidates_upstream_cache_and_pin(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     manifest = load_yaml(fixture.consumer.manifest_path)
     manifest["dependencies"]["apm"][0]["ref"] = "main"
     dump_yaml(manifest, fixture.consumer.manifest_path)
@@ -193,9 +197,9 @@ def test_replacement_same_named_ref_invalidates_upstream_cache_and_pin(
 
 @pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
 def test_replacement_ignores_unused_original_http_transport(
-    replacement_fixture: ReplacementFixture, dry_run: bool
+    tmp_path: Path, apm_binary_path: Path, dry_run: bool
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     manifest = load_yaml(fixture.consumer.manifest_path)
     original = "http://github.com/apm-replacement-fixture/base"
@@ -218,9 +222,9 @@ def test_replacement_ignores_unused_original_http_transport(
 
 @pytest.mark.parametrize("cli_consent", [False, True])
 def test_replacement_http_source_cannot_borrow_original_or_global_consent(
-    replacement_fixture: ReplacementFixture, cli_consent: bool
+    tmp_path: Path, apm_binary_path: Path, cli_consent: bool
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     fixture.install()
     before = _snapshot(fixture.consumer.root)
@@ -241,9 +245,9 @@ def test_replacement_http_source_cannot_borrow_original_or_global_consent(
 
 @pytest.mark.parametrize("failure", ["missing", "invalid", "bad-fork-ref"])
 def test_replacement_failure_preserves_previous_owned_bytes_without_fallback(
-    replacement_fixture: ReplacementFixture, failure: str
+    tmp_path: Path, apm_binary_path: Path, failure: str
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     fixture.install()
     before = _snapshot(fixture.consumer.root)
@@ -262,10 +266,13 @@ def test_replacement_failure_preserves_previous_owned_bytes_without_fallback(
 
 
 @pytest.mark.parametrize("cold", [False, True], ids=["existing", "cold"])
+@pytest.mark.parametrize(
+    "failure", ["modified", "added", "removed", "missing-hash", "missing-source"]
+)
 def test_replacement_frozen_local_content_uses_locked_source_evidence(
-    replacement_fixture: ReplacementFixture, cold: bool
+    tmp_path: Path, apm_binary_path: Path, cold: bool, failure: str
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     fixture.install()
     fixture.assert_bytes("LOCAL")
@@ -279,7 +286,19 @@ def test_replacement_frozen_local_content_uses_locked_source_evidence(
     assert accepted.returncode == 0, accepted.stdout + accepted.stderr
     fixture.assert_bytes("LOCAL", root=target)
     original = fixture.local.root / ".apm/instructions/base.instructions.md"
-    original.write_text(_content("LOCAL-CHANGED"), encoding="utf-8")
+    if failure == "modified":
+        original.write_text(_content("LOCAL-CHANGED"), encoding="utf-8")
+    elif failure == "added":
+        original.with_name("added.instructions.md").write_text(_content("ADDED"), encoding="ascii")
+    elif failure == "removed":
+        original.unlink()
+    elif failure == "missing-hash":
+        lockfile_path = fixture.consumer.root / "apm.lock.yaml"
+        lock = load_yaml(lockfile_path)
+        lock["dependencies"][0].pop("content_hash")
+        dump_yaml(lock, lockfile_path)
+    else:
+        fixture.local.root.rename(fixture.local.root.with_name("missing-selected-source"))
     if cold:
         target = fixture.consumer.root.parent / "changed-cold-consumer"
         target.mkdir()
@@ -288,15 +307,16 @@ def test_replacement_frozen_local_content_uses_locked_source_evidence(
     before = _snapshot(target)
     refused = fixture.run(*_INSTALL, "--frozen", root=target)
     assert refused.returncode != 0, refused.stdout + refused.stderr
-    assert "content" in (refused.stdout + refused.stderr).lower()
+    message = (refused.stdout + refused.stderr).lower()
+    assert ("local" if failure == "missing-source" else "content") in message
     assert _snapshot(target) == before
 
 
 @pytest.mark.parametrize("change", ["edit", "remove", "add"])
 def test_replacement_frozen_compares_dormant_rules_without_reading_sources(
-    replacement_fixture: ReplacementFixture, change: str
+    tmp_path: Path, apm_binary_path: Path, change: str
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     manifest = load_yaml(fixture.consumer.manifest_path)
     manifest["replace"].append(
@@ -329,9 +349,10 @@ def test_replacement_frozen_compares_dormant_rules_without_reading_sources(
 
 
 def test_replacement_explicit_fork_sha_survives_update(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"git": _FORK, "ref": fixture.fork_sha})
     fixture.install()
     fixture.assert_bytes("FORK")
@@ -350,10 +371,36 @@ def test_replacement_explicit_fork_sha_survives_update(
     assert fixture.consumer.manifest_path.read_bytes() == before_manifest
 
 
-def test_replacement_remote_diamond_preserves_original_requests_and_root_anchor(
-    replacement_fixture: ReplacementFixture,
+def test_replacement_mutable_fork_replays_pin_then_updates_selected_source(
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.replace({"git": _FORK, "ref": "main"})
+    fixture.install()
+    before_manifest = fixture.consumer.manifest_path.read_bytes()
+    instruction = fixture.fork.worktree / ".apm/instructions/base.instructions.md"
+    instruction.write_text(_content("FORK-NEW"), encoding="utf-8")
+    next_commit = fixture.repositories.commit(fixture.fork, message="Advance selected branch")
+    fixture.install()
+    fixture.assert_bytes("FORK")
+    assert fixture.locked_entry()["resolved_commit"] == fixture.fork_sha
+    before = _snapshot(fixture.consumer.root)
+    outdated = fixture.run("outdated")
+    assert outdated.returncode == 0, outdated.stdout + outdated.stderr
+    assert _snapshot(fixture.consumer.root) == before
+    updated = fixture.run("update", "--yes", "--parallel-downloads", "0")
+    assert updated.returncode == 0, updated.stdout + updated.stderr
+    fixture.assert_bytes("FORK-NEW")
+    assert fixture.locked_entry()["resolved_commit"] == next_commit.sha
+    assert fixture.consumer.manifest_path.read_bytes() == before_manifest
+
+
+def test_replacement_remote_diamond_preserves_original_requests_and_root_anchor(
+    tmp_path: Path,
+    apm_binary_path: Path,
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     factory = LocalPackageFactory(fixture.consumer.root.parent)
     remotes = [(fixture.upstream, _UPSTREAM), (fixture.fork, _FORK)]
     direct = []
@@ -395,9 +442,10 @@ def test_replacement_remote_diamond_preserves_original_requests_and_root_anchor(
 
 
 def test_replacement_logical_cycle_fails_before_publishing_candidate(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.install()
     before = _snapshot(fixture.consumer.root)
     local = load_yaml(fixture.local.manifest_path)
@@ -410,10 +458,67 @@ def test_replacement_logical_cycle_fails_before_publishing_candidate(
     assert _snapshot(fixture.consumer.root) == before
 
 
-def test_replacement_rules_in_dependency_manifest_do_not_redirect_consumer(
-    replacement_fixture: ReplacementFixture,
+def test_replacement_uninstall_preserves_shared_sources_until_the_last_parent(
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    factory = LocalPackageFactory(fixture.consumer.root.parent)
+    sibling = factory.create("sibling", targets=("copilot",))
+    factory.add_instruction(sibling, "sibling", _content("SIBLING"))
+    local_manifest = load_yaml(fixture.local.manifest_path)
+    local_manifest["dependencies"] = {"apm": [{"path": "../sibling"}]}
+    dump_yaml(local_manifest, fixture.local.manifest_path)
+    for name, ref in (("left", fixture.upstream_sha), ("right", "other-original-request")):
+        factory.create(name, dependencies=({"git": _UPSTREAM, "ref": ref},))
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["dependencies"]["apm"] = [{"path": "../left"}, {"path": "../right"}]
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    fixture.replace({"path": "../local-base"})
+    fixture.install()
+    before = _snapshot(fixture.consumer.root)
+    before_manifest = fixture.consumer.manifest_path.read_bytes()
+    selected_manifest = fixture.local.manifest_path.read_bytes()
+    fixture.local.manifest_path.unlink()
+    refused = fixture.run("uninstall", "../left")
+    fixture.local.manifest_path.write_bytes(selected_manifest)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "Cannot verify replacement dependency reachability" in " ".join(
+        (refused.stdout + refused.stderr).split()
+    )
+    assert _snapshot(fixture.consumer.root) == before
+    assert fixture.consumer.manifest_path.read_bytes() == before_manifest
+    preview = fixture.run("uninstall", "../left", "--dry-run")
+    assert preview.returncode == 0, preview.stdout + preview.stderr
+    assert _snapshot(fixture.consumer.root) == before
+    assert fixture.consumer.manifest_path.read_bytes() == before_manifest
+    first = fixture.run("uninstall", "../left")
+    assert first.returncode == 0, first.stdout + first.stderr
+    fixture.assert_bytes("LOCAL")
+    sibling_output = fixture.consumer.root / ".github/instructions/sibling.instructions.md"
+    assert sibling_output.read_bytes() == _content("SIBLING").encode("ascii")
+    lock = load_yaml(fixture.consumer.root / "apm.lock.yaml")
+    assert len(lock["dependencies"]) == 3
+    selected = next(entry for entry in lock["dependencies"] if entry.get("replacement"))
+    assert [edge["ref"] for edge in selected["replacement"]["requests"]] == [
+        "other-original-request"
+    ]
+    second = fixture.run("uninstall", "../right")
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert not (fixture.consumer.root / _INSTRUCTION).exists()
+    assert not sibling_output.exists()
+    remaining = load_yaml(fixture.consumer.root / "apm.lock.yaml")
+    assert remaining["dependencies"] == []
+    assert parse_replace_block(remaining["replacements"]) == parse_replace_block(
+        load_yaml(fixture.consumer.manifest_path)["replace"]
+    )
+
+
+def test_replacement_rules_in_dependency_manifest_do_not_redirect_consumer(
+    tmp_path: Path,
+    apm_binary_path: Path,
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     factory = LocalPackageFactory(fixture.consumer.root.parent)
     parent = factory.create(
         "parent", dependencies=({"git": _UPSTREAM, "ref": fixture.upstream_sha},)
@@ -492,9 +597,10 @@ def test_remote_parent_replacement_local_sibling_frozen_preflight(
 
 
 def test_replacement_local_audit_and_outdated_are_read_only(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     fixture.install()
     before = _snapshot(fixture.consumer.root)
@@ -512,10 +618,68 @@ def test_replacement_local_audit_and_outdated_are_read_only(
     assert _snapshot(fixture.consumer.root) == before
 
 
-def test_local_replacement_update_plans_changed_content_without_dry_run_writes(
-    replacement_fixture: ReplacementFixture,
+def test_replacement_native_plugin_cache_and_changed_output_cleanup(
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.install()
+    write_agent_plugin(fixture.local.root, name="local-base", with_mcp=False)
+    fixture.local.manifest_path.unlink()
+    settings_path = fixture.consumer.root / ".github/copilot/settings.local.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps({"enabledPlugins": {"user-plugin@manual": False}}), encoding="ascii"
+    )
+    fixture.replace({"path": "../local-base"})
+    fixture.install()
+    assert not (fixture.consumer.root / _INSTRUCTION).exists()
+    modules = fixture.consumer.root / "apm_modules"
+    catalog = catalog_path_for(modules)
+    (entry,) = json.loads(catalog.read_text(encoding="utf-8"))["plugins"]
+    assert entry["name"] == "local-base"
+    assert Path(entry["source"]).parts == ("apm-replacement-fixture", "base")
+    installed_skill = modules / entry["source"] / "skills/local-base-skill/SKILL.md"
+    expected_skill = (fixture.local.root / "skills/local-base-skill/SKILL.md").read_bytes()
+    assert installed_skill.read_bytes() == expected_skill
+    clean = fixture.run("audit", "--ci", "--no-policy")
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    installed_skill.write_bytes(expected_skill + b"\nTampered selected cache.\n")
+    before = _snapshot(fixture.consumer.root)
+    refused = fixture.run("audit", "--ci", "--no-policy")
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "cache differs" in " ".join((refused.stdout + refused.stderr).split())
+    assert _snapshot(fixture.consumer.root) == before
+    fixture.install()
+    assert installed_skill.read_bytes() == expected_skill
+    fixture.replace({"git": _FORK, "ref": fixture.fork_sha})
+    fixture.install()
+    fixture.assert_bytes("FORK")
+    assert not installed_skill.exists()
+    if catalog.exists():
+        assert json.loads(catalog.read_text(encoding="utf-8"))["plugins"] == []
+    assert (
+        json.loads(settings_path.read_text(encoding="utf-8"))["enabledPlugins"][
+            "user-plugin@manual"
+        ]
+        is False
+    )
+    fixture.replace(None)
+    fixture.install()
+    fixture.assert_bytes("UPSTREAM")
+    assert (
+        json.loads(settings_path.read_text(encoding="utf-8"))["enabledPlugins"][
+            "user-plugin@manual"
+        ]
+        is False
+    )
+
+
+def test_local_replacement_update_plans_changed_content_without_dry_run_writes(
+    tmp_path: Path,
+    apm_binary_path: Path,
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     fixture.install()
     before = _snapshot(fixture.consumer.root)
@@ -534,9 +698,10 @@ def test_local_replacement_update_plans_changed_content_without_dry_run_writes(
 
 
 def test_partial_update_refuses_changed_replacement_table_before_mutation(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.install()
     before = _snapshot(fixture.consumer.root)
     fixture.replace({"path": "../local-base"})
@@ -551,9 +716,10 @@ def test_partial_update_refuses_changed_replacement_table_before_mutation(
 
 
 def test_existing_local_replacement_reloads_changed_child_manifest(
-    replacement_fixture: ReplacementFixture,
+    tmp_path: Path,
+    apm_binary_path: Path,
 ) -> None:
-    fixture = replacement_fixture
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
     fixture.replace({"path": "../local-base"})
     fixture.install()
     factory = LocalPackageFactory(fixture.consumer.root.parent)

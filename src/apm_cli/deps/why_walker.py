@@ -191,10 +191,10 @@ def compute_why(lockfile: LockFile, target: LockedDependency) -> WhyResult:
     replacement request. Legacy locks retain their single repo-url parent.
     Cycles terminate at the repeated owner; at most 256 paths are expanded.
     """
-    exact_keys = lockfile.replacements is not None
+    from .lockfile import lockfile_parent_identity
 
     def key_for(dep: LockedDependency) -> str:
-        return dep.get_unique_key() if exact_keys else dep.repo_url
+        return lockfile_parent_identity(dep, lockfile.replacements)
 
     def incoming(dep: LockedDependency) -> tuple[WhyEdge, ...]:
         key = key_for(dep)

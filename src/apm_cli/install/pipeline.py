@@ -160,6 +160,7 @@ def _preflight_auth_check(ctx, auth_resolver, verbose: bool) -> None:
 
     seen: builtins.set = builtins.set()
     for dep in ctx.deps_to_install:
+        dep = dep.source_reference
         host = dep.host
         if not host or is_github_hostname(host):
             continue  # github.com uses API probe with unauth fallback

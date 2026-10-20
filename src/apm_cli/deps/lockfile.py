@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -43,6 +43,14 @@ _ALLOWED_HOST_TYPES = set(accepted_host_types())
 _ALLOWED_EXEC_STATUS = {"deployed", "gated_pending_approval", "denied", "absent"}
 SUPPORTED_LOCKFILE_VERSIONS = frozenset({"1", "2", "3"})
 _REPRODUCIBLE_EPOCH = "1970-01-01T00:00:00+00:00"
+
+
+def lockfile_parent_identity(
+    dependency: DependencyReference | LockedDependency,
+    replacements: Sequence[object] | None,
+) -> str:
+    """Encode exact original parent keys for v3, retaining legacy repo-url parents."""
+    return dependency.get_unique_key() if replacements is not None else dependency.repo_url
 
 
 def _copy_extension_map(value: object) -> dict[str, Any]:
@@ -873,6 +881,13 @@ class LockedDependency:
         return binding.rule == self.replacement.rule
 
     @property
+    def parent_keys(self) -> tuple[str | None, ...]:
+        """Return recorded incoming parents, including the root marker."""
+        if self.replacement is None:
+            return (self.resolved_by,)
+        return tuple(dict.fromkeys(request.parent for request in self.replacement.requests))
+
+    @property
     def is_local_source(self) -> bool:
         """Whether verification/replay uses local bytes, independent of ownership."""
         return (
@@ -1003,13 +1018,9 @@ class LockFile:
                         f"Replacement evidence for {dep.get_unique_key()} disagrees with root replacements"
                     )
                 if self.replacements is not None:
-                    parents = (
-                        [request.parent for request in evidence.requests]
-                        if evidence is not None
-                        else [dep.resolved_by]
-                    )
                     if any(
-                        parent is not None and parent not in self.dependencies for parent in parents
+                        parent is not None and parent not in self.dependencies
+                        for parent in dep.parent_keys
                     ):
                         raise ReplacementConfigError(
                             f"Replacement graph parent for {dep.get_unique_key()} is absent from the lockfile"

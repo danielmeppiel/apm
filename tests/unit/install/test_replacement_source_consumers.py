@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import pytest
 
 from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+from apm_cli.commands.deps.cli import _build_dep_tree
 from apm_cli.commands.deps.why import _render_human, _render_json
 from apm_cli.commands.outdated import _check_one_dep
 from apm_cli.deps.lockfile import LockedDependency, LockFile
@@ -18,8 +19,12 @@ from apm_cli.install.drift import _materialize_install_path
 from apm_cli.install.exec_gate import check_executable_approval, resolve_package_key
 from apm_cli.install.helpers.ref_reuse import maybe_resolve_git_semver
 from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
+from apm_cli.install.pipeline import _preflight_auth_check
 from apm_cli.install.resolution_staging import ResolutionStagingSession
-from apm_cli.models.dependency.materialization import prepare_materialization_path
+from apm_cli.models.dependency.materialization import (
+    build_materialization_path,
+    prepare_materialization_path,
+)
 from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.dependency.replacement import (
     build_replacement_index,
@@ -52,6 +57,17 @@ def _locked(tmp_path: Path, source: dict, *, parent: str | None = None):
     lock = LockFile(replacements=[replacement_rule_to_dict(rule)])
     lock.add_dependency(locked)
     return selected, locked, lock
+
+
+@pytest.mark.parametrize(
+    "source", [{"path": "../local"}, {"git": "https://gitlab.com/team/fork", "ref": "patched"}]
+)
+def test_materialization_owner_preserves_original_slot_for_bound_references(
+    tmp_path: Path, source: dict
+) -> None:
+    selected, _, _ = _locked(tmp_path, source)
+    modules = tmp_path / "apm_modules"
+    assert build_materialization_path(selected, modules) == modules / "MixedOrg" / "MixedRepo"
 
 
 def test_local_replacement_outdated_is_not_remotely_comparable(tmp_path: Path) -> None:
@@ -124,6 +140,38 @@ def test_replacement_why_exposes_direct_and_transitive_requests(tmp_path: Path) 
     structured = json.loads(_render_json(result))
     assert structured["package"]["replacement"] == locked.replacement.to_dict()
     assert len(structured["paths"]) == 2
+
+
+def test_replacement_tree_keeps_direct_and_shared_incoming_edges(tmp_path: Path) -> None:
+    _, locked, lock = _locked(tmp_path, {"path": "../local"})
+    parent = LockedDependency(repo_url="owner/parent")
+    indirect = DependencyReference.parse("https://github.com/MixedOrg/MixedRepo#indirect")
+    locked.replacement.record(indirect, parent.get_unique_key(), False)
+    lock.add_dependency(parent)
+    lock.write(tmp_path / "apm.lock.yaml")
+    tree = _build_dep_tree(tmp_path)
+    assert {dep.get_unique_key() for dep in tree["direct"]} == {
+        "owner/parent",
+        "mixedorg/mixedrepo",
+    }
+    assert [dep.get_unique_key() for dep in tree["children_map"]["owner/parent"]] == [
+        "mixedorg/mixedrepo"
+    ]
+    assert tree["unresolved"] == []
+
+
+def test_retained_request_alias_does_not_reassign_the_owned_slot(tmp_path: Path) -> None:
+    selected, locked, _ = _locked(tmp_path, {"path": "../local"}, parent="owner/left")
+    right = DependencyReference.parse_from_dict(
+        {"git": "https://github.com/MixedOrg/MixedRepo", "alias": "different-slot", "ref": "right"}
+    )
+    locked.replacement.record(right, "owner/right", False)
+    assert locked.replacement.retain_parents({"owner/right"})
+    restored = LockedDependency.from_dict(locked.to_dict())
+    assert [request.alias for request in restored.replacement.requests] == ["different-slot"]
+    assert restored.to_dependency_ref().get_install_path(tmp_path) == selected.get_install_path(
+        tmp_path
+    )
 
 
 def test_local_replacement_audit_reads_source_not_upstream_cache(tmp_path: Path) -> None:
@@ -243,3 +291,30 @@ def test_semver_source_change_discards_old_resolution_and_routes_effective_auth(
         reference = call.args[0]
         assert (reference.host, reference.repo_url) == ("gitlab.com", "new/fork")
         assert reference.replacement is None
+
+
+def test_update_auth_preflight_never_uses_original_source_coordinates(tmp_path: Path) -> None:
+    selected, _, _ = _locked(tmp_path, {"git": "https://gitlab.com/new/fork", "ref": "patched"})
+    auth = Mock()
+    auth.resolve_for_dep.return_value = SimpleNamespace(
+        token=None,
+        auth_scheme="basic",
+        source="anonymous",
+        host_info=SimpleNamespace(display_name="gitlab.com"),
+    )
+    auth.git_env_for_remote.return_value = {}
+    with (
+        patch("apm_cli.deps.github_downloader.GitHubPackageDownloader") as downloader,
+        patch("apm_cli.utils.git_env.git_remote_refs") as probe,
+    ):
+        downloader.return_value._build_repo_url.return_value = "https://gitlab.com/new/fork.git"
+        probe.return_value = SimpleNamespace(returncode=0, stdout="", stderr="")
+        _preflight_auth_check(SimpleNamespace(deps_to_install=[selected]), auth, False)
+        reference = auth.resolve_for_dep.call_args.args[0]
+        assert reference.replacement is None
+        assert (reference.host, reference.repo_url) == ("gitlab.com", "new/fork")
+        assert urlparse(probe.call_args.args[0]).hostname == "gitlab.com"
+    local, _, _ = _locked(tmp_path, {"path": "../local"})
+    unused_auth = Mock()
+    _preflight_auth_check(SimpleNamespace(deps_to_install=[local]), unused_auth, False)
+    assert unused_auth.mock_calls == []

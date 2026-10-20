@@ -397,12 +397,7 @@ class InstallService:
             return []
         children: dict[str, list[str]] = {}
         for key, dependency in lockfile.dependencies.items():
-            parents = (
-                [request.parent for request in dependency.replacement.requests]
-                if dependency.replacement is not None
-                else [dependency.resolved_by]
-            )
-            for parent in parents:
+            for parent in dependency.parent_keys:
                 if parent is not None:
                     children.setdefault(parent, []).append(key)
         queue = deque(dep.get_unique_key() for dep in manifest_deps)

@@ -193,6 +193,21 @@ class ReplacementBinding:
             "requests": [request.to_dict() for request in self.requests],
         }
 
+    def retain_parents(self, parent_keys: set[str]) -> bool:
+        """Prune removed dependency requests without changing chosen ownership."""
+        retained = {
+            request: None
+            for request in self.requests
+            if request.parent is None or request.parent in parent_keys
+        }
+        if not retained:
+            raise ReplacementConfigError(
+                f"Replacement {self.original.get_unique_key()} has no surviving original request"
+            )
+        changed = retained != self.requests
+        self.requests = retained
+        return changed
+
     @classmethod
     def from_dict(cls, raw: object, original: DependencyReference) -> ReplacementBinding:
         """Validate lock evidence without accessing the selected source."""
@@ -241,7 +256,7 @@ class ReplacementBinding:
             except ValueError as exc:
                 raise ReplacementConfigError(f"Invalid replacement selection: {exc}") from exc
             if not binding.requests:
-                binding.original = edge
+                binding.original = replace(edge, alias=original.alias)
             binding.record(edge, request["parent"], request["dev"])
         return binding
 

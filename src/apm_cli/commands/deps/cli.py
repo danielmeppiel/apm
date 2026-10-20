@@ -753,9 +753,24 @@ def _build_dep_tree(apm_dir):
                 lockfile_deps = lockfile.get_package_dependencies()
                 if lockfile_deps:
                     result["source"] = "lockfile"
+                    if lockfile.replacements is not None:
+                        result["direct"] = [dep for dep in lockfile_deps if None in dep.parent_keys]
+                        children_map: dict[str, list[LockedDependency]] = {}
+                        unresolved_by_key: dict[str, LockedDependency] = {}
+                        for dep in lockfile_deps:
+                            for parent in dep.parent_keys:
+                                if parent is None:
+                                    continue
+                                if parent not in lockfile.dependencies:
+                                    unresolved_by_key[dep.get_unique_key()] = dep
+                                    continue
+                                children_map.setdefault(parent, []).append(dep)
+                        result["children_map"] = children_map
+                        result["unresolved"] = list(unresolved_by_key.values())
+                        return result
                     result["direct"] = [d for d in lockfile_deps if d.depth <= 1]
                     transitive = [d for d in lockfile_deps if d.depth > 1]
-                    children_map: dict[str, list[LockedDependency]] = {}
+                    children_map = {}
                     unresolved = []
                     parents_by_unique_key: dict[tuple[int, str], list[LockedDependency]] = {}
                     parents_by_repo_url: dict[tuple[int, str], list[LockedDependency]] = {}

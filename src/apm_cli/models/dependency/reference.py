@@ -523,7 +523,7 @@ class DependencyReference(ProviderCoordinateMixin):
         Returns:
             Path: Absolute path to the package installation directory
         """
-        return build_materialization_path(self.ownership_reference, apm_modules_dir)
+        return build_materialization_path(self, apm_modules_dir)
 
     @staticmethod
     def _reject_shorthand_alias(dependency_str: str) -> None:
