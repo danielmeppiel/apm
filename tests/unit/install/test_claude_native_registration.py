@@ -105,6 +105,8 @@ def native(monkeypatch, tmp_path):
         plugin_id = args[2]
         if args[1] == "uninstall":
             assert args[-1] == "--keep-data"
+            if state.get("fail_uninstall"):
+                raise ClaudeNativePluginError("interrupted before native removal")
             state["plugins"].pop(plugin_id)
             return ""
         assert args[1] in {"install", "update"}
@@ -473,6 +475,13 @@ def test_legacy_native_ownership_requires_explicit_removal_before_attestation(
     assert ledger.read_bytes() == before
     assert native["calls"] == []
     shutil.rmtree(plan.source_root)
+    native["fail_uninstall"] = True
+    with pytest.raises(ClaudeNativePluginError, match="interrupted before native removal"):
+        resync_claude_plugins(modules_dir=modules, scope=InstallScope.USER, lockfile=LockFile())
+    interrupted = json.loads(ledger.read_text())
+    assert interrupted["version"] == 2
+    assert set(next(iter(interrupted["plugins"].values()))) == {"dependency_key", "source"}
+    native["fail_uninstall"] = False
     resync_claude_plugins(modules_dir=modules, scope=InstallScope.USER, lockfile=LockFile())
     assert json.loads(ledger.read_text())["plugins"] == {}
     assert native["plugins"] == {}
@@ -619,3 +628,74 @@ def test_post_readback_mutation_retains_baseline_until_original_bytes_are_restor
     resync_claude_plugins(**kwargs)
     assert ledger.read_bytes() == before
     assert native["plugins"][f"{plan.name}@{MARKETPLACE_NAME}"]["enabled"] is False
+
+
+@pytest.mark.parametrize("boundary", ["locked", "prepared"])
+def test_missing_native_source_pin_refuses_before_any_registration_write(
+    tmp_path: Path, native, boundary: str
+) -> None:
+    from dataclasses import replace
+
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native)
+    with pytest.raises(
+        ClaudeNativePluginError, match=r"no immutable (pin|source identity)"
+    ) as error:
+        if boundary == "locked":
+            lock.dependencies[plan.dependency_key].resolved_commit = None
+            resync_claude_plugins(
+                modules_dir=modules,
+                scope=InstallScope.USER,
+                lockfile=lock,
+                prepared={plan.dependency_key: plan},
+            )
+        else:
+            synchronize_claude_plugins(
+                modules_dir=modules,
+                scope=InstallScope.USER,
+                plugins=[replace(plan, source_pin="")],
+            )
+    assert "Reinstall" in str(error.value)
+    assert native["calls"] == []
+    assert not (modules / LEDGER_RELATIVE).exists()
+    assert not (modules / CATALOG_RELATIVE).exists()
+
+
+def test_normalized_native_source_fingerprint_is_replay_idempotent(tmp_path: Path, native) -> None:
+    from apm_cli.deps.plugin_parser import normalize_plugin_directory
+
+    _, _, plan = _locked_native_fixture(tmp_path / "project", native)
+    replay = tmp_path / "replay"
+    shutil.copytree(plan.source_root, replay)
+    before = (replay / "apm.yml").read_bytes()
+    normalize_plugin_directory(replay, replay / ".claude-plugin/plugin.json")
+    assert (replay / "apm.yml").read_bytes() == before
+    assert fingerprint_native_claude_source(replay) == plan.bundle_hash
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "cache-resource",
+        pytest.param("executable", marks=pytest.mark.skipif(os.name == "nt", reason="POSIX mode")),
+    ],
+)
+def test_source_changed_after_admission_never_reaches_native_synchronization(
+    tmp_path: Path, native, change: str
+) -> None:
+    from dataclasses import replace
+
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native)
+    _change_native_resource(plan.source_root, change)
+    with pytest.raises(ClaudeNativePluginError, match="fingerprint changed"):
+        synchronize_claude_plugins(
+            modules_dir=modules,
+            scope=InstallScope.USER,
+            plugins=[
+                replace(
+                    plan,
+                    source_pin="github:" + lock.dependencies[plan.dependency_key].resolved_commit,
+                )
+            ],
+        )
+    assert native["calls"] == []
+    assert not (modules / LEDGER_RELATIVE).exists()

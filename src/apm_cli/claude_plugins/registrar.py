@@ -48,6 +48,8 @@ def _read_ledger(path: Path, modules_dir: Path) -> dict[str, dict[str, str]]:
         if not isinstance(entries, dict):
             raise ValueError("invalid plugin map")
         for plugin_id, entry in entries.items():
+            # Intent can embed retiring v1 entries in a v2 ledger. Retaining
+            # those identities permits removal retries, never fresh attestation.
             if (
                 not isinstance(plugin_id, str)
                 or not plugin_id.endswith("@" + MARKETPLACE_NAME)
@@ -231,6 +233,8 @@ def synchronize_claude_plugins(
                 "Native Claude admission has no immutable source identity. "
                 "Reinstall the package from a pinned source."
             )
+        # An admitted plan is not exclusive filesystem ownership: another
+        # process can change its source before this independently callable step.
         _check_bundle_fingerprint(plugin.source_root, plugin.bundle_hash)
         desired[plugin_id] = entry
 

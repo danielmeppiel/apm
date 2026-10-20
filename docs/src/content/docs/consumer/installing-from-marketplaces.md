@@ -69,6 +69,11 @@ Audit checks the saved native fingerprint without invoking Claude or repairing
 the source or cache. An older ownership record without this baseline requires
 explicit global uninstall and reinstall with the original targets.
 
+To verify this user installation, run `apm audit --ci` from its manifest
+directory (normally `~/.apm`). Include `claude` in that manifest's `targets`,
+preserving any other targets; audit has no `--target` flag. This checks stored
+source integrity, not native activation or hook execution.
+
 If this package already owns loose Claude hooks, APM preserves them and refuses
 the native transition instead of deleting retained-target state or enabling both
 routes. Explicitly uninstall that package with `apm uninstall --global <package>`,
