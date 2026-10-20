@@ -27,6 +27,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from apm_cli.deps.lockfile import LockedDependency
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -1767,12 +1769,7 @@ class TestMaterializeInstallPath:
     def test_non_cache_only_requires_downloader(self, tmp_path: Path) -> None:
         from apm_cli.install.drift import CacheMissError, _materialize_install_path
 
-        lock_dep = MagicMock()
-        lock_dep.source = "github.com"
-        lock_dep.local_path = None
-        lock_dep.resolved_commit = "abc123"
-        lock_dep.repo_url = "owner/repo"
-        lock_dep.to_dependency_ref.return_value = _make_dep_ref(repo_url="owner/repo")
+        lock_dep = LockedDependency(repo_url="owner/repo", resolved_commit="abc123")
 
         with pytest.raises(CacheMissError, match="no downloader"):
             _materialize_install_path(lock_dep, tmp_path, tmp_path, cache_only=False)
@@ -1785,12 +1782,9 @@ class TestMaterializeInstallPath:
         local_pkg.mkdir(parents=True)
         local_pkg_rel = "packages/my-tool"
 
-        lock_dep = MagicMock()
-        lock_dep.source = "local"
-        lock_dep.local_path = local_pkg_rel
-        lock_dep.repo_url = "_local/my-tool"
-        lock_dep.resolved_commit = None
-        lock_dep.resolved_by = None
+        lock_dep = LockedDependency(
+            repo_url="_local/my-tool", source="local", local_path=local_pkg_rel
+        )
 
         path = _materialize_install_path(
             lock_dep, project_root, tmp_path / "apm_modules", cache_only=True
@@ -1800,9 +1794,7 @@ class TestMaterializeInstallPath:
     def test_local_dep_missing_path_raises(self, tmp_path: Path) -> None:
         from apm_cli.install.drift import CacheMissError, _materialize_install_path
 
-        lock_dep = MagicMock()
-        lock_dep.source = "local"
-        lock_dep.local_path = None
+        lock_dep = LockedDependency(repo_url="_local/my-tool", source="local")
 
         with pytest.raises(CacheMissError, match="no local_path"):
             _materialize_install_path(lock_dep, tmp_path, tmp_path, cache_only=True)
@@ -1810,10 +1802,9 @@ class TestMaterializeInstallPath:
     def test_local_dep_nonexistent_dir_raises(self, tmp_path: Path) -> None:
         from apm_cli.install.drift import CacheMissError, _materialize_install_path
 
-        lock_dep = MagicMock()
-        lock_dep.source = "local"
-        lock_dep.local_path = "nonexistent/path"
-        lock_dep.resolved_by = None
+        lock_dep = LockedDependency(
+            repo_url="_local/my-tool", source="local", local_path="nonexistent/path"
+        )
 
         with pytest.raises(CacheMissError, match="local source missing"):
             _materialize_install_path(lock_dep, tmp_path, tmp_path, cache_only=True)
@@ -1821,14 +1812,7 @@ class TestMaterializeInstallPath:
     def test_remote_dep_no_resolved_commit_raises(self, tmp_path: Path) -> None:
         from apm_cli.install.drift import CacheMissError, _materialize_install_path
 
-        lock_dep = MagicMock()
-        lock_dep.source = "github.com"
-        lock_dep.local_path = None
-        lock_dep.resolved_commit = None
-        lock_dep.repo_url = "owner/repo"
-
-        dep_ref = _make_dep_ref(repo_url="owner/repo")
-        lock_dep.to_dependency_ref.return_value = dep_ref
+        lock_dep = LockedDependency(repo_url="owner/repo")
 
         with pytest.raises(CacheMissError, match="no resolved_commit"):
             _materialize_install_path(lock_dep, tmp_path, tmp_path / "apm_modules", cache_only=True)
@@ -1839,14 +1823,7 @@ class TestMaterializeInstallPath:
         apm_modules = tmp_path / "apm_modules"
         apm_modules.mkdir()
 
-        lock_dep = MagicMock()
-        lock_dep.source = "github.com"
-        lock_dep.local_path = None
-        lock_dep.resolved_commit = "abc123"
-        lock_dep.repo_url = "owner/repo"
-
-        dep_ref = _make_dep_ref(repo_url="owner/repo")
-        lock_dep.to_dependency_ref.return_value = dep_ref
+        lock_dep = LockedDependency(repo_url="owner/repo", resolved_commit="abc123")
 
         with pytest.raises(CacheMissError, match="cache miss"):
             _materialize_install_path(lock_dep, tmp_path, apm_modules, cache_only=True)

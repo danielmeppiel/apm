@@ -30,6 +30,8 @@
         "src/apm_cli/commands/deps/cli.py",
         "src/apm_cli/install/phases/download.py",
         "src/apm_cli/install/phases/integrate.py",
+        "src/apm_cli/install/helpers/plan_inputs.py",
+        "src/apm_cli/install/presentation/resolution.py",
         "src/apm_cli/install/plan.py"
       ],
       "guards": ["contracts-tooling-dependency-identity", "contracts-tooling-policy-identity", "contracts-tooling-source-replacements"]

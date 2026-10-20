@@ -23,6 +23,8 @@ from unittest.mock import patch
 
 import pytest
 
+from apm_cli.deps.lockfile import LockedDependency, LockFile
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -44,37 +46,17 @@ def _median_time(fn, *, repeats=5):
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _FakeDep:
-    """Minimal stand-in for ``LockedDependency`` used by ``_build_children_index``."""
-
-    repo_url: str
-    resolved_by: str | None = None
-    local_path: str | None = None
-    depth: int = 1
-
-
-class _FakeLockFile:
-    """Minimal stand-in for ``LockFile`` exposing ``get_package_dependencies``."""
-
-    def __init__(self, deps: list[_FakeDep]):
-        self._deps = deps
-
-    def get_package_dependencies(self) -> list[_FakeDep]:
-        return self._deps
-
-
-def _make_lockfile(n: int) -> _FakeLockFile:
+def _make_lockfile(n: int) -> LockFile:
     """Build a synthetic lockfile with *n* dependencies.
 
     Half the deps are resolved_by a parent URL, the other half are
     top-level (resolved_by=None) to mirror realistic lockfiles.
     """
-    deps: list[_FakeDep] = []
+    lockfile = LockFile()
     for i in range(n):
         parent = f"org/parent-{i % 10}" if i % 2 == 0 else None
-        deps.append(_FakeDep(repo_url=f"org/repo-{i}", resolved_by=parent))
-    return _FakeLockFile(deps)
+        lockfile.add_dependency(LockedDependency(repo_url=f"org/repo-{i}", resolved_by=parent))
+    return lockfile
 
 
 class TestChildrenIndexScaling:

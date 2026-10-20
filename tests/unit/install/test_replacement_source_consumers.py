@@ -12,16 +12,24 @@ from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.commands.deps.cli import _build_dep_tree
 from apm_cli.commands.deps.why import _render_human, _render_json
 from apm_cli.commands.outdated import _check_one_dep
+from apm_cli.core.command_logger import InstallLogger
+from apm_cli.deps.apm_resolver import APMDependencyResolver
+from apm_cli.deps.dependency_graph import DependencyNode, DependencyTree
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.deps.path_anchoring import LocalResolutionError
 from apm_cli.deps.why_walker import compute_why
+from apm_cli.install.context import InstallContext
 from apm_cli.install.drift import _materialize_install_path
 from apm_cli.install.exec_gate import check_executable_approval, resolve_package_key
+from apm_cli.install.helpers.plan_inputs import build_resolved_update_plan
 from apm_cli.install.helpers.ref_reuse import maybe_resolve_git_semver
 from apm_cli.install.helpers.ref_seed import seed_ref_resolver_from_lockfile
 from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
 from apm_cli.install.pipeline import _preflight_auth_check
+from apm_cli.install.plan import build_update_plan
+from apm_cli.install.presentation.resolution import report_resolved_dependencies
 from apm_cli.install.resolution_staging import ResolutionStagingSession
+from apm_cli.models.apm_package import APMPackage
 from apm_cli.models.dependency.materialization import (
     build_materialization_path,
     prepare_materialization_path,
@@ -58,6 +66,125 @@ def _locked(tmp_path: Path, source: dict, *, parent: str | None = None):
     lock = LockFile(replacements=[replacement_rule_to_dict(rule)])
     lock.add_dependency(locked)
     return selected, locked, lock
+
+
+@pytest.mark.parametrize("scoped", [False, True])
+def test_plan_inputs_hash_staged_local_replacement_before_canonical_plan(
+    tmp_path: Path, scoped: bool
+) -> None:
+    selected, locked, lock = _locked(tmp_path, {"path": "../source-not-read"})
+    modules = tmp_path / "staged-modules"
+    staged = selected.get_install_path(modules)
+    staged.mkdir(parents=True)
+    payload = staged / "payload.txt"
+    payload.write_text("before", encoding="utf-8")
+    locked.content_hash = compute_package_hash(staged)
+    payload.write_text("after", encoding="utf-8")
+    expected_hash = compute_package_hash(staged)
+    remote = DependencyReference.parse("example/unmatched")
+    ordinary_local = DependencyReference.parse("./ordinary-not-read")
+    context = InstallContext(
+        project_root=tmp_path,
+        apm_dir=tmp_path,
+        apm_modules_dir=modules,
+        deps_to_install=[selected, remote, ordinary_local],
+        only_packages=[selected.get_unique_key()] if scoped else None,
+        update_plan_complete_dep_keys={selected.get_unique_key(), "example/retained"},
+        package_hashes={remote.get_unique_key(): "sha256:retained"},
+    )
+
+    with (
+        patch(
+            "apm_cli.utils.content_hash.compute_package_hash", wraps=compute_package_hash
+        ) as hashing,
+        patch("apm_cli.install.plan.build_update_plan", wraps=build_update_plan) as planning,
+    ):
+        plan = build_resolved_update_plan(context, lock)
+
+    hashing.assert_called_once_with(staged)
+    planning.assert_called_once_with(
+        lock,
+        context.deps_to_install,
+        complete_resolved_dep_keys=context.update_plan_complete_dep_keys if scoped else None,
+        resolved_content_hashes={
+            remote.get_unique_key(): "sha256:retained",
+            selected.get_unique_key(): expected_hash,
+        },
+    )
+    entry = next(entry for entry in plan.entries if entry.dep_key == selected.get_unique_key())
+    assert entry.action == "update"
+    assert entry.old_content_hash == locked.content_hash
+    assert entry.new_content_hash == expected_hash
+
+
+@pytest.mark.parametrize("verbose", [False, True])
+def test_resolution_presenter_defers_unused_rules_and_preserves_event_order(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], verbose: bool
+) -> None:
+    rules = parse_replace_block(
+        [
+            {"for": {"git": "https://github.com/example/used"}, "with": {"path": "../used"}},
+            {
+                "for": {"git": "https://github.com/example/dormant"},
+                "with": {"path": "../never-accessed"},
+            },
+        ]
+    )
+    resolver = APMDependencyResolver()
+    resolver.replacement_index = build_replacement_index(rules)
+    selected = resolver.replacement_index.bind(
+        DependencyReference.parse("example/used#upstream"),
+        consumer_root=tmp_path,
+        modules_dir=tmp_path / "apm_modules",
+        parent=None,
+        is_dev=False,
+    )
+    root = APMPackage(name="consumer", version="1.0.0", replace_rules=rules)
+    tree = DependencyTree(root_package=root)
+    direct = DependencyNode(
+        package=APMPackage(name="used", version="1.0.0"), dependency_ref=selected, depth=1
+    )
+    child = DependencyNode(
+        package=APMPackage(name="child", version="1.0.0"),
+        dependency_ref=DependencyReference.parse("example/child"),
+        depth=2,
+        parent=direct,
+    )
+    direct.children.append(child)
+    tree.add_node(direct)
+    tree.add_node(child)
+    logger = InstallLogger(verbose=verbose)
+    context = InstallContext(
+        project_root=tmp_path, apm_dir=tmp_path, apm_package=root, logger=logger
+    )
+    events = Mock()
+    with (
+        patch.object(logger, "verbose_detail", wraps=logger.verbose_detail) as detail,
+        patch.object(logger.diagnostics, "warn", wraps=logger.diagnostics.warn) as warning,
+        patch.object(logger, "progress", wraps=logger.progress) as progress,
+    ):
+        events.attach_mock(detail, "detail")
+        events.attach_mock(warning, "warning")
+        events.attach_mock(progress, "progress")
+        report_resolved_dependencies(context, resolver, [selected, child.dependency_ref], tree)
+
+    assert [call[0] for call in events.mock_calls] == ["detail", "detail", "warning", "progress"]
+    detail.assert_any_call("Resolved dependency tree: 1 direct + 1 transitive deps (max depth 2)")
+    warning.assert_called_once_with(
+        "Unused replacement rule for example/dormant. "
+        "Check the exact host and package path, or remove the rule from apm.yml."
+    )
+    progress.assert_called_once_with(
+        f"Replacement: {selected.ownership_reference.to_display_reference()} "
+        f"-> {selected.source_reference.to_display_reference()}"
+    )
+    output = capsys.readouterr().out
+    assert "Replacement:" in output
+    assert ("Resolved dependency tree" in output) is verbose
+    assert "Unused replacement rule" not in output
+    logger.render_summary()
+    assert "Unused replacement rule" in capsys.readouterr().out
+    assert not (tmp_path.parent / "never-accessed").exists()
 
 
 @pytest.mark.parametrize(

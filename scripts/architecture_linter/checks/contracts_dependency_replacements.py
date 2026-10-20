@@ -13,6 +13,8 @@ from scripts.architecture_linter.models import Rule, Violation
 RULE = "contracts-tooling-source-replacements"
 OWNER = "src/apm_cli/models/dependency/replacement.py"
 RESOLVER = "src/apm_cli/deps/apm_resolver.py"
+PLAN_INPUTS = "src/apm_cli/install/helpers/plan_inputs.py"
+RESOLUTION_REPORT = "src/apm_cli/install/presentation/resolution.py"
 
 
 def _binding_order(provider: FactsProvider) -> list[Violation]:
@@ -68,6 +70,11 @@ def check_source_replacements(provider: FactsProvider) -> tuple[Violation, ...]:
         OWNER,
         ("ReplacementIndex", "parse_replace_block", "project_effective_reference"),
     )
+    for path, name in (
+        (PLAN_INPUTS, "build_resolved_update_plan"),
+        (RESOLUTION_REPORT, "report_resolved_dependencies"),
+    ):
+        findings.extend(_unique_definitions(provider, RULE, path, (name,)))
     required = {
         OWNER: (
             "return (self.host, self.port, self.repo_url, self.subpath)",
@@ -85,7 +92,28 @@ def check_source_replacements(provider: FactsProvider) -> tuple[Violation, ...]:
         "src/apm_cli/deps/immutable_requirements.py": (
             "self._resolver.resolve_git_reference(dep.source_reference)",
         ),
-        "src/apm_cli/install/pipeline.py": ("dep = dep.source_reference",),
+        "src/apm_cli/install/pipeline.py": (
+            "dep = dep.source_reference",
+            "from apm_cli.install.helpers.plan_inputs import build_resolved_update_plan",
+            "plan = build_resolved_update_plan(ctx, _early_lockfile)",
+        ),
+        "src/apm_cli/install/phases/resolve.py": (
+            "from apm_cli.install.presentation.resolution import report_resolved_dependencies",
+            "report_resolved_dependencies(ctx, resolver, deps_to_install, dependency_graph.dependency_tree)",
+        ),
+        PLAN_INPUTS: (
+            "from apm_cli.install.plan import build_update_plan",
+            "from apm_cli.utils.content_hash import compute_package_hash",
+            "dependency.replacement is not None and dependency.is_local",
+            "resolved_content_hashes=ctx.package_hashes",
+        ),
+        RESOLUTION_REPORT: (
+            "resolver.replacement_index.unused_rules",
+            "ctx.logger.diagnostics.warn(",
+            "ctx.logger.verbose_detail(",
+            "dependency.ownership_reference.to_display_reference()",
+            "dependency.source_reference.to_display_reference()",
+        ),
         "src/apm_cli/install/helpers/ref_reuse.py": (
             "locked.matches_replacement(dep_ref)",
             "dep_ref = dep_ref.source_reference",
@@ -105,6 +133,22 @@ def check_source_replacements(provider: FactsProvider) -> tuple[Violation, ...]:
                     "Preserve original ownership and canonical selected-source projection",
                 )
             )
+        if facts is not None and facts.tree_index is not None:
+            if path == "src/apm_cli/install/pipeline.py":
+                forbidden = {"build_update_plan", "compute_package_hash"}
+                duplicated = any(
+                    definition.name in forbidden for definition in facts.definitions
+                ) or any(call.qualname.rsplit(".", 1)[-1] in forbidden for call in facts.calls)
+            elif path == "src/apm_cli/install/phases/resolve.py":
+                duplicated = "unused_rules" in text or "Unused replacement rule" in text
+            else:
+                duplicated = False
+            if duplicated:
+                findings.append(
+                    _summary(
+                        RULE, path, "Route replacement plan inputs and reports through helpers"
+                    )
+                )
     path = "src/apm_cli/models/dependency/materialization.py"
     facts, failures = checked_facts(provider, path, RULE, require_python=True)
     findings.extend(failures)

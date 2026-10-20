@@ -89,6 +89,46 @@ FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
             "if lock_dep.is_local_source:",
             'if lock_dep.source == "local":',
         ),
+        (
+            "src/apm_cli/install/pipeline.py",
+            "plan = build_resolved_update_plan(ctx, _early_lockfile)",
+            "plan = None",
+        ),
+        (
+            "src/apm_cli/install/helpers/plan_inputs.py",
+            "resolved_content_hashes=ctx.package_hashes",
+            "resolved_content_hashes={}",
+        ),
+        (
+            "src/apm_cli/install/helpers/plan_inputs.py",
+            "from apm_cli.utils.content_hash import compute_package_hash",
+            "from apm_cli.utils.content_hash import compute_native_bundle_hash",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "report_resolved_dependencies(ctx, resolver, deps_to_install, dependency_graph.dependency_tree)",
+            "None",
+        ),
+        (
+            "src/apm_cli/install/presentation/resolution.py",
+            "resolver.replacement_index.unused_rules",
+            "()",
+        ),
+        (
+            "src/apm_cli/install/presentation/resolution.py",
+            "ctx.logger.diagnostics.warn(",
+            "ctx.logger.progress(",
+        ),
+        (
+            "src/apm_cli/install/pipeline.py",
+            "def run_install_pipeline(",
+            "def build_resolved_update_plan(*args):\n    return None\n\n\ndef run_install_pipeline(",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "def _resolve_dependencies(",
+            "def report_resolved_dependencies(*args):\n    return None\n\n\ndef _resolve_dependencies(",
+        ),
     ],
 )
 def test_source_replacement_guard_rejects_owner_bypasses(path: str, old: str, new: str) -> None:
