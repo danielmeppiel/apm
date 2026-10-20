@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
 from apm_cli.deps.path_anchoring import (
     LocalResolutionError,
     build_local_parent_index,
@@ -236,6 +237,7 @@ def _allows_missing_manifest(
         accepted_types = {
             PackageType.APM_PACKAGE.value: "APM package",
             PackageType.CLAUDE_SKILL.value: "Claude skill",
+            PackageType.AGENT_PLUGIN.value: "Agent plugin",
         }
         accepted_kind = accepted_types.get(dependency.package_type)
         if accepted_kind is None:
@@ -252,12 +254,16 @@ def _allows_missing_manifest(
     # declared at the repository root or in a virtual subdirectory. The lock
     # type and installed shape must agree before the manifest is waived.
 
-    package_type, _ = detect_package_type(package_dir)
+    package_type, selected_manifest = detect_package_type(package_dir)
     if package_type is PackageType.HOOK_PACKAGE:
         return (
             dependency.to_dependency_ref().is_virtual_subdirectory()
             and dependency.package_type == PackageType.HOOK_PACKAGE.value
         )
+    if package_type is PackageType.AGENT_PLUGIN:
+        return dependency.package_type == PackageType.AGENT_PLUGIN.value
+    if is_codex_compatibility_manifest(package_dir, selected_manifest):
+        return dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value
     return (
         package_type is PackageType.CLAUDE_SKILL
         and dependency.package_type == PackageType.CLAUDE_SKILL.value

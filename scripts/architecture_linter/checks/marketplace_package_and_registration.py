@@ -169,6 +169,37 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
 
     # Directory normalization may not be re-invoked outside its owner and reuses.
     findings.extend(_scan_normalization_callers(provider, inv))
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_PROJECTION,
+            "src/apm_cli/install/drift.py",
+            (
+                "native_detection = route_agent_plugin_package(install_path)",
+                "agent_plugin_detection=native_detection",
+                "read_only=True",
+                "with native_registration_scope(targets):",
+                'if result.get("native_plugin"):',
+                "from apm_cli.install.native_plugin_admission import verify_native_plugin_cache",
+                "verify_native_plugin_cache(\n                            lock_dep,",
+            ),
+            "Native replay must use canonical read-only projection, admission and integrity",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_PROJECTION,
+            "src/apm_cli/install/native_plugin_admission.py",
+            (
+                "_copy_tree_dereferencing_validated(source, replay_path, source)",
+                "verify_package_hash(candidate, expected_hash)",
+            ),
+            "Native cache verification must reuse canonical copying and package hashing",
+        )
+    )
     return tuple(findings)
 
 
@@ -491,6 +522,10 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
         "src/apm_cli/install/sources.py": (
             "is_codex_compatibility_manifest(install_path, detect_package_type(install_path)[1])",
             "native_validation = validate_apm_package(install_path, source_path=install_path)",
+        ),
+        "src/apm_cli/integration/mcp_config_view.py": (
+            "is_codex_compatibility_manifest(package_dir, selected_manifest)",
+            "dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
     }
