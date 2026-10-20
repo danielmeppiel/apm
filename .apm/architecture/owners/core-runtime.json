@@ -13,7 +13,10 @@
       "decision": "Effective install target selection",
       "owner": "core/target_detection.py (EffectiveTargetDecision)",
       "selectors": ["src/apm_cli/core/target_detection.py"],
-      "guards": ["registry-delegation-install-target-selection"]
+      "guards": [
+        "registry-delegation-install-target-selection",
+        "registry-delegation-audit-target-selection"
+      ]
     },
     {
       "id": "behavioral-test-taxonomy-classification",
