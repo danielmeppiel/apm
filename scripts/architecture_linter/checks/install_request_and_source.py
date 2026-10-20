@@ -377,6 +377,10 @@ def check_source_plan(provider: FactsProvider) -> tuple[Violation, ...]:
         or not _present(hook, "selected_bundle_files=hook_sources.bundle_for")
         or not _present(kiro, "selected_bundle_files=selected_bundle_files")
         or not _present(owner, "CanvasIntegrator.find_canvas_bundles")
+        or not _present(owner, "native_plugin_root: Path | None = None")
+        or not _present(owner, "if native_plugin_root != source_root:")
+        or not _present(owner, "if not _is_safe_source_path(path, source_root):")
+        or not _present(owner, 'relative == MARKER_FILENAME or ".git" in Path(relative).parts')
         or bool(duplicates)
     )
     if block_failed:

@@ -26,6 +26,26 @@ subtrees for content integrity. Neither mode modifies those roots.
 Both modes also enforce the lockfile's canonical deployment ownership; see
 [Deployment-owner integrity](#deployment-owner-integrity).
 
+Replay and coverage use the current `apm.yml` target declaration when present,
+otherwise the concrete target identities recorded by install. An unrelated
+`.github/workflows/` file does not add a Copilot deployment to a recorded
+Grok Cloud installation, and `.grok/` alone does not relabel it as Grok Build.
+Older lockfiles without a recorded `deployments` section retain directory
+discovery; identities inferred from legacy file paths do not narrow it.
+The saved `apm config target` is an install/update default, not a request to
+retarget an existing installation during audit.
+
+Experimental targets remain opt-in. If a selected target's experiment is
+disabled, audit exits with code `3` and an enable instruction on stderr, such
+as `apm experimental enable grok-cloud`, instead of silently skipping verification.
+Configuration errors do not produce a JSON audit report.
+Changing the manifest can still expose missing requested output; the existing
+[drift exit rules](#drift-detection) apply. Audit does not install, repair, or
+rewrite that state. Retained paths recorded under a previous target remain
+eligible for [CI presence and recorded-hash checks](../../baseline-checks/),
+subject to those checks' existing exclusions and hash baselines, even when
+that target is no longer selected for replay.
+
 For a native Agent Plugin installed with the `copilot` target, replay uses the
 same package interpretation as install. A plugin does not need an accompanying
 `apm.yml`; reinstalling and auditing a clean plugin remains supported. Select

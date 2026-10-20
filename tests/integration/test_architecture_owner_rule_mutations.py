@@ -56,6 +56,124 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
 
 
 @pytest.mark.parametrize(
+    ("path", "original", "replacement", "refused"),
+    [
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except AgentPluginDeploymentBoundaryError as exc:",
+            False,
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except (AgentPluginDeploymentBoundaryError, Exception) as exc:",
+            True,
+        ),
+    ],
+)
+def test_native_typed_error_guard_retains_legacy_and_rejects_broad_handlers(
+    path: str, original: str, replacement: str, refused: bool
+) -> None:
+    """Adding the Codex error must not weaken the established portable error contract."""
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert original in source
+    rule = "marketplace-integrations-projection-boundary"
+    report = run_selected_rules(
+        ROOT, (rule,), source_overrides={path: source.replace(original, replacement)}
+    )
+    assert report.failures == ()
+    assert bool(report.violations) is refused
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/utils/content_hash.py",
+            "_package_files(package_path, native=True)",
+            "_package_files(package_path, native=False)",
+        ),
+        (
+            "src/apm_cli/utils/content_hash.py",
+            "path.stat().st_mode & stat.S_IXUSR",
+            "False",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "def owns_codex_dependency(",
+            "def duplicate_owns_codex_dependency(",
+        ),
+        (
+            "src/apm_cli/install/phases/codex_plugins.py",
+            "ctx.package_deployed_files.get(key)",
+            "False",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "owns_codex_dependency(",
+            "noncanonical_ownership(",
+        ),
+        (
+            "src/apm_cli/deps/package_validator.py",
+            'getattr(package, "codex_plugin", None) is not None',
+            "False",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "ownership_cache=native_ownership_cache",
+            "ownership_cache=None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "verify_codex_source_identity(modules_dir, records=records, **item.plugin.source_identity())",
+            "None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "record.source_commit == source_commit",
+            "False",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "codex_records = verify_codex_source_identity(",
+            "codex_records = noncanonical_source_check(",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "records=codex_records",
+            "records=None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/admission.py",
+            'result["codex_source_identity"] = plugin.source_identity()',
+            "pass",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "record = replace(record, source_commit=item.plugin.source_commit)",
+            "pass",
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except AgentPluginDeploymentBoundaryError as exc:",
+        ),
+    ],
+)
+def test_codex_native_content_and_ownership_gates_cannot_be_bypassed(
+    path: str, old: str, new: str
+) -> None:
+    """Native integrity and cold-cache identity use their canonical owners."""
+    rule_id = "marketplace-integrations-codex-native-lifecycle"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert old in source
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: source.replace(old, new)})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
     ("path", "old", "new"),
     [
         (
@@ -652,6 +770,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Catalog-only marketplace manifest materialization loses its owner.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-codex-native-lifecycle",
+        rule_id="marketplace-integrations-codex-native-lifecycle",
+        path="src/apm_cli/codex_plugins/client.py",
+        old='"expectedVersion": version',
+        new='"unexpectedVersion": version',
+        intent="Codex native configuration loses its public compare-and-swap no-write control.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-copilot-ownership",
         rule_id="marketplace-integrations-copilot-ownership",
         path="src/apm_cli/copilot_plugins/registrar.py",
@@ -765,6 +891,17 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="validate_apm_package(path, read_only=True)",
         new="validate_apm_package(path, read_only=False)",
         intent="Discovery allows package admission to mutate the source it is inventorying.",
+    ),
+    MutationCase(
+        guard_id="registry-delegation-audit-target-selection",
+        rule_id="registry_delegation.audit_target_selection",
+        path="src/apm_cli/install/drift.py",
+        old="def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:",
+        new=(
+            "def resolve_audit_targets(project_root): return []\n\n"
+            "def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:"
+        ),
+        intent="Drift introduces a second audit target-selection owner.",
     ),
     MutationCase(
         guard_id="registry-delegation-bootstrap-project-name",

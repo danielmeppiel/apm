@@ -38,6 +38,9 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from apm_cli.core.target_detection import (
+    read_manifest_target as _read_apm_yml_target,  # noqa: F401 -- compatibility re-export
+)
 from apm_cli.deps.path_anchoring import build_local_parent_index, resolve_local_dep_dir
 from apm_cli.install.drift_render import (
     _INLINE_DIFF_BYTE_CAP as _INLINE_DIFF_BYTE_CAP,
@@ -373,16 +376,13 @@ def _build_package_info(
     lock_dep: LockedDependency,
     install_path: Path,
 ):
-    """Construct a real ``PackageInfo`` for the integrators.
-
-    Loads ``apm.yml`` when present so integrators that read
-    ``package_info.package.name`` see the right package identity.
-    """
+    """Construct ``PackageInfo`` with the selected manifest's package identity."""
     from apm_cli.agent_plugins.errors import (
         AgentPluginDeploymentBoundaryError,
         AgentPluginError,
     )
     from apm_cli.bundle.local_bundle import route_agent_plugin_package
+    from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
     from apm_cli.models.apm_package import (
         APMPackage,
         GitReferenceType,
@@ -407,7 +407,11 @@ def _build_package_info(
     except AgentPluginError as exc:
         raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
 
-    if native_detection is not None:
+    codex_native = False
+    if native_detection is None:
+        detected_type, selected_manifest = detect_package_type(install_path)
+        codex_native = is_codex_compatibility_manifest(install_path, selected_manifest)
+    if native_detection is not None or codex_native:
         validation = validate_apm_package(
             install_path,
             agent_plugin_detection=native_detection,
@@ -418,7 +422,7 @@ def _build_package_info(
                 "; ".join(validation.errors) or "Agent Plugin validation produced no package"
             )
         pkg = validation.package
-        package_type = PackageType.AGENT_PLUGIN
+        package_type = validation.package_type
     else:
         apm_yml = install_path / "apm.yml"
         pkg = None
@@ -435,9 +439,7 @@ def _build_package_info(
                 source=lock_dep.repo_url,
             )
         try:
-            package_type = PackageType(
-                lock_dep.package_type or detect_package_type(install_path)[0].value
-            )
+            package_type = PackageType(lock_dep.package_type or detected_type.value)
         except Exception:
             package_type = None
     if not pkg.source:
@@ -482,42 +484,6 @@ def _filter_targets(all_targets, names: frozenset[str] | None):
     return [t for t in all_targets if t.name in names]
 
 
-def _read_apm_yml_target(project_root: Path):
-    """Return the explicit target list from ``apm.yml`` if declared, else ``None``.
-
-    Handles both the singular ``target:`` and plural ``targets:`` forms so
-    that the replay uses the same target set the install pipeline used.
-    Without this, a project with ``targets: [claude, codex]`` (no copilot)
-    that also has a ``.github/`` directory for unrelated CI workflows would
-    have copilot auto-detected during replay, producing false
-    ``unintegrated`` findings for ``.github/instructions/`` (#1924).
-    """
-    apm_yml = project_root / "apm.yml"
-    if not apm_yml.exists():
-        return None
-    try:
-        # Route through the merge/alias-bounded loader (not stock yaml.safe_load)
-        # so a hostile apm.yml shipped in a cloned repo cannot wedge the default-on
-        # ``apm audit`` drift replay with a billion-laughs merge/alias bomb.
-        from apm_cli.utils.yaml_io import load_yaml
-
-        data = load_yaml(apm_yml) or {}
-    except Exception:
-        # Manifest unreadable / corrupt: fall back to auto-detect rather
-        # than crashing the replay; the caller still surfaces a useful
-        # error elsewhere if the project is truly broken.
-        return None
-    # parse_targets_field handles both 'target:' (singular) and 'targets:'
-    # (plural list) and validates the tokens against the canonical set.
-    try:
-        from apm_cli.core.apm_yml import parse_targets_field
-
-        tokens = parse_targets_field(data)
-        return tokens if tokens else None
-    except Exception:
-        return None
-
-
 def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     """Execute the scratch replay and return the populated scratch dir.
 
@@ -534,7 +500,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
     from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
-    from apm_cli.integration.targets import resolve_targets
+    from apm_cli.integration.targets import resolve_audit_targets
     from apm_cli.utils.diagnostics import DiagnosticCollector
 
     if not config.lockfile_path.exists():
@@ -560,17 +526,12 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
+    codex_records = None
 
-    # Honor apm.yml's ``target:`` field so multi-target projects replay
-    # into all governed roots (not just whichever directory happens to
-    # already exist via auto-detection). Without this, a project that
-    # targets ``copilot,claude,cursor`` would replay only the primary
-    # auto-detected target and report the others as ``orphaned``.
-    explicit_target = _read_apm_yml_target(project_root)
-    live_targets = resolve_targets(
+    live_targets = resolve_audit_targets(
         project_root,
         user_scope=config.user_scope,
-        explicit_target=explicit_target,
+        lockfile=lock,
     )
     targets = [replay_target(target) for target in _filter_targets(live_targets, config.targets)]
     registries: dict[str, str] | None = None
@@ -707,6 +668,18 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             live_modules_dir,
                             scratch_root,
                         )
+                        if identity := result.get("codex_source_identity"):
+                            from apm_cli.codex_plugins.registrar import verify_codex_source_identity
+
+                            candidate = lock_dep.to_dependency_ref().get_install_path(
+                                live_modules_dir
+                            )
+                            codex_records = verify_codex_source_identity(
+                                live_modules_dir,
+                                candidate=candidate if candidate.exists() else install_path,
+                                records=codex_records,
+                                **identity,
+                            )
                     replayed_count += 1
     finally:
         if snapshot_started:

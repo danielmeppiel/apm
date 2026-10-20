@@ -270,6 +270,60 @@ def _check_target_vocabulary(provider: FactsProvider) -> Iterable[Violation]:
     )
 
 
+def _check_audit_target_selection(provider: FactsProvider) -> Iterable[Violation]:
+    """Audit consumers must share target intent and recorded identity owners."""
+    rule_id = "registry_delegation.audit_target_selection"
+    profile_owner = "src/apm_cli/integration/targets.py"
+    consumers = {
+        "src/apm_cli/install/drift.py": ("run_replay",),
+        "src/apm_cli/install/audit_replay.py": ("prepare_ci_audit_replay",),
+        "src/apm_cli/policy/ci_checks.py": ("_check_drift", "run_baseline_checks"),
+        "src/apm_cli/security/file_scanner.py": ("scan_project_result",),
+    }
+    findings: list[Violation] = []
+    for name, owner in (
+        ("resolve_audit_targets", profile_owner),
+        ("resolve_audit_target_decision", _EFFECTIVE_TARGET_OWNER),
+    ):
+        definers, failures = _defining_files(provider, rule_id, name, kinds=("function",))
+        findings.extend(failures)
+        if definers != frozenset({owner}):
+            findings.append(violation(rule_id, owner, f"{name} must have exactly one owner"))
+    required = {
+        **{
+            path: {scope: ("resolve_audit_targets",) for scope in scopes}
+            for path, scopes in consumers.items()
+        },
+        profile_owner: {
+            "resolve_audit_targets": (
+                "resolve_audit_target_decision",
+                "DeploymentLedgerCodec.recorded_target_names",
+                "resolve_targets",
+            )
+        },
+    }
+    required["src/apm_cli/policy/ci_checks.py"]["_resolve_deployed_file_path"] = (
+        "BaseIntegrator.validate_deploy_path",
+    )
+    for path, scopes in required.items():
+        facts, failures = checked_facts(provider, path, rule_id)
+        findings.extend(failures)
+        if failures:
+            continue
+        for scope, names in scopes.items():
+            calls = {call.qualname for call in facts.calls if call.scope == scope}
+            for name in names:
+                if name not in calls:
+                    findings.append(violation(rule_id, path, f"{scope} must delegate to {name}"))
+            if path in consumers and calls.intersection(
+                {"resolve_targets", "active_targets", "detect_target", "get_install_target"}
+            ):
+                findings.append(
+                    violation(rule_id, path, f"{scope} must not rederive audit targets")
+                )
+    return findings
+
+
 def _check_install_target_selection(provider: FactsProvider) -> Iterable[Violation]:
     """Package, MCP, and LSP phases must share one ``EffectiveTargetDecision``.
 
@@ -914,6 +968,13 @@ def _check_version_rendering(provider: FactsProvider) -> Iterable[Violation]:
 
 
 RULES: tuple[Rule, ...] = (
+    Rule(
+        id="registry_delegation.audit_target_selection",
+        group=GROUP,
+        guard_ids=("registry-delegation-audit-target-selection",),
+        description="Audit replay and coverage share current intent and recorded target identity.",
+        check=_check_audit_target_selection,
+    ),
     Rule(
         id="registry_delegation.runtime_descriptors",
         group=GROUP,

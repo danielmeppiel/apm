@@ -65,6 +65,12 @@ parent's remote host/repo/ref and fetches the sibling from the same origin.
 Absolute paths, paths that escape the repo root, and cross-repo local paths
 are rejected.
 
+Individual-file dependencies, including inherited `git: parent` references,
+can recover from confirmed GitHub API throttling through sparse Git. A separate
+Git authentication challenge may use an existing resolver-selected credential
+(such as `gh` login). The lockfile records the commit actually fetched, not a
+different revision observed by an earlier API request.
+
 **GitLab `path:` fetch transport:** GitLab `path:` files use Git first, so
 self-hosted instances with the API disabled still install. Restricted REST
 fallback requires an exhausted plan with an executed same-origin effective
@@ -398,6 +404,25 @@ preserve dotted directories such as `plugins/my-plugin-1.2.3` through explicit
 package-content validation still apply. The actual package shape -- APM package
 (including dep-only `apm.yml`), skill bundle, or plugin -- is resolved at fetch
 time. See [install validation](commands.md#install-validation-chain-virtual-subdirectory-packages).
+
+Compatibility-only `.codex-plugin/plugin.json` uses the same local or pinned
+Git dependency syntax, not a new reference format. Use `-g --target codex`
+with the entire bundle and its executable types approved. See the
+[native Codex contract](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#codex-compatibility-bundles-through-apm)
+for exact version, scope, and measured-platform limits. Do not select a skill subset. Native
+transport generations never replace the original dependency pin or publisher
+version. Other scopes/versions fail rather than reducing the package to skills.
+Native integrity includes publisher cache-named assets and executable bits
+without changing existing APM lock hashes. Publisher metadata remains unchanged
+even with an absent or `0.0.0` native version. Keep the validated ownership
+journal for cold-cache frozen restores with unrelated loose MCP declarations.
+The journal binds that fingerprint to the original Git commit. Same-pin cache
+byte or executable-bit drift is refused; remove only the dependency's disposable
+`apm_modules/` directory and retry `apm install -g --frozen --target codex`.
+Local source edits and newly selected commits remain valid updates. Remote
+records without source-pin provenance are not adopted. Save the pinned declaration,
+run `apm uninstall -g <dependency>`, then
+`apm install -g <saved-pinned-dependency> --target codex`.
 
 **Gitea and Gogs (self-hosted or vendor-hosted):** virtual packages resolve via the host's `/{owner}/{repo}/raw/{ref}/{path}` URL first, then fall back to the Contents API (v1 native, v3 Gogs-compat). Direct GitLab nested-group repos (`group/subgroup/repo`) require the object form (`git: <full-url>`, `path: <virtual>`) -- shorthand is ambiguous on >2-segment paths. **Exception:** when the dep routes through a registry proxy (explicit `host/artifactory/<key>/...` FQDN, or bare shorthand under `PROXY_REGISTRY_URL` + `PROXY_REGISTRY_ONLY=1`), the install-time boundary probe HEAD-walks the candidate splits against the proxy and locks in the first one whose archive responds, so nested-group shorthand works without the object form (#1472).
 

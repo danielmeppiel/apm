@@ -2,7 +2,7 @@
 
 ## Supported package layouts
 
-APM recognizes six layouts. The shape of the package root tells APM
+APM recognizes these layouts. The shape of the package root tells APM
 how to install it:
 
 | Root signal | Author intent | Install semantic |
@@ -13,11 +13,21 @@ how to install it:
 | `hooks/*.json` or `.apm/hooks/*.json` only | Harness hook package | Add hook commands to each target's configuration and copy referenced files |
 | `plugin.json` (no `$schema`, or unrecognized `$schema`) / `.claude-plugin/` | Claude plugin collection | Dissect via plugin artifact mapping |
 | `plugin.json` with the recognized Agent Plugins `$schema` | Portable Agent Plugin | Acquired and locked as one opaque unit; registered when effective targets include Copilot and admission gates pass. Excluded targets create no native registration or loose primitive projection. APM does not require the runtime during lifecycle operations; loading requires supported Copilot CLI 1.0.81 or newer |
+| `.codex-plugin/plugin.json` without higher-precedence package intent | Codex compatibility bundle | Complete native bundle through Codex CLI 0.163.0, user scope only; initially disabled, no loose projection or other-target translation |
 
 When plugin signals coexist with an eligible `apm.yml`, the APM layout wins.
 An `apm.yml` is eligible when the root also has `.apm/` or the manifest
 declares APM or MCP dependencies. To intentionally select a plugin layout,
 omit `apm.yml` or keep it metadata-only, without `.apm/` or dependencies.
+
+Root `plugin.json` and `.claude-plugin/plugin.json` also precede the Codex
+compatibility overlay. The Codex route requires a native-discoverable skill
+with an unambiguous installed path. MCP declarations may be an inline server
+object or a package-relative JSON file containing `mcpServers`; referenced
+resources must be regular files inside the bundle. Symlinks and partial skill
+subsets are refused. Publisher files/version and dependency pins are preserved;
+repair generations belong only to APM transport metadata. `apm pack` output
+is unchanged. Native content discovery does not certify execution or auth.
 
 For Agent Plugins with the same declared name, a direct dependency wins over a
 transitive dependency. APM refuses same-precedence collisions and does not

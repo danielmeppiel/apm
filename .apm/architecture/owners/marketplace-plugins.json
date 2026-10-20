@@ -117,6 +117,22 @@
       "guards": ["marketplace-integrations-native-registration"]
     },
     {
+      "id": "codex-native-plugin-lifecycle",
+      "decision": "Qualified Codex compatibility-bundle admission, public native lifecycle, APM transport ownership and immutable source-pin integrity",
+      "owner": "codex_plugins/registrar.py (synchronize_codex_plugins, verify_codex_source_identity), admission.py, client.py; utils/content_hash.py owns the opt-in native fingerprint",
+      "selectors": [
+        "src/apm_cli/codex_plugins/admission.py",
+        "src/apm_cli/codex_plugins/client.py",
+        "src/apm_cli/codex_plugins/manifest.py",
+        "src/apm_cli/codex_plugins/registrar.py",
+        "src/apm_cli/codex_plugins/snapshot.py",
+        "src/apm_cli/install/phases/codex_plugins.py",
+        "src/apm_cli/utils/content_hash.py",
+        "src/apm_cli/deps/package_validator.py"
+      ],
+      "guards": ["marketplace-integrations-codex-native-lifecycle"]
+    },
+    {
       "id": "copilot-marketplace-ownership",
       "decision": "APM-owned Copilot marketplace catalog, settings entries, and ownership ledger",
       "owner": "copilot_plugins/registrar.py (synchronize_copilot_plugins, resync_native_plugins)",
