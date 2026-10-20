@@ -47,10 +47,51 @@ from apm_cli.copilot_plugins.settings import (
     read_ledger,
 )
 from apm_cli.core.scope import InstallScope
+from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
+from tests.integration.test_native_plugin_audit_lifecycle import (
+    _run_install,
+    _snapshot_tree,
+    _write_project_with_skill,
+)
 from tests.spec_conformance._helpers import assert_spec_contains
 from tests.unit.copilot_plugins._builders import read_json, write_agent_plugin
 
 _COPILOT_TARGET = SimpleNamespace(name="copilot")
+
+
+@pytest.mark.req("req-tg-011")
+def test_cache_only_replay_preserves_native_target_exclusion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Replay excludes native deployment without suppressing ordinary skills."""
+    project = tmp_path / "project"
+    source = tmp_path / "plugins" / "copilot_only"
+    write_agent_plugin(source, name="copilot-only", with_mcp=False)
+    _write_project_with_skill(project, [str(source)], targets=["copilot"])
+    install_res = _run_install(monkeypatch, project, "--target", "copilot")
+    assert install_res.exit_code == 0, install_res.output
+
+    _write_project_with_skill(project, [str(source)], targets=["claude"])
+    before = _snapshot_tree(project)
+    scratch = tmp_path / "replay"
+    result = run_replay(
+        ReplayConfig(
+            project_root=project,
+            lockfile_path=project / "apm.lock.yaml",
+            targets=frozenset({"claude"}),
+            scratch_root=scratch,
+        ),
+        CheckLogger(),
+    )
+
+    assert result == scratch
+    assert "Replayed 1 package(s)" in capsys.readouterr().err
+    assert (scratch / ".claude/skills/local-skill/SKILL.md").is_file()
+    assert not catalog_path_for(scratch / "apm_modules").exists()
+    assert not (scratch / ".claude/skills/copilot-only-skill").exists()
+    assert before == _snapshot_tree(project)
 
 
 def _project(tmp_path: Path) -> tuple[Path, Path]:

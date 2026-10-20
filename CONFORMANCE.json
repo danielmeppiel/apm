@@ -1552,8 +1552,9 @@
       "keyword": "MUST",
       "section": "8.5.5",
       "status": "active",
-      "test_count": 2,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_copilot_plugins_reqs.py::test_cache_only_replay_preserves_native_target_exclusion",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_materializes_without_projection",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_stays_opaque_after_materialization"
       ]
