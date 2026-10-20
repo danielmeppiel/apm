@@ -391,8 +391,11 @@ class CachedDependencySource(DependencySource):
             _ref = _reg_res.version if _reg_res else (dep_ref.reference or "")
         else:
             _ref = dep_ref.reference or ""
-        # Prefer the lockfile SHA, then this run's callback SHA.
-        _sha = format_short_sha(dep_locked_chk.resolved_commit) if dep_locked_chk else ""
+        # Fresh callback bytes have their own identity, not the previous lock SHA.
+        _commit = ctx.callback_downloaded.get(dep_key) if self.fetched_this_run else None
+        if not _commit and dep_locked_chk:
+            _commit = dep_locked_chk.resolved_commit
+        _sha = format_short_sha(_commit) if _commit else ""
         if not _sha:
             _callback_sha = ctx.callback_downloaded.get(dep_key)
             if _callback_sha:
