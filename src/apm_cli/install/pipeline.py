@@ -47,6 +47,7 @@ from functools import wraps
 from typing import TYPE_CHECKING
 
 from ..agent_plugins.errors import AgentPluginError
+from ..codex_plugins.client import CodexNativeError
 from ..copilot_plugins.settings import CopilotSettingsCollisionError
 from ..models.dependency.materialization import MaterializationPathCollisionError
 from ..models.results import InstallDisposition, InstallResult
@@ -368,7 +369,7 @@ def _transactional_pipeline(run):
 
 
 @_transactional_pipeline
-def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
+def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     apm_package: APMPackage,
     update_refs: bool = False,
     verbose: bool = False,
@@ -663,11 +664,11 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # can be admitted and resolving the capability would be pure waste.
         # --------------------------------------------------------------
         if not lockfile_only:
-            from .phases import copilot_plugins as _copilot_plugins_phase
+            from .phases import codex_plugins, copilot_plugins
             from .phases import targets as _targets_phase
 
             _run_phase("targets", _targets_phase, ctx)
-            _run_phase("copilot_activate", _copilot_plugins_phase.ActivatePhase, ctx)
+            _run_phase("copilot_activate", copilot_plugins.ActivatePhase, ctx)
 
         # --------------------------------------------------------------
         # Phase 2.5: Post-targets target-aware policy check (#827)
@@ -946,7 +947,8 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # later gate refused.
         # ------------------------------------------------------------------
         if not lockfile_only:
-            _run_phase("copilot_plugins", _copilot_plugins_phase, ctx)
+            _run_phase("copilot_plugins", copilot_plugins, ctx)
+            _run_phase("codex_plugins", codex_plugins, ctx)
 
         # Emit verbose integration stats + bare-success fallback + return result
         from .phases import finalize as _finalize_phase
@@ -954,7 +956,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         _perf_stats.render_summary(logger, project_root=str(ctx.project_root))
         return _run_phase("finalize", _finalize_phase, ctx)
 
-    except AgentPluginError:
+    except (AgentPluginError, CodexNativeError):
         # Preserve schema-routing and native-boundary diagnostics verbatim.
         raise
     except AuthenticationError:
@@ -982,13 +984,8 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
     except InstallFailureAlreadyRendered:
         raise
     except (PathTraversalError, MaterializationPathCollisionError, CopilotSettingsCollisionError):
-        # Path-safety, package-directory collision, and Copilot settings
-        # collision errors already include actionable guidance; re-raise them
-        # verbatim. A settings collision in particular means dependency
-        # resolution SUCCEEDED and the lockfile is written -- only the Copilot
-        # merge collided -- so wrapping it into "Failed to resolve APM
-        # dependencies: ..." would mis-attribute the failure and double-wrap
-        # once commands/install.py prefixes again.
+        # These actionable failures can occur after resolution and persistence.
+        # Preserve their diagnostics rather than misreporting a resolution error.
         raise
     except Exception as e:
         raise RuntimeError(f"Failed to resolve APM dependencies: {e}")  # noqa: B904

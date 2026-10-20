@@ -88,8 +88,10 @@ or runtime configuration.
 
 `apm update`, `apm install --update`, and `apm install --refresh` stage and
 validate replacement packages before publication. A failed download,
-validation, or activation leaves the previous package and lockfile active;
-fix the reported cause and rerun the command.
+validation, or staged activation leaves the previous package and lockfile active;
+fix the reported cause and rerun the command. Late Codex native reconciliation
+runs after APM persistence and is not part of that rollback; see its qualified
+contract below.
 
 `apm install` preserves the invoking repository's branch and HEAD when run from
 a Git hook. It rejects cross-host network rewrites for every Git host and scopes
@@ -221,6 +223,27 @@ target today. If target exclusion leaves a non-dry-run install with no deployed 
 installs that deploy at least one other package still exit `0`. For this target
 exclusion, `--dry-run` succeeds as a preview without the per-package recovery
 diagnostic; it does not certify real install success.
+
+Compatibility-only `.codex-plugin/plugin.json` bundles use
+`apm install -g <package> --target codex` with exactly Codex CLI 0.163.0 on
+`PATH`; native qualification was measured on macOS arm64 only.
+Project scope, other versions, skill subsets, and unsupported native
+shapes fail explicitly. Approve executable types through `allowExecutables`;
+new native registrations remain disabled. Reinstall/update and
+`apm install -g --frozen --target codex` preserve activation and MCP policy,
+repair owned missing/corrupt copies, and never run MCP/plugin code. Healthy
+reinstalls retain their transport generation. `apm uninstall -g <package>`
+refuses foreign or customized native settings before releasing APM ownership;
+retire those entries using Codex and retry. No loose registration or
+cross-target translation is produced. See the
+[qualified contract](https://microsoft.github.io/apm/consumer/installing-from-marketplaces/#codex-compatibility-bundles-through-apm)
+for late-failure retry and ownership-journal recovery.
+Migration names the dependency and retained paths and refuses native registration
+while cleanup retains edited or undeletable loose files. Preserve or relocate your edits, resolve the cleanup
+conflict, then retry; APM does not register duplicate native and loose copies.
+Same-pin native cache drift fails without replacing the recorded source identity.
+From the APM user directory, `apm audit --ci --format json` reports this as a failed
+drift check without starting Codex or changing native state.
 
 ## Cache management
 
