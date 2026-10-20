@@ -982,6 +982,41 @@ def test_dropped_target_merge_hook_state_reconciled_fail_safe(tmp_path):
     )
 
 
+@pytest.mark.req("req-lk-006")
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_frozen_install_preserves_conflicted_lockfile_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, newline: str
+) -> None:
+    """The existing frozen no-rewrite obligation also covers unreadable lockfiles."""
+    from unittest.mock import patch
+
+    from click.testing import CliRunner
+
+    from apm_cli.cli import cli
+
+    (tmp_path / "apm.yml").write_text(
+        "name: conformance\nversion: '1.0.0'\ntargets:\n  - claude\n", encoding="utf-8"
+    )
+    instructions = tmp_path / ".apm" / "instructions"
+    instructions.mkdir(parents=True)
+    (instructions / "c.instructions.md").write_text("conformance\n", encoding="utf-8")
+    lockfile_path = tmp_path / "apm.lock.yaml"
+    original = (
+        ("lockfile_version: '1'\n<<<<<<< HEAD\n=======\n>>>>>>> feature\n")
+        .replace("\n", newline)
+        .encode("utf-8")
+    )
+    lockfile_path.write_bytes(original)
+    monkeypatch.chdir(tmp_path)
+
+    with patch("apm_cli.commands._helpers.check_for_updates", return_value=None):
+        result = CliRunner().invoke(cli, ["install", "--frozen"])
+
+    assert result.exit_code == 1, result.output
+    assert lockfile_path.read_bytes() == original
+    assert_spec_contains("the lockfile is never written\nor rewritten")
+
+
 class TestFrozenInstallNeverWritesLockfile:
     """req-lk-006's first clause, at the write chokepoint.
 
