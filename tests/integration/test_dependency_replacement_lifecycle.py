@@ -52,6 +52,7 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 class ReplacementFixture:
     consumer: LocalPackage
     local: LocalPackage
+    work_factory: LocalPackageFactory
     upstream_sha: str
     fork_sha: str
     upstream: LocalGitRepository
@@ -126,6 +127,7 @@ def _replacement_fixture(tmp_path: Path, apm_binary_path: Path) -> ReplacementFi
     return ReplacementFixture(
         consumer,
         local,
+        work_factory,
         upstream_sha,
         fork_sha,
         origin,
@@ -346,6 +348,61 @@ def test_replacement_frozen_compares_dormant_rules_without_reading_sources(
     assert result.returncode != 0, result.stdout + result.stderr
     assert "replacement" in (result.stdout + result.stderr).lower()
     assert _snapshot(fixture.consumer.root) == before
+
+
+def test_replacement_hook_consent_stays_with_selected_source(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.install()
+    fixture.replace({"path": "../local-base"})
+    fixture.work_factory.add_hook(
+        fixture.local,
+        "replacement-consent",
+        {"hooks": {"preToolUse": [{"bash": "printf REPLACEMENT_HOOK"}]}},
+    )
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["executables"] = {"allow": {"apm-replacement-fixture/base": {"hooks": True}}}
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    hooks = fixture.consumer.root / ".github/hooks"
+    hooks.mkdir(parents=True, exist_ok=True)
+    sentinel = hooks / "user.json"
+    sentinel.write_text('{"user":"preserve"}\n', encoding="ascii")
+    fixture.install()
+    fixture.assert_bytes("LOCAL")
+    assert sorted(path.name for path in hooks.glob("*.json")) == ["user.json"]
+
+    manifest["executables"]["allow"]["../local-base"] = {"hooks": True}
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    fixture.install()
+    deployed = [path for path in hooks.glob("*.json") if path != sentinel]
+    assert len(deployed) == 1
+    assert "REPLACEMENT_HOOK" in deployed[0].read_text(encoding="utf-8")
+    fixture.replace(None)
+    fixture.install()
+    fixture.assert_bytes("UPSTREAM")
+    assert sorted(path.name for path in hooks.glob("*.json")) == ["user.json"]
+    assert sentinel.read_bytes() == b'{"user":"preserve"}\n'
+
+
+def test_replacement_source_symlink_escape_preserves_previous_install(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.install()
+    outside = fixture.local.root.parent / "outside-package"
+    outside.mkdir()
+    marker = outside / "owned-fixture.txt"
+    marker.write_text("DO_NOT_COPY\n", encoding="ascii")
+    (fixture.local.root / "escape").symlink_to(outside, target_is_directory=True)
+    fixture.replace({"path": "../local-base"})
+    before = _snapshot(fixture.consumer.root)
+    result = fixture.run(*_INSTALL, "--verbose")
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "symlink" in (result.stdout + result.stderr).lower()
+    assert _snapshot(fixture.consumer.root) == before
+    fixture.assert_bytes("UPSTREAM")
+    assert marker.read_bytes() == b"DO_NOT_COPY\n"
 
 
 def test_replacement_explicit_fork_sha_survives_update(

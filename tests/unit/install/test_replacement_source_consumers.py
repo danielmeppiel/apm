@@ -355,3 +355,81 @@ def test_replacement_lock_seed_uses_only_matching_clean_selected_source(
         )
     else:
         seed.assert_not_called()
+
+
+@pytest.mark.parametrize("source_kind", ["local", "fork"])
+def test_install_policy_gate_blocks_selected_source_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_kind: str
+) -> None:
+    import os
+
+    from click.testing import CliRunner
+
+    from apm_cli.cli import cli
+    from apm_cli.models.manifest_contract import SOURCE_REPLACEMENTS_V1_SCHEMA_URI
+    from apm_cli.policy.discovery import PolicyFetchResult
+    from apm_cli.policy.schema import ApmPolicy
+    from apm_cli.utils.yaml_io import dump_yaml
+    from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
+    from tests.utils.local_git_repository import LocalGitRepositoryFactory
+    from tests.utils.local_package import LocalPackageFactory
+
+    isolated = IsolatedApmEnvironment.create(tmp_path / "isolation", base_env=dict(os.environ))
+    environment = isolated.subprocess_env()
+    environment["APM_POLICY_DISABLE"] = "0"
+    factory = LocalPackageFactory(tmp_path / "sources")
+    package = factory.create("selected")
+    factory.add_instruction(package, "selected", "---\napplyTo: '**'\n---\n# SELECTED\n")
+    source = {"path": "./sources/selected"}
+    if source_kind == "fork":
+        repositories = LocalGitRepositoryFactory(isolated.repository_root, env=environment)
+        repository = repositories.create("fork", source_tree=package.root)
+        sha = repositories.commit(repository, message="Selected fixture").sha
+        environment = repositories.url_rewrite_subprocess_env_many(
+            ((repository, "https://github.com/team/fork"),)
+        )
+        source = {"git": "https://github.com/team/fork", "ref": sha}
+    selected, _, _ = _locked(tmp_path, source)
+    manifest = tmp_path / "apm.yml"
+    dump_yaml(
+        {
+            "name": "policy-consumer",
+            "version": "1.0.0",
+            "targets": ["copilot"],
+            "$schema": SOURCE_REPLACEMENTS_V1_SCHEMA_URI,
+            "dependencies": {"apm": [{"git": "https://github.com/MixedOrg/MixedRepo"}]},
+            "replace": [replacement_rule_to_dict(selected.replacement.rule)],
+        },
+        manifest,
+    )
+    before = manifest.read_bytes()
+    monkeypatch.chdir(tmp_path)
+    policy = ApmPolicy(
+        enforcement="block",
+        dependencies=DependencyPolicy(
+            allow=[selected.ownership_reference.get_canonical_dependency_string()]
+        ),
+    )
+    fetch = PolicyFetchResult(
+        policy=policy,
+        source="org:fixture/.github",
+        cached=False,
+        error=None,
+        cache_age_seconds=None,
+        cache_stale=False,
+        fetch_error=None,
+        outcome="found",
+    )
+    with (
+        patch.dict(os.environ, environment, clear=True),
+        patch("apm_cli.policy.discovery.discover_policy_with_chain", return_value=fetch),
+        patch("apm_cli.policy.install_preflight.discover_policy_with_chain", return_value=fetch),
+        patch("apm_cli.commands._helpers.check_for_updates", return_value=None),
+    ):
+        result = CliRunner().invoke(cli, ["install", "--target", "copilot"])
+    assert result.exit_code != 0, result.output
+    assert "blocked by org policy" in result.output.lower()
+    assert manifest.read_bytes() == before
+    assert not (tmp_path / "apm.lock.yaml").exists()
+    assert not list((tmp_path / "apm_modules").rglob("apm.yml"))
+    assert not (tmp_path / ".github/instructions/selected.instructions.md").exists()
