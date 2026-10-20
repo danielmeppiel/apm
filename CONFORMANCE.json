@@ -829,8 +829,11 @@
       "keyword": "MUST",
       "section": "6.8",
       "status": "active",
-      "test_count": 5,
+      "test_count": 8,
       "tests": [
+        "tests/spec_conformance/test_audit_recorded_target_reqs.py::test_legacy_mixed_targets_preserve_discovery_and_drift",
+        "tests/spec_conformance/test_audit_recorded_target_reqs.py::test_recorded_grok_target_preserves_governed_drift[False]",
+        "tests/spec_conformance/test_audit_recorded_target_reqs.py::test_recorded_grok_target_preserves_governed_drift[True]",
         "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[False]",
         "tests/spec_conformance/test_policy_reqs.py::test_hook_sidecar_comparison_preserves_governed_drift_exit[True]",
         "tests/spec_conformance/test_policy_reqs.py::test_policy_fail_on_drift_parses_and_is_specified",
