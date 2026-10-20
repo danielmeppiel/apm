@@ -465,8 +465,7 @@ def lockfile_satisfies_manifest(
     Args:
         lockfile: The on-disk lockfile.
         manifest_deps: Direct deps from the apm.yml manifest (regular +
-            dev).  Local deps are skipped as they have no remote ref to
-            satisfy.
+            dev). Local deps require an entry but have no remote ref.
 
     Returns:
         ``(satisfied, reasons)`` -- ``reasons`` is a list of
@@ -479,13 +478,15 @@ def lockfile_satisfies_manifest(
     marketplace_index = lockfile.marketplace_index()
     reasons: list[str] = []
     for dep in manifest_deps:
-        if getattr(dep, "is_local", False):
-            continue
         key = _dep_ref_key(dep)
         display = dep.get_display_name() if dep.is_marketplace else key
         locked_dep = lockfile.get_dependency(key, marketplace_index=marketplace_index)
         if locked_dep is None or key == ".":
             reasons.append(f"  - {display} is declared in apm.yml but missing from apm.lock.yaml")
+            continue
+        if getattr(dep, "is_local", False):
+            if locked_dep.source != "local" or not locked_dep.content_hash:
+                reasons.append(f"  - local dependency {key!r} has no locked content hash")
             continue
         reference = dep.reference
         if (
