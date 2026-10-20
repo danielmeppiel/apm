@@ -6,6 +6,7 @@ with runtime-neutral target selection.
 
 import builtins
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -405,9 +406,7 @@ def run_mcp_integration(  # noqa: PLR0913
 
     if current_view is not None and lock_path.exists():
         lockfile = LockFile.read(lock_path)
-        if lockfile is not None:
-            if omissions != lockfile.mcp_omissions:
-                lockfile.mcp_omissions = omissions
-                lockfile.write(lock_path)
+        if lockfile is not None and omissions != lockfile.mcp_omissions:
+            replace(lockfile, mcp_omissions=omissions).write(lock_path, existing_lockfile=lockfile)
 
     return mcp_count, mcp_apm_config

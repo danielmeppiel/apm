@@ -533,7 +533,8 @@ def _check_config_consistency(
         passed=False,
         message=(
             f"{len(details)} MCP config inconsistenc(ies) -- "
-            "repeat the intended install selection to reconcile"
+            "repeat 'apm install' with the intended selection "
+            "('--only apm' for skills-only) to reconcile"
         ),
         details=details,
     )
