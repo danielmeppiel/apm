@@ -458,6 +458,38 @@ def test_lockfile_inventory_metadata_is_non_trust_anchor():
     )
 
 
+@pytest.mark.req("req-lk-019")
+@pytest.mark.parametrize(
+    ("selection", "inventory"),
+    [("^1.0.0", "1.2.3"), ("main", "main"), ("b" * 40, "b" * 40)],
+)
+def test_marketplace_inventory_cannot_substitute_for_locked_selection(
+    selection: str, inventory: str
+) -> None:
+    """Inventory metadata cannot make an unproved frozen selection valid."""
+    from apm_cli.deps.lockfile import LockedDependency, LockFile
+    from apm_cli.install.plan import lockfile_satisfies_manifest
+    from apm_cli.models.dependency import DependencyReference
+
+    declared = DependencyReference.parse_from_dict(
+        {"name": "tool", "marketplace": "catalog", "version": selection}
+    )
+    locked = LockedDependency(
+        repo_url="owner/package",
+        discovered_via="catalog",
+        marketplace_plugin_name="tool",
+        resolved_commit="a" * 40,
+        resolved_ref="other",
+        name="tool",
+        version=inventory,
+    )
+    lock = LockFile(dependencies={locked.get_unique_key(): locked})
+    satisfied, reasons = lockfile_satisfies_manifest(lock, [declared])
+    assert satisfied is False
+    assert len(reasons) == 1
+    assert "tool@catalog" in reasons[0]
+
+
 @pytest.mark.req("req-lk-022")
 def test_lockfile_materialization_spelling_is_non_identity_metadata():
     from apm_cli.deps.lockfile import LockedDependency

@@ -672,6 +672,7 @@ marketplace-integrations-generated-bundle-lf-writers
 marketplace-integrations-hash-visible-lf-writers
 marketplace-integrations-legacy-skill-membership
 marketplace-integrations-local-audit-resolution
+marketplace-integrations-locked-evidence
 marketplace-integrations-metadata-enrichment
 marketplace-integrations-native-registration
 marketplace-integrations-output-path
