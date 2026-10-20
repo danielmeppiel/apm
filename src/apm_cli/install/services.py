@@ -44,6 +44,8 @@ from .target_filter import (
 )
 from .target_filter import resolve_effective_package_targets
 from .target_filter import warn_target_reconcile_failure as _warn_target_reconcile_failure
+from .target_warnings import log_canvas_skip as _log_canvas_skip
+from .target_warnings import log_hooks_skip as _log_hooks_skip
 
 if TYPE_CHECKING:
     from ..core.command_logger import InstallLogger
@@ -136,52 +138,6 @@ def _emit_integration_hints(prim_name: str, info: dict, log_integration) -> None
     # freshly-deployed canvas is not picked up mid-session.
     if prim_name == "canvas" and (info["files"] > 0 or info["adopted"] > 0):
         log_integration("  |-- reload the Copilot session (/clear) or restart to load the canvas")
-
-
-def _log_hooks_skip(
-    package_name: str, package_info: Any, targets: Any, logger: InstallLogger | None
-) -> None:
-    """Warn about skipped hooks only when the package actually ships them.
-
-    Aligned with :meth:`HookIntegrator.find_hook_files`: checks for
-    ``*.json`` in ``.apm/hooks/`` and ``hooks/``.
-    """
-    _install = Path(package_info.install_path)
-    has_hooks = False
-    for hook_dir in [_install / ".apm" / "hooks", _install / "hooks"]:
-        if hook_dir.is_dir() and any(hook_dir.glob("*.json")):
-            has_hooks = True
-            break
-    if not has_hooks:
-        return
-    _pkg_label = package_name or getattr(package_info, "name", "unknown")
-    if logger:
-        logger.warning(
-            f"{_pkg_label}: hooks skipped (not approved in allowExecutables). "
-            f"Run 'apm approve {_pkg_label}' to approve.",
-            symbol="warning",
-        )
-
-
-def _log_canvas_skip(package_name: str, package_info: Any, logger: InstallLogger | None) -> None:
-    """Warn about skipped canvas extensions when the package ships them."""
-    _install = Path(package_info.install_path)
-    extensions_root = _install / ".apm" / "extensions"
-    try:
-        has_canvas = extensions_root.is_dir() and any(
-            (d / "extension.mjs").is_file() for d in extensions_root.iterdir() if d.is_dir()
-        )
-    except OSError:
-        has_canvas = False
-    if not has_canvas:
-        return
-    _pkg_label = package_name or getattr(package_info, "name", "unknown")
-    if logger:
-        logger.warning(
-            f"{_pkg_label}: canvas extension(s) skipped (not approved in allowExecutables). "
-            f"Run 'apm approve {_pkg_label}' to approve.",
-            symbol="warning",
-        )
 
 
 def _targets_explicitly_requested(ctx: InstallContext | None) -> bool:
@@ -328,21 +284,44 @@ def integrate_package_primitives(  # noqa: PLR0913
         else _bin_skip_reason_override
     )
     from apm_cli.claude_plugins.admission import plan_native_claude_plugin
+    from apm_cli.codex_plugins.admission import finalize_codex_native, plan_native_codex_plugin
     from apm_cli.install.deployable_source_plan import DeployableSourcePlan
     from apm_cli.install.helpers.security_scan import _pre_deploy_security_scan
 
-    native_claude_plugin = plan_native_claude_plugin(
+    codex_native = plan_native_codex_plugin(
         package_info,
-        package_name=package_name,
-        targets=targets,
-        scope=InstallScope.USER if native_claude_user_scope else scope,
+        package_name,
+        targets,
+        scope=scope,
         skill_subset=skill_subset,
-        hooks_approved=_hooks_approved,
-        skip_bin=_skip_bin,
+        approvals={
+            "hooks": _hooks_approved,
+            "mcp": _mcp_approved,
+            "bin": _bin_approved and not _skip_bin,
+            "canvas": _canvas_approved,
+            "lsp": _lsp_approved,
+        },
+        ctx=ctx,
+        read_only=scratch_root is not None,
+    )
+    native_claude_plugin = (
+        None
+        if codex_native is not None
+        else plan_native_claude_plugin(
+            package_info,
+            package_name=package_name,
+            targets=targets,
+            scope=InstallScope.USER if native_claude_user_scope else scope,
+            skill_subset=skill_subset,
+            hooks_approved=_hooks_approved,
+            skip_bin=_skip_bin,
+        )
     )
     native_target_names = {native_claude_plugin.target_name} if native_claude_plugin else set()
     projection_targets = [target for target in targets if target.name not in native_target_names]
-
+    # Compatibility-only Codex data is opaque to every loose target adapter.
+    projection_targets = [] if codex_native is not None else projection_targets
+    native_plugin = codex_native or native_claude_plugin
     source_plan = DeployableSourcePlan.create(
         package_info,
         projection_targets,
@@ -352,10 +331,10 @@ def integrate_package_primitives(  # noqa: PLR0913
         skip_bin=_skip_bin,
         diagnostics=diagnostics,
         package_name=package_name,
-        native_plugin_root=native_claude_plugin.source_root if native_claude_plugin else None,
+        native_plugin_root=native_plugin.source_root if native_plugin else None,
         plugin_bin_deployable=_plugin_bin_deployable(
             package_info,
-            targets,
+            projection_targets,
             project_root=project_root,
             scope=scope,
             policy=policy,
@@ -425,7 +404,7 @@ def integrate_package_primitives(  # noqa: PLR0913
     }
 
     preflight_hooks = getattr(integrators.hook, "preflight_hooks_for_targets", None)
-    if _hooks_approved and callable(preflight_hooks):
+    if _hooks_approved and callable(preflight_hooks) and codex_native is None:
         preflight_hooks(
             package_info,
             project_root,
@@ -474,6 +453,14 @@ def integrate_package_primitives(  # noqa: PLR0913
             if ctx is not None:
                 ctx.claude_native_plugins[package_name] = native_claude_plugin
             return result
+
+    if codex_native is not None:
+        _rc = (
+            reconcile_package_targets(package_info, project_root, targets)
+            if callable(reconcile_package_targets)
+            else None
+        )
+        return finalize_codex_native(result, codex_native, source_plan, _rc, ctx, scratch_root)
 
     # Aggregate per-primitive across targets so we emit ONE line per kind
     # (per the 1/2/3+ collapse rule), not one per target.

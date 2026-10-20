@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING
 from apm_cli.claude_plugins.admission import ClaudeNativePluginError
 
 from ..agent_plugins.errors import AgentPluginError
+from ..codex_plugins.client import CodexNativeError
 from ..copilot_plugins.settings import CopilotSettingsCollisionError
 from ..models.dependency.materialization import MaterializationPathCollisionError
 from ..models.results import InstallDisposition, InstallResult
@@ -57,7 +58,6 @@ from ..utils.diagnostics import DiagnosticCollector
 from ..utils.path_security import PathTraversalError
 from .errors import AuthenticationError, DirectDependencyError, InstallFailureAlreadyRendered
 from .integrity import enforce_installed_hash_policy as _enforce_require_hashes
-from .phases import claude_plugins as _claude_plugins_phase
 from .transaction import InstallTransaction
 
 if TYPE_CHECKING:
@@ -371,7 +371,7 @@ def _transactional_pipeline(run):
 
 
 @_transactional_pipeline
-def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
+def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     apm_package: APMPackage,
     update_refs: bool = False,
     verbose: bool = False,
@@ -666,11 +666,12 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # can be admitted and resolving the capability would be pure waste.
         # --------------------------------------------------------------
         if not lockfile_only:
-            from .phases import copilot_plugins as _copilot_plugins_phase
+            from .phases import claude_plugins as _claude_plugins_phase
+            from .phases import codex_plugins, copilot_plugins
             from .phases import targets as _targets_phase
 
             _run_phase("targets", _targets_phase, ctx)
-            _run_phase("copilot_activate", _copilot_plugins_phase.ActivatePhase, ctx)
+            _run_phase("copilot_activate", copilot_plugins.ActivatePhase, ctx)
 
         # --------------------------------------------------------------
         # Phase 2.5: Post-targets target-aware policy check (#827)
@@ -949,7 +950,8 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # later gate refused.
         # ------------------------------------------------------------------
         if not lockfile_only:
-            _run_phase("copilot_plugins", _copilot_plugins_phase, ctx)
+            _run_phase("copilot_plugins", copilot_plugins, ctx)
+            _run_phase("codex_plugins", codex_plugins, ctx)
             _run_phase("claude_plugins", _claude_plugins_phase, ctx)
 
         # Emit verbose integration stats + bare-success fallback + return result
@@ -960,6 +962,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
 
     except (
         AgentPluginError,
+        CodexNativeError,
         AuthenticationError,
         PolicyViolationError,
         DirectDependencyError,

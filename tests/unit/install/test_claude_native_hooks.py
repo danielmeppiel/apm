@@ -27,9 +27,10 @@ EVENTS = ("SessionStart", "SubagentStart", "UserPromptSubmit")
 COMMAND = "node -e \"require(process.env.CLAUDE_PLUGIN_ROOT + '/hooks/probe.cjs')\""
 
 
-def _fixture(root: Path) -> PackageInfo:
-    (root / ".claude-plugin").mkdir(parents=True)
-    (root / ".claude-plugin/plugin.json").write_text(
+def _fixture(root: Path, *, native_target: str = "claude") -> PackageInfo:
+    manifest = root / f".{native_target}-plugin/plugin.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
         '{"name":"owned-hooks","version":"1.0.0"}',
         encoding="ascii",
     )
@@ -68,7 +69,7 @@ def _integrate(home: Path, info: PackageInfo, **kwargs):
     result = integrate_package_primitives(
         info,
         home,
-        targets=[KNOWN_TARGETS["claude"]],
+        targets=kwargs.pop("targets", [KNOWN_TARGETS["claude"]]),
         integrators=IntegratorBundle(
             prompt=PromptIntegrator(),
             agent=AgentIntegrator(),
@@ -100,6 +101,34 @@ def test_native_hooks_remain_intact_without_loose_settings(tmp_path: Path) -> No
     assert (info.install_path / "hooks/hooks.json").read_bytes() == before
     assert ctx.claude_native_plugins["owner/hooks"].source_root == info.install_path.resolve()
     native.assert_not_called()
+
+
+@pytest.mark.parametrize("native_target", ["claude", "codex"])
+def test_native_admission_keeps_selected_format_owner_with_both_targets(
+    tmp_path: Path, native_target: str
+) -> None:
+    """Both enabled targets must not reinterpret the other native package format."""
+    info = _fixture(tmp_path / ".apm/apm_modules/owned", native_target=native_target)
+    before = {path: path.read_bytes() for path in info.install_path.rglob("*") if path.is_file()}
+    with (
+        patch("apm_cli.claude_plugins.client.ClaudePluginCLI.run") as claude,
+        patch("apm_cli.codex_plugins.client.CodexNativeClient.connect") as codex,
+    ):
+        result, ctx = _integrate(
+            tmp_path, info, targets=[KNOWN_TARGETS["claude"], KNOWN_TARGETS["codex"]]
+        )
+    assert result["native_plugin"] is True
+    assert result["hooks"] == 0
+    assert result["deployed_files"] == []
+    assert not (tmp_path / ".claude/settings.json").exists()
+    assert not (tmp_path / ".codex/hooks.json").exists()
+    assert {path: path.read_bytes() for path in before} == before
+    queued = ctx.claude_native_plugins if native_target == "claude" else ctx.codex_native_plugins
+    other = ctx.codex_native_plugins if native_target == "claude" else ctx.claude_native_plugins
+    assert set(queued) == {"owner/hooks"}
+    assert other == {}
+    claude.assert_not_called()
+    codex.assert_not_called()
 
 
 def test_native_admission_preserves_unowned_loose_hooks(tmp_path: Path) -> None:
