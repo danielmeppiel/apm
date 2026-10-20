@@ -289,7 +289,10 @@ def test_replacement_frozen_rejects_original_commit_as_selected_fork_pin(
     before = _snapshot(target)
     result = fixture.run(*_INSTALL, "--frozen", root=target)
     assert result.returncode != 0, result.stdout + result.stderr
-    assert "incompatible immutable" in " ".join((result.stdout + result.stderr).lower().split())
+    output = " ".join((result.stdout + result.stderr).split())
+    assert "--frozen: apm.lock.yaml is out of sync with apm.yml." in output
+    assert f"manifest commit '{fixture.fork_sha}'" in output
+    assert f"lockfile resolved_commit '{fixture.upstream_sha}'" in output
     assert _snapshot(target) == before
 
 
