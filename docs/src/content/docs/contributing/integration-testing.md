@@ -386,7 +386,8 @@ uv run --extra dev pytest \
 ```
 
 The lifecycle suite uses local Git sources and substitutes only
-`ClaudePluginCLI.run`, the external Claude CLI boundary. It checks selected and
+`ClaudePluginCLI.run`, the external Claude CLI boundary, through the shared
+`tests.utils.claude_native_protocol` helper. It checks selected and
 explicit-empty commands, intact resources, source pins, disabled-by-default
 registration, reinstall/update/removal, and absence of loose duplicates.
 Ordinary and frozen reinstalls preserve both user activation choices in the

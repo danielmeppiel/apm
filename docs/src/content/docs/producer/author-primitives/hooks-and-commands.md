@@ -26,16 +26,14 @@ primary distribution path.
 
 ## Hooks
 
-For an intact Claude plugin installed globally, APM prepares a native,
-initially disabled registration instead of merging its hooks into loose
-settings. Native commands such as
-`node -e "require(process.env.CLAUDE_PLUGIN_ROOT + '/hooks/run.cjs')"`
-are preserved with their sibling resources. The runtime supplies the root
-only when the user enables and loads the plugin in Claude; installation is
-not proof that a hook ran. See
+For Claude plugins installed with `--global --target claude`, APM prepares
+native registration instead of merging hooks into loose settings. New
+registrations start disabled. APM leaves `CLAUDE_PLUGIN_ROOT` expressions and
+sibling resources intact for Claude to interpret. See
 [APM-managed Claude user plugins](../../../consumer/installing-from-marketplaces/#apm-managed-claude-user-plugins)
-for the qualified client and capability limits. The loose-hook rules below
-continue to apply to standalone primitives and project deployments.
+for client, capability and outstanding runtime qualification limits.
+The loose-hook rules below still apply to standalone primitives and project
+deployments.
 
 Source layout. APM discovers hook JSON files in either of two
 directories at the package root:

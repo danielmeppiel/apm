@@ -44,31 +44,33 @@ security checks, and the materialized package under `~/.apm/apm_modules`.
 Claude owns native registration and activation. It reads the package in place;
 do not remove or edit its source while Claude uses it.
 
-New plugins are **disabled**, not activated by `apm install`. Review them and
-enable them in Claude, then restart Claude or reload its plugins. Existing
-native enabled/disabled choices survive updates. APM does not run hooks to
-verify installation, complete onboarding, or grant workspace trust.
-Authenticated hook execution remains a separate runtime qualification step.
+New plugins default **disabled**; updates preserve activation choices. Activation,
+onboarding and workspace trust remain user decisions; APM does not run hooks.
 
-This route preserves native command selection, namespacing, frontmatter, and
-plugin-root expressions rather than generating duplicate loose Claude
-commands or merging plugin hooks into user settings. Standalone APM
-primitives, project installs, and other explicitly selected targets keep
-their existing deployment behavior.
+:::note[Runtime qualification]
+Reported qualification covers only the metadata lifecycle on Claude Code
+**2.1.291**, macOS arm64. Runtime witnesses are **absent**: `SessionStart`,
+`SubagentStart` and `UserPromptSubmit` execution, distinct effective plugin
+roots/resources, and native command loading/invocation/namespacing remain
+unverified. Metadata and unit/mock results do not establish execution.
+:::
 
-The bounded route supports commands, skills, agents, and approved hooks.
-Partial skill selections, symlinks, MCP/LSP, bin scripts, and unqualified
-manifest capabilities are refused rather than silently activated. A missing
-or different Claude version also fails without a loose-file fallback.
-Resolve the reported restriction or exclude Claude from that dependency's
-targets.
+APM preserves manifest selection, frontmatter, plugin-root expressions and sibling
+files, without duplicate loose Claude commands or hook-settings merges.
+Standalone APM primitives, project installs and other selected targets are unchanged.
 
-Updates and global uninstalls use the same native reconciliation owner.
-Uninstall preserves native plugin data. An interrupted metadata operation
-retains APM's ownership intent for a retry; it does not promise rollback of
-Claude-owned state. Repair the reported problem, then rerun
-`apm install --global`. A conflicting `apm-claude` marketplace or plugin
-identity is never adopted or overwritten.
+This route requires `.claude-plugin/plugin.json` and accepts commands, skills,
+agents and approved hooks. It rejects partial skill subsets, symlinks, MCP/LSP,
+bin scripts and unqualified manifest capabilities. Missing or different clients
+also fail without loose fallback. Resolve the restriction or exclude Claude from
+that dependency's targets.
+
+Updates and global uninstalls reconcile native metadata; uninstall retains native
+plugin data. Interrupted operations retain ownership intent but do not roll back
+Claude-owned state. Repair the problem, then retry
+`apm install --global --target claude` for this Claude-only example. Mixed-target
+installs must retain their complete original target list. A conflicting
+`apm-claude` marketplace or plugin identity is never adopted or overwritten.
 
 ### Direct native installs
 
