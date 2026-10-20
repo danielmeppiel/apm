@@ -666,6 +666,7 @@ install-deployment-update-plan-ref-annotation
 marketplace-integrations-agent-plugin-contract
 marketplace-integrations-bundle-format-authority
 marketplace-integrations-catalog-manifest
+marketplace-integrations-codex-native-lifecycle
 marketplace-integrations-copilot-ownership
 marketplace-integrations-generated-bundle-lf-writers
 marketplace-integrations-hash-visible-lf-writers
@@ -685,6 +686,7 @@ marketplace-integrations-source-admission
 marketplace-integrations-source-parsing
 marketplace-integrations-tag-pattern
 marketplace-integrations-version-precedence
+mutation_writes.claude_mcp_paths
 mutation_writes.copilot_cli_mcp_paths
 mutation_writes.drift_hook_membership
 mutation_writes.hook_cleanup_scope
@@ -701,7 +703,9 @@ onboarding-metadata-only
 contracts-tooling-root-context-write-eligibility
 hooks-integrations-native-instruction-projection
 registry_delegation.agents_source_attribution
+registry_delegation.audit_target_selection
 registry_delegation.bootstrap_project_name
+registry_delegation.build_id_verification
 registry_delegation.command_machine_output
 registry_delegation.compile_inventory_authority
 registry_delegation.compiled_output_writes
@@ -720,6 +724,7 @@ registry_delegation.root_cli_output_mode
 registry_delegation.runtime_descriptors
 registry_delegation.target_vocabulary
 registry_delegation.user_invocable_resolution
+registry_delegation.version_rendering
 transport-platform-artifactory-full-commit-sha
 transport-platform-artifactory-netrc-isolation
 transport-platform-cache-cleanup-outcome
@@ -731,6 +736,7 @@ transport-platform-github-throttle
 transport-platform-gitlab-sparse-plan
 transport-platform-host-credential-resolution
 transport-platform-host-reference-coordinates
+transport-platform-ls-remote-tag-commits
 transport-platform-marketplace-package-remote
 transport-platform-network-host-parsing
 transport-platform-ref-freshness

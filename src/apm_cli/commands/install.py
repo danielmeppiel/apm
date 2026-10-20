@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 # this module and ``tests/unit/test_install_scanning.py``'s direct import
 # (``from apm_cli.commands.install import _pre_deploy_security_scan``) keep
 # working without modification.
+from apm_cli.deps.transport_selection import initial_transport_scheme as _initial_scheme
 from apm_cli.install.finalization import close_install_contexts
 from apm_cli.install.helpers.security_scan import _pre_deploy_security_scan  # noqa: F401
 from apm_cli.install.insecure_policy import (
@@ -117,6 +118,7 @@ from apm_cli.install.validation import (
 from apm_cli.install.validation import (
     _local_path_failure_reason,
     _local_path_no_markers_hint,  # noqa: F401 -- re-exported; test_architecture_invariants checks importability
+    _uses_clone_root_probe,
     _validate_package_exists,
 )
 from apm_cli.models.results import InstallDisposition, InstallResult
@@ -512,11 +514,13 @@ def _resolve_package_references(
                 # chain explicitly when the validator exhausted it
                 # (virtual subdirectory + explicit ref). Generic "not
                 # accessible" hides the failure mode for the precise
-                # case where the most diagnostics are available.
+                # case where the most diagnostics are available. A clone-root
+                # ``git ls-remote`` probe never ran that chain.
                 is_subdir_ref_chain = (
                     dep_ref.is_virtual
                     and dep_ref.is_virtual_subdirectory()
                     and bool(dep_ref.reference)
+                    and not _uses_clone_root_probe(dep_ref)
                 )
                 if is_subdir_ref_chain:
                     reason = (
@@ -527,6 +531,13 @@ def _resolve_package_references(
                     )
                     if not verbose:
                         reason += " (run with --verbose for the full probe log)"
+                elif _uses_clone_root_probe(dep_ref) and _initial_scheme(dep_ref) == "ssh":
+                    reason = (
+                        "git ls-remote over SSH failed -- verify that your SSH "
+                        "key has read access to the repository"
+                    )
+                    if not verbose:
+                        reason += " (run with --verbose for the git output)"
                 else:
                     reason = "not accessible or doesn't exist"
                     if not verbose:
@@ -647,6 +658,7 @@ def _validate_and_add_packages_to_apm_yml(
             source_path=apm_yml_path.parent,
             manifest_path=apm_yml_path,
             create_config=create_config,
+            warning_handler=None,  # The disk parse emits the manifest diagnostic.
         )
 
     outcome = _ValidationOutcome(
@@ -951,7 +963,7 @@ def _handle_mcp_install(  # noqa: PLR0913
     "global_",
     is_flag=True,
     default=False,
-    help="Install to user scope (~/.apm/) instead of the current project. Direct MCP installs create or update ~/.apm/apm.yml. Mixed selections warn and skip workspace-only runtimes; selections with no global-capable runtime exit 2 before changing the user manifest, lockfile, or runtime configuration. Supported runtimes include Copilot CLI, Claude Code, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot.",
+    help="Install to user scope (~/.apm/) instead of the current project. Direct MCP installs create or update ~/.apm/apm.yml. Mixed selections warn and skip workspace-only runtimes; selections with no global-capable runtime exit 2 before changing the user manifest, lockfile, or runtime configuration. Supported runtimes include Copilot CLI, Claude Code, Cursor, OpenCode, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot.",
 )
 @click.option(
     "--ssh",
@@ -1768,9 +1780,19 @@ def _install_apm_packages(ctx, outcome):
             )
         )
 
-    # Determine what to install based on install mode
     should_install_apm = ctx.install_mode != InstallMode.MCP
     should_install_mcp = ctx.install_mode != InstallMode.APM
+
+    from apm_cli.install.helpers.no_work import local_rows_need_reconciling
+
+    def _local_cleanup_pending(lockfile: "LockFile | None") -> bool:
+        return should_install_apm and local_rows_need_reconciling(
+            lockfile,
+            ctx.project_root,
+            apm_package,
+            target=ctx.target or ctx.runtime,
+            scope=ctx.scope,
+        )
 
     if ctx.dry_run:
         prospective_plan = ProspectiveInstallPlan.from_apm_package(
@@ -1813,21 +1835,18 @@ def _install_apm_packages(ctx, outcome):
             plan=prospective_plan,
             update=ctx.update,
             apm_dir=ctx.apm_dir,
+            local_cleanup_pending=_local_cleanup_pending,
         )
         return (*prospective_plan.dependency_counts, None)
 
     _check_insecure_dependencies(all_apm_deps, ctx.allow_insecure, logger)
 
-    # Install APM dependencies first (if requested)
     apm_count = 0
 
     # Migrate legacy apm.lock -> apm.lock.yaml if needed (one-time, transparent)
     migrate_lockfile_if_needed(ctx.apm_dir)
 
-    # Capture old MCP servers and configs from lockfile BEFORE
-    # _install_apm_dependencies regenerates it (which drops the fields).
-    # We always read this -- even when --only=apm -- so we can restore the
-    # field after the lockfile is regenerated by the APM install step.
+    # Preserve MCP fields across APM lockfile regeneration, even with --only=apm.
     old_mcp_servers: builtins.set = builtins.set()
     old_mcp_configs: builtins.dict = {}
     old_mcp_provenance: builtins.dict = {}
@@ -1859,6 +1878,7 @@ def _install_apm_packages(ctx, outcome):
         has_any_apm_deps
         or _project_has_root_primitives(_cli_project_root)
         or _has_orphan_deps_in_lock
+        or _local_cleanup_pending(_existing_lock)
     ):
         if not APM_DEPS_AVAILABLE:
             logger.error("APM dependency system not available")
@@ -1866,10 +1886,7 @@ def _install_apm_packages(ctx, outcome):
             raise InstallFailureAlreadyRendered("APM dependency system not available")
 
         try:
-            # If specific packages were requested, only install those
-            # Otherwise install all from apm.yml.
-            # `only_packages` was computed above so the dry-run preview
-            # and the actual install share one canonical list.
+            # Use the same canonical package selection as the dry-run preview.
             install_result = _install_apm_dependencies(
                 apm_package,
                 ctx.update,

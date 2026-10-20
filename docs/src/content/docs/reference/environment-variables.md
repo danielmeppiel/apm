@@ -44,13 +44,18 @@ Controls how APM clones packages and enumerates refs on Git hosts. These setting
 
 ## TLS trust
 
-APM verifies HTTPS against the operating-system trust store by default. For the full troubleshooting flow, see [SSL / TLS issues](../../troubleshooting/ssl-issues/).
+APM verifies package-management HTTPS against the operating-system trust store by default, with bundled `certifi` as the Requests fallback. See [SSL / TLS issues](../../troubleshooting/ssl-issues/) for the full troubleshooting flow.
 
 | Variable | Purpose | Default | Notes |
 |---|---|---|---|
-| `REQUESTS_CA_BUNDLE` | PEM bundle for APM's Python HTTP requests. | unset | Explicit override; wins over OS trust-store injection. Use for a per-shell corporate CA bundle. |
-| `CURL_CA_BUNDLE` | PEM bundle fallback honoured by `requests`. | unset | Explicit override; wins over OS trust-store injection when `REQUESTS_CA_BUNDLE` is unset. |
-| `APM_DISABLE_TRUSTSTORE` | Set to `1` (or `true`/`yes`/`on`) to disable OS trust-store injection. | unset | Escape hatch that restores the legacy bundled-`certifi` verification path. |
+| `REQUESTS_CA_BUNDLE` | PEM bundle replacing APM's normal Requests trust. | unset | Wins over `CURL_CA_BUNDLE`, additive trust, and OS injection. |
+| `CURL_CA_BUNDLE` | Replacement PEM bundle honored by Requests. | unset | Used when `REQUESTS_CA_BUNDLE` is unset; suppresses additive trust and OS injection. |
+| `APM_DISABLE_TRUSTSTORE` | Set to `1` (or `true`/`yes`/`on`) to disable OS/additive trust. | unset | Restores bundled `certifi` unless an explicit Requests/curl replacement is set. |
+| `APM_EXTRA_CA_BUNDLE` | Certificate-only PEM bundle added to APM package-management HTTPS. | unset | Retains OS roots, or `certifi` roots on Requests fallback. Invalid selected input fails closed: it must be a readable, non-empty regular file, no larger than 8 MiB, containing ASCII PEM certificates and no private keys. |
+
+Trust resolution is ordered: `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, `APM_DISABLE_TRUSTSTORE`, `APM_EXTRA_CA_BUNDLE`, then the normal OS/`certifi` defaults. Higher-precedence controls suppress additive-bundle validation. Unset or blank `APM_EXTRA_CA_BUNDLE` preserves existing behavior.
+
+The additive setting does not derive trust settings for `apm run` children or configure Git, Node, or Rust. Those retain their existing settings; see [runtime coverage](../../troubleshooting/ssl-issues/#runtime-coverage).
 
 ## Registry (MCP and proxy)
 
@@ -87,7 +92,7 @@ APM verifies HTTPS against the operating-system trust store by default. For the 
 | `APM_BROAD_FETCH_DEPTH` | Maximum commit depth used by the bare-cache broad fetch when resolving git refs. | `50` | Integer-like string; tune for very deep histories where ref resolution misses. |
 | `XDG_CACHE_HOME` | Standard XDG base-directory variable APM consults when `APM_CACHE_DIR` is unset (Linux / macOS). | unset | Honoured per the XDG spec. |
 | `LOCALAPPDATA` | Standard Windows variable APM consults when `APM_CACHE_DIR` is unset. | OS-provided | Used to derive the default Windows cache path. |
-| `CLAUDE_CONFIG_DIR` | Override the user-scope destination Claude reads for skills, agents, and MCP config. | Claude default | For MCP config, nonblank values must be absolute. User-scope MCP servers are written to `$CLAUDE_CONFIG_DIR/.claude.json`; when unset or blank, APM uses `~/.claude.json`. |
+| `CLAUDE_CONFIG_DIR` | Override the user-scope destination Claude reads for skills, agents, and MCP config. | Claude default | For MCP config, nonblank values must be absolute. User-scope MCP servers are managed in `$CLAUDE_CONFIG_DIR/.claude.json` (including installation and stale cleanup); when unset or blank, APM uses `~/.claude.json`. |
 
 ## Policy
 

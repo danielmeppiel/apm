@@ -5,6 +5,7 @@ Provides deterministic, reproducible installs by capturing exact resolved versio
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import Iterator
@@ -34,6 +35,17 @@ _ALLOWED_HOST_TYPES = set(accepted_host_types())
 _ALLOWED_EXEC_STATUS = {"deployed", "gated_pending_approval", "denied", "absent"}
 SUPPORTED_LOCKFILE_VERSIONS = frozenset({"1", "2"})
 _REPRODUCIBLE_EPOCH = "1970-01-01T00:00:00+00:00"
+
+
+def _copy_extension_map(value: object) -> dict[str, Any]:
+    """Copy a vendor-extension mapping, or return {} for empty/invalid input.
+
+    Non-mapping values (corrupt lockfiles) become an empty map so readers do
+    not raise. String-coerced keys keep declaration order.
+    """
+    if not isinstance(value, dict) or not value:
+        return {}
+    return {str(key): item for key, item in value.items()}
 
 
 class _ExistingLockfileUnset:
@@ -205,6 +217,11 @@ def _normalized_mcp_provenance(
     }
 
 
+def _json_identity(value: Any) -> str:
+    """Serialize *value* so JSON type changes (``1`` vs ``true``) compare unequal."""
+    return json.dumps(value, sort_keys=True, default=str)
+
+
 def _normalize_lockfile_host_type(raw: Any) -> str | None:
     """Validate and normalize the optional lockfile host_type field."""
     if raw is None:
@@ -315,6 +332,10 @@ class LockedDependency:
     # spec. Omitted from the serialized entry when absent.
     name: str | None = None
     alias: str | None = None
+    # req-ext-003: vendor extension keys (x-*) from the dependency manifest,
+    # in declaration order. Omitted from YAML when empty so lockfiles that
+    # declare no extensions stay byte-identical. Values are not interpreted.
+    extensions: dict[str, Any] = field(default_factory=dict)
     # Forward-compat carrier: keys we don't recognise are preserved
     # through a from_dict / to_dict round-trip so an older APM build
     # reading a lockfile written by a newer build doesn't silently drop
@@ -463,6 +484,8 @@ class LockedDependency:
             result["resolved_at"] = self.resolved_at
         if self.declared_license:
             result["declared_license"] = self.declared_license
+        if self.extensions:
+            result["extensions"] = dict(self.extensions)
         if self.exec_status:
             result["exec_status"] = self.exec_status
         # Replay forward-compat unknown fields LAST so they never shadow a
@@ -544,6 +567,7 @@ class LockedDependency:
             "resolved_tag",
             "resolved_at",
             "declared_license",
+            "extensions",
             "exec_status",
             "name",
             # legacy migration key handled above
@@ -595,6 +619,7 @@ class LockedDependency:
             declared_license=data.get("declared_license"),
             exec_status=exec_status,
             name=data.get("name"),
+            extensions=_copy_extension_map(data.get("extensions")),
             _unknown_fields=unknown_fields,
         )
 
@@ -611,6 +636,7 @@ class LockedDependency:
         git_semver_resolution=None,
         package_name: str | None = None,
         package_version: str | None = None,
+        extensions: dict[str, Any] | None = None,
     ) -> LockedDependency:
         """Create from a DependencyReference with resolution info.
 
@@ -748,6 +774,7 @@ class LockedDependency:
                 git_semver_resolution.resolved_at if git_semver_resolution is not None else None
             ),
             name=package_name,
+            extensions=_copy_extension_map(extensions),
         )
 
     def to_dependency_ref(self) -> DependencyReference:
@@ -1146,6 +1173,7 @@ class LockFile:
                 git_semver_resolution=git_semver_resolution,
                 package_name=getattr(entry, "package_name", None),
                 package_version=getattr(entry, "package_version", None),
+                extensions=getattr(entry, "extensions", None),
             )
             lock.add_dependency(locked_dep)
 
@@ -1210,7 +1238,10 @@ class LockFile:
                 return False
         if sorted(self.mcp_servers) != sorted(other.mcp_servers):
             return False
-        if self.mcp_configs != other.mcp_configs:
+        # Python equality treats ``1`` and ``True`` as equal, which would keep a
+        # stale drift baseline after a type-only change such as OpenCode's
+        # ``enabled``.
+        if _json_identity(self.mcp_configs) != _json_identity(other.mcp_configs):
             return False
         if (
             self.mcp_target_servers != other.mcp_target_servers
