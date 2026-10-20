@@ -515,6 +515,85 @@ def test_replacement_logical_cycle_fails_before_publishing_candidate(
     assert _snapshot(fixture.consumer.root) == before
 
 
+def test_replacement_physical_cycle_across_distinct_identities_preserves_install(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.install()
+    other = "https://github.com/apm-replacement-fixture/other"
+    local_manifest = load_yaml(fixture.local.manifest_path)
+    local_manifest["dependencies"] = {"apm": [{"git": other}]}
+    dump_yaml(local_manifest, fixture.local.manifest_path)
+    fixture.replace({"path": "../local-base"})
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["replace"].append({"for": {"git": other}, "with": {"path": "../local-base/."}})
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    before = _snapshot(fixture.consumer.root)
+    result = fixture.run()
+    assert result.returncode != 0, result.stdout + result.stderr
+    message = (result.stdout + result.stderr).lower()
+    assert "circular" in message or "cycle" in message
+    assert _snapshot(fixture.consumer.root) == before
+    fixture.assert_bytes("UPSTREAM")
+
+
+def test_replacement_preserves_alias_subset_targets_and_unmatched_dev_dependency(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    skills = {}
+    for name in ("alpha", "beta"):
+        skills[name] = f"---\nname: {name}\ndescription: {name}\n---\n# {name}\n".encode()
+        fixture.work_factory.add_skill(fixture.local, name, skills[name].decode())
+    fixture.replace({"path": "../local-base"})
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["dependencies"]["apm"][0].update(
+        {"alias": "chosen", "skills": ["alpha"], "targets": ["copilot"]}
+    )
+    manifest["devDependencies"] = {
+        "apm": [
+            {
+                "git": _FORK,
+                "ref": fixture.fork_sha,
+                "alias": "dev-kit",
+                "targets": ["claude"],
+            }
+        ]
+    }
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    before = fixture.consumer.manifest_path.read_bytes()
+    fixture.install()
+    fixture.assert_bytes("LOCAL")
+    modules = fixture.consumer.root / "apm_modules"
+    assert sorted(path.relative_to(modules).as_posix() for path in modules.rglob("apm.yml")) == [
+        "chosen/apm.yml",
+        "dev-kit/apm.yml",
+    ]
+    assert (modules / "dev-kit/.apm/instructions/base.instructions.md").read_bytes() == _content(
+        "FORK"
+    ).encode()
+    entries = {
+        entry["repo_url"]: entry
+        for entry in load_yaml(fixture.consumer.root / "apm.lock.yaml")["dependencies"]
+    }
+    request = entries["apm-replacement-fixture/base"]["replacement"]["requests"][0]
+    assert (request["alias"], request["skills"], request["targets"], request["dev"]) == (
+        "chosen",
+        ["alpha"],
+        ["copilot"],
+        False,
+    )
+    assert entries["apm-replacement-fixture/fork"]["is_dev"] is True
+    assert "replacement" not in entries["apm-replacement-fixture/fork"]
+    deployed_skills = [
+        path.read_bytes()
+        for directory in (".github", ".agents", ".claude")
+        for path in (fixture.consumer.root / directory).rglob("SKILL.md")
+    ]
+    assert deployed_skills == [skills["alpha"]]
+    assert fixture.consumer.manifest_path.read_bytes() == before
+
+
 def test_replacement_uninstall_preserves_shared_sources_until_the_last_parent(
     tmp_path: Path,
     apm_binary_path: Path,
@@ -673,6 +752,28 @@ def test_replacement_local_audit_and_outdated_are_read_only(
     assert refused.returncode != 0, refused.stdout + refused.stderr
     assert "replacement source missing" in (refused.stdout + refused.stderr).lower()
     assert _snapshot(fixture.consumer.root) == before
+
+
+@pytest.mark.parametrize("damage", ["modified", "deleted"])
+def test_replacement_audit_detects_deployed_drift_without_repair(
+    tmp_path: Path, apm_binary_path: Path, damage: str
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.replace({"path": "../local-base"})
+    fixture.install()
+    deployed = fixture.consumer.root / _INSTRUCTION
+    original = deployed.read_bytes()
+    if damage == "modified":
+        deployed.write_bytes(original + b"\nChanged outside APM\n")
+    else:
+        deployed.unlink()
+    before = _snapshot(fixture.consumer.root)
+    audit = fixture.run("audit", "--ci", "--no-policy")
+    assert audit.returncode != 0, audit.stdout + audit.stderr
+    assert _snapshot(fixture.consumer.root) == before
+    deployed.write_bytes(original)
+    restored = fixture.run("audit", "--ci", "--no-policy")
+    assert restored.returncode == 0, restored.stdout + restored.stderr
 
 
 def test_replacement_native_plugin_cache_and_changed_output_cleanup(
