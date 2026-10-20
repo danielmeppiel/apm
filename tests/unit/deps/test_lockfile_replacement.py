@@ -4,6 +4,8 @@ Tests that replacement rules round-trip through lock-file YAML and that
 the ``replacements:`` section is properly written and read.
 """
 
+from urllib.parse import urlparse
+
 import pytest
 import yaml
 
@@ -43,7 +45,7 @@ class TestLockfileReplacementSerialization:
     def test_local_to_dict(self):
         rule = self._local_rule(local_path="../checkout")
         d = replacement_rule_to_dict(rule)
-        assert d["for"]["git"] == "https://github.com/owner/repo.git"
+        assert urlparse(d["for"]["git"]) == urlparse("https://github.com/owner/repo.git")
         assert d["with"]["path"] == "../checkout"
         assert "git" not in d["with"]
 
@@ -57,7 +59,7 @@ class TestLockfileReplacementSerialization:
         rule = self._git_rule(fork_repo="fork-org/repo", ref="fix-branch")
         d = replacement_rule_to_dict(rule)
         assert "git" in d["for"]
-        assert d["with"]["git"] == "https://github.com/fork-org/repo.git"
+        assert urlparse(d["with"]["git"]) == urlparse("https://github.com/fork-org/repo.git")
         assert d["with"]["ref"] == "fix-branch"
 
     def test_round_trip_yaml(self):
@@ -88,11 +90,12 @@ class TestLockfileReplacementSerialization:
             self._local_rule(repo="unused/dep", local_path="./unused"),
         ]
         dicts = [replacement_rule_to_dict(r) for r in rules]
-        # Both rules present in serialized output
         assert len(dicts) == 2
-        repos = {d["for"]["git"] for d in dicts}
-        assert "https://github.com/used/dep.git" in repos
-        assert "https://github.com/unused/dep.git" in repos
+        repos = {urlparse(d["for"]["git"]) for d in dicts}
+        assert repos == {
+            urlparse("https://github.com/used/dep.git"),
+            urlparse("https://github.com/unused/dep.git"),
+        }
 
     def test_empty_rules_list(self):
         """Empty rules list produces no serialized entries."""
@@ -114,7 +117,7 @@ class TestLockfileReplacementSerialization:
         src = LocalReplacementSource(path="./local")
         rule = ReplacementRule(selector=sel, source=src)
         d = replacement_rule_to_dict(rule)
-        assert "8443" in d["for"]["git"]
+        assert urlparse(d["for"]["git"]).port == 8443
         restored = replacement_rules_from_dicts([d])
         assert restored[0].selector.port == 8443
 
@@ -126,8 +129,6 @@ class TestLockfileReplacementSerialization:
         src = LocalReplacementSource(path="./local-project")
         rule = ReplacementRule(selector=sel, source=src)
         d = replacement_rule_to_dict(rule)
-        from urllib.parse import urlparse
-
         parsed = urlparse(d["for"]["git"])
         assert parsed.hostname == "gitlab.com"
         restored = replacement_rules_from_dicts([d])
