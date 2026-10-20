@@ -380,7 +380,9 @@ class TestInstallLogger:
         )
         assert "would configure 1 LSP server" in mock_info.call_args[0][0]
 
-    @pytest.mark.parametrize("count,noun", [(0, "dependencies"), (1, "dependency"), (2, "dependencies")])
+    @pytest.mark.parametrize(
+        "count,noun", [(0, "dependencies"), (1, "dependency"), (2, "dependencies")]
+    )
     @patch("apm_cli.core.command_logger._rich_warning")
     def test_incomplete_preview_summary_does_not_claim_completion(self, mock_warning, count, noun):
         logger = InstallLogger()

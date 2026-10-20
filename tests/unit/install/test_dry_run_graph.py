@@ -79,9 +79,7 @@ def test_selected_subtree_expands_each_graph_node_once() -> None:
             return super().__iter__()
 
     refs = [DependencyReference.parse(f"owner/package-{index}") for index in range(25)]
-    nodes = [
-        SimpleNamespace(dependency_ref=ref, children=ObservedChildren()) for ref in refs
-    ]
+    nodes = [SimpleNamespace(dependency_ref=ref, children=ObservedChildren()) for ref in refs]
     for parent, child in pairwise(nodes):
         parent.children.append(child)
     tree = SimpleNamespace(nodes=dict(enumerate(nodes)))
