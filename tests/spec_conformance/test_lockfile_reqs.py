@@ -230,6 +230,7 @@ def test_cold_dependency_evidence_cannot_defer_direct_mcp_drift(
     """Pending dependency evidence never excuses changed root MCP declarations."""
     from apm_cli.deps.lockfile import LockedDependency, LockFile
     from apm_cli.install.errors import FrozenInstallError
+    from apm_cli.install.plan import lockfile_satisfies_manifest
     from apm_cli.install.request import InstallRequest
     from apm_cli.install.service import InstallService
     from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
@@ -246,7 +247,7 @@ def test_cold_dependency_evidence_cannot_defer_direct_mcp_drift(
     }
     fixture = LocalPackageFactory(tmp_path / "sources").create(
         "consumer",
-        dependencies=("owner/plugin",),
+        dependencies=("owner/plugin#main",),
         mcp_dependencies=() if development else (root_config,),
         dev_mcp_dependencies=(root_config,) if development else (),
         targets=("cursor",),
@@ -264,6 +265,7 @@ def test_cold_dependency_evidence_cannot_defer_direct_mcp_drift(
             depth=1,
         )
     )
+    assert lockfile_satisfies_manifest(lock, package.get_apm_dependencies()) == (True, [])
     view = CurrentMcpConfigView.derive(
         package,
         lock,
