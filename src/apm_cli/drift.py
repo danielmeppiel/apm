@@ -360,6 +360,7 @@ def build_download_ref(
     update_refs: bool,
     ref_changed: bool,
     logger=None,
+    require_locked: bool = False,
 ) -> DependencyReference:
     """Build the dependency reference passed to the package downloader.
 
@@ -383,6 +384,22 @@ def build_download_ref(
         A :class:`DependencyReference` suitable for
         ``GitHubPackageDownloader.download_package``.
     """
+    if require_locked:
+        from apm_cli.deps.revision_pins import is_full_revision_pin
+
+        locked = (
+            existing_lockfile.get_dependency(dep_ref.get_unique_key())
+            if existing_lockfile is not None
+            else None
+        )
+        if locked is None or update_refs or ref_changed or locked.source == "local":
+            raise ValueError("source has no unchanged remote lock pin")
+        if locked.source == "registry":
+            if not (locked.version and locked.resolved_url and locked.resolved_hash):
+                raise ValueError("registry source has no complete locked version, URL and hash")
+        elif not is_full_revision_pin(locked.resolved_commit):
+            raise ValueError("remote source has no immutable locked commit")
+
     if existing_lockfile and not update_refs and not ref_changed:
         locked_dep = existing_lockfile.get_dependency(dep_ref.get_unique_key())
         if locked_dep:

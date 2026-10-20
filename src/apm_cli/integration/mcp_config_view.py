@@ -57,6 +57,7 @@ class CurrentMcpConfigView:
     configs: Mapping[str, Mapping[str, Any]]
     provenance: Mapping[str, str]
     problems: tuple[McpSourceProblem, ...]
+    pending_packages: frozenset[str] = frozenset()
 
     @classmethod
     def derive(
@@ -69,10 +70,11 @@ class CurrentMcpConfigView:
         diagnostics: DiagnosticCollector | None = None,
         logger: _McpViewLogger | None = None,
         trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
+        allow_pending: bool | None = None,
     ) -> CurrentMcpConfigView:
-        """Derive current MCP truth without mutating manifests or the lockfile."""
+        """Derive MCP truth; frozen callers explicitly select pending or strict evidence."""
         project_root = root.package_path or Path.cwd()
-        package_deps, problems = _collect_locked_dependencies(
+        package_deps, problems, pending_packages = _collect_locked_dependencies(
             lockfile,
             modules_root,
             project_root,
@@ -80,6 +82,7 @@ class CurrentMcpConfigView:
             diagnostics=diagnostics,
             logger=logger,
             trusted_transitive_configs=trusted_transitive_configs,
+            allow_pending=allow_pending,
         )
         # Root is the authoring project: both prod and dev MCP are intentionally
         # included here (behaviour introduced in #1780). Transitive package deps
@@ -91,7 +94,26 @@ class CurrentMcpConfigView:
             configs=_get_server_configs(dependencies),
             provenance=_get_server_provenance(dependencies),
             problems=tuple(problems),
+            pending_packages=frozenset(pending_packages),
         )
+
+    def pending_servers(self, lockfile: LockFile) -> frozenset[str]:
+        """Defer only unambiguous recorded declarers whose sources are unavailable."""
+        declarers: dict[str, list[str]] = {}
+        for key, dependency in lockfile.dependencies.items():
+            if key != "." and dependency.name:
+                declarers.setdefault(dependency.name, []).append(key)
+        pending_names = {
+            name
+            for name, keys in declarers.items()
+            if len(keys) == 1 and keys[0] in self.pending_packages
+        }
+        pending = set()
+        for server, provenance in lockfile.mcp_config_provenance.items():
+            owners = {provenance} if isinstance(provenance, str) else set(provenance)
+            if owners and owners <= pending_names and server not in self.configs:
+                pending.add(server)
+        return frozenset(pending)
 
     def diff(self, stored_configs: Mapping[str, Mapping[str, Any]]) -> McpConfigDiff:
         """Compare this current view with a stored lockfile baseline."""
@@ -226,45 +248,50 @@ def _allows_missing_manifest(
     *,
     modules_root: Path | None = None,
     native_ownership_cache: dict[Path, frozenset[str]] | None = None,
+    strict: bool = False,
 ) -> bool:
     """Return whether the package contract permits an absent apm.yml."""
     from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
 
-    if dependency.package_type == PackageType.SKILL_BUNDLE.value:
-        return True
+    if not strict:
+        if dependency.package_type == PackageType.SKILL_BUNDLE.value:
+            return True
+        if not package_dir.exists():
+            if dependency.source == "local":
+                return False
+            if dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value:
+                from apm_cli.codex_plugins.registrar import owns_codex_dependency
 
-    if not package_dir.exists():
-        # Local paths are expected to exist; remote packages can be hydrated
-        # from lock pins after frozen validation completes.
-        if dependency.source == "local":
-            return False
-        if dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value:
-            from apm_cli.codex_plugins.registrar import owns_codex_dependency
-
-            return modules_root is not None and owns_codex_dependency(
-                modules_root, dependency.get_unique_key(), ownership_cache=native_ownership_cache
-            )
-        accepted_types = {
-            PackageType.APM_PACKAGE.value: "APM package",
-            PackageType.CLAUDE_SKILL.value: "Claude skill",
-            PackageType.AGENT_PLUGIN.value: "Agent plugin",
-        }
-        accepted_kind = accepted_types.get(dependency.package_type)
-        if accepted_kind is None:
-            return False
-        if logger is not None:
-            dep_label = dependency.name or package_dir.name
-            logger.verbose_detail(
-                f"Skipping MCP check for '{dep_label}' -- locked {accepted_kind}; "
-                "package dir absent (cold cache; will hydrate from lock pins)"
-            )
-        return True
+                return modules_root is not None and owns_codex_dependency(
+                    modules_root,
+                    dependency.get_unique_key(),
+                    ownership_cache=native_ownership_cache,
+                )
+            accepted_types = {
+                PackageType.APM_PACKAGE.value: "APM package",
+                PackageType.CLAUDE_SKILL.value: "Claude skill",
+                PackageType.AGENT_PLUGIN.value: "Agent plugin",
+            }
+            accepted_kind = accepted_types.get(dependency.package_type)
+            if accepted_kind is None:
+                return False
+            if logger is not None:
+                dep_label = dependency.name or package_dir.name
+                logger.verbose_detail(
+                    f"Skipping MCP check for '{dep_label}' -- locked {accepted_kind}; "
+                    "package dir absent (cold cache; will hydrate from lock pins)"
+                )
+            return True
+    elif not package_dir.exists():
+        return False
 
     # A materialized Claude skill legitimately has no apm.yml, whether it was
     # declared at the repository root or in a virtual subdirectory. The lock
     # type and installed shape must agree before the manifest is waived.
 
     package_type, selected_manifest = detect_package_type(package_dir)
+    if package_type is PackageType.SKILL_BUNDLE:
+        return dependency.package_type == PackageType.SKILL_BUNDLE.value
     if package_type is PackageType.HOOK_PACKAGE:
         return (
             dependency.to_dependency_ref().is_virtual_subdirectory()
@@ -289,13 +316,15 @@ def _collect_locked_dependencies(
     diagnostics: DiagnosticCollector | None,
     logger: _McpViewLogger | None = None,
     trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
-) -> tuple[list[MCPDependency], list[McpSourceProblem]]:
+    allow_pending: bool | None = None,
+) -> tuple[list[MCPDependency], list[McpSourceProblem], set[str]]:
     """Collect MCP declarations from only package manifests named by the lockfile."""
     if lockfile is None:
-        return [], []
+        return [], [], set()
 
     collected: list[MCPDependency] = []
     problems: list[McpSourceProblem] = []
+    pending_packages: set[str] = set()
     parent_index = build_local_parent_index(lockfile)
     resolved_cache: dict[str, Path] = {}
     native_ownership_cache: dict[Path, frozenset[str]] = {}
@@ -334,6 +363,37 @@ def _collect_locked_dependencies(
             )
             continue
 
+        if allow_pending and not manifest_path.parent.exists() and dependency.source != "local":
+            from apm_cli.drift import build_download_ref
+
+            try:
+                package_type = PackageType(dependency.package_type)
+                if package_type is PackageType.INVALID:
+                    raise ValueError("locked package shape is invalid")
+                build_download_ref(
+                    dependency.to_dependency_ref(),
+                    lockfile,
+                    update_refs=False,
+                    ref_changed=False,
+                    require_locked=True,
+                )
+            except ValueError as exc:
+                problems.append(
+                    McpSourceProblem(
+                        package_key,
+                        manifest_path,
+                        f"cannot restore missing package from lock evidence: {exc}",
+                    )
+                )
+            else:
+                pending_packages.add(package_key)
+                if logger is not None:
+                    logger.verbose_detail(
+                        f"Deferring cold-cache MCP verification for '{package_key}' "
+                        "until its locked source is restored."
+                    )
+            continue
+
         if not manifest_path.exists():
             if _allows_missing_manifest(
                 dependency,
@@ -341,6 +401,7 @@ def _collect_locked_dependencies(
                 logger,
                 modules_root=modules_root,
                 native_ownership_cache=native_ownership_cache,
+                strict=allow_pending is not None,
             ):
                 continue
             problems.append(
@@ -410,7 +471,7 @@ def _collect_locked_dependencies(
                         logger.warning(message)
                     continue
             collected.append(replace(mcp_dependency, resolved_by=declarer))
-    return collected, problems
+    return collected, problems, pending_packages
 
 
 def _collect_unlocked_compat(
@@ -469,7 +530,7 @@ def _collect_transitive_compat(
             logger=logger,
         )
     project_root = lock_path.parent if lock_path is not None else Path.cwd()
-    dependencies, _ = _collect_locked_dependencies(
+    dependencies, _, _ = _collect_locked_dependencies(
         lockfile,
         modules_root,
         project_root,

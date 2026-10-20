@@ -54,7 +54,12 @@ from ..models.results import InstallDisposition, InstallResult
 from ..utils.console import _rich_error
 from ..utils.diagnostics import DiagnosticCollector
 from ..utils.path_security import PathTraversalError
-from .errors import AuthenticationError, DirectDependencyError, InstallFailureAlreadyRendered
+from .errors import (
+    AuthenticationError,
+    DirectDependencyError,
+    FrozenInstallError,
+    InstallFailureAlreadyRendered,
+)
 from .integrity import enforce_installed_hash_policy as _enforce_require_hashes
 from .transaction import InstallTransaction
 
@@ -397,6 +402,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     trust_bin: bool | None = None,
     transaction: InstallTransaction | None = None,
     frozen: bool = False,
+    trust_transitive_mcp: bool = False,
 ):
     """Install APM package dependencies.
 
@@ -515,6 +521,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     from .context import InstallContext
 
     ctx = InstallContext(
+        trust_transitive_mcp=trust_transitive_mcp,
         project_root=project_root,
         apm_dir=apm_dir,
         source_root=source_root,
@@ -977,7 +984,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
         # the typed exception lets the caller render the policy message
         # as-is.
         raise
-    except DirectDependencyError:
+    except (DirectDependencyError, FrozenInstallError):
         # #946: same pattern -- surface the message as-is instead of
         # double-wrapping it through the generic RuntimeError below.
         raise

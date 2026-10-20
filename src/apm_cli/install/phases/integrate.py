@@ -696,6 +696,17 @@ def run(ctx: InstallContext) -> None:
     preflight_agent_plugin_materializations(materialized)
     _fail_explicit_target_without_deploy(ctx)
 
+    if ctx.frozen and ctx.existing_lockfile is not None:
+        from apm_cli.install.service import InstallService
+
+        InstallService.enforce_hydrated_mcp(
+            ctx.apm_package,
+            ctx.existing_lockfile,
+            apm_modules_dir,
+            trust_transitive_mcp=ctx.trust_transitive_mcp,
+            logger=ctx.logger,
+        )
+
     for dep_key, install_path, source, materialization, terminal_deltas in prepared_integrations:
         if terminal_deltas is not None:
             deltas = terminal_deltas

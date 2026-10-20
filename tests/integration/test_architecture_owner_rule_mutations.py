@@ -1713,6 +1713,50 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
     assert any(violation.rule_id == rule_id for violation in report.violations)
 
 
+@pytest.mark.parametrize(
+    ("path", "old", "new", "rule_id"),
+    [
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "if ctx.frozen and ctx.existing_lockfile is not None:",
+            "if False:",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "InstallService.enforce_hydrated_mcp(",
+            "InstallService.skip_hydrated_mcp(",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/service.py",
+            "allow_pending=False,",
+            "allow_pending=True,",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "require_locked=True,",
+            "require_locked=False,",
+            "mutation_writes.mcp_declaration_scope",
+        ),
+    ],
+)
+def test_frozen_mcp_verification_cannot_bypass_owners(
+    path: str, old: str, new: str, rule_id: str
+) -> None:
+    """Cold restoration must retain acquisition evidence and pre-deployment verification."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 def test_frozen_preflight_uses_selected_lockfile_store() -> None:
     """Scoped frozen preflight must not substitute a source-side lockfile."""
     path = "src/apm_cli/install/service.py"
