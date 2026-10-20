@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
+from apm_cli.utils.content_hash import compute_native_bundle_hash
 from apm_cli.utils.yaml_io import load_yaml
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
 from tests.utils.claude_native_protocol import NATIVE_CLIENT_STUB as _NATIVE_CLIENT_STUB
@@ -44,7 +46,7 @@ class _Scenario:
         result = self.runner.run(
             args,
             scenario_id="claude-native-command-context",
-            cwd=self.isolated.work_root,
+            cwd=self.isolated.config_root if args[0] == "audit" else self.isolated.work_root,
             env=self.environment,
         )
         assert result.returncode == expected, (
@@ -73,6 +75,7 @@ class _Scenario:
         document = {
             "name": "native-command-consumer",
             "version": "1.0.0",
+            "targets": ["claude"],
             "dependencies": {
                 "apm": [
                     {
@@ -109,6 +112,8 @@ def _scenario(tmp_path: Path, command: tuple[str, ...], *, empty: bool = False) 
     repository = factory.create("commands")
     source = repository.worktree / "plugins" / "context"
     shutil.copytree(_FIXTURE, source)
+    (source / "__pycache__").mkdir()
+    (source / "__pycache__" / "command-resource.bin").write_bytes(b"PUBLISHER_COMMAND_RESOURCE\n")
     if empty:
         manifest = source / ".claude-plugin" / "plugin.json"
         data = json.loads(manifest.read_text(encoding="utf-8"))
@@ -158,7 +163,80 @@ def _assert_intact_native_source(
     assert dependency["repo_url"] == _DEPENDENCY
     assert dependency["virtual_path"] == "plugins/context"
     assert dependency["resolved_commit"] == revision
+    ledger = json.loads(
+        (scenario.modules / ".claude-plugin" / "apm-registration.json").read_text(encoding="utf-8")
+    )
+    assert ledger["version"] == 2
+    assert ledger["plugins"] == {
+        "apm-command-context@apm-claude": {
+            "dependency_key": f"{_DEPENDENCY}/plugins/context",
+            "source": source.relative_to(scenario.modules).as_posix(),
+            "source_pin": f"{dependency.get('source')}:{revision}",
+            # The admitted tree also includes APM's normalization metadata.
+            "bundle_hash": compute_native_bundle_hash(source),
+        }
+    }
     return source
+
+
+@pytest.mark.parametrize("empty", [False, True], ids=["selected-command", "explicit-empty"])
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "resource",
+        pytest.param(
+            "executable",
+            marks=pytest.mark.skipif(os.name == "nt", reason="Git executable bits require POSIX"),
+        ),
+    ],
+)
+def test_command_bundle_audit_refuses_drift_without_repair(
+    tmp_path: Path, apm_engine_command: tuple[str, ...], empty: bool, changed: str
+) -> None:
+    """Audit attests all resources even when the manifest selects no commands."""
+    scenario = _scenario(tmp_path, apm_engine_command, empty=empty)
+    scenario.install()
+    source = _assert_intact_native_source(scenario, scenario.revision, empty=empty)
+    audit = ("audit", "--ci", "--no-policy", "--no-fail-fast", "--format", "json")
+    healthy = json.loads(scenario.run(*audit).stdout)
+    assert all(row["passed"] for row in healthy["checks"])
+    ledger = scenario.modules / ".claude-plugin" / "apm-registration.json"
+    ledger_before = ledger.read_bytes()
+    lock = scenario.isolated.config_root / "apm.lock.yaml"
+    lock_before = lock.read_bytes()
+    state_before = scenario.native_state()
+    payload = source / (
+        "__pycache__/command-resource.bin" if changed == "resource" else "scripts/context.mjs"
+    )
+    original = payload.read_bytes()
+    mode = payload.stat().st_mode
+    if changed == "resource":
+        payload.write_bytes(b"MODIFIED_COMMAND_RESOURCE\n")
+    else:
+        payload.chmod(mode ^ stat.S_IXUSR)
+
+    result = scenario.run(*audit, expected=1)
+
+    assert "fingerprint changed" in result.stdout
+    report = json.loads(result.stdout)
+    assert [row["name"] for row in report["checks"] if not row["passed"]] == ["drift"]
+    assert payload.read_bytes() == (
+        b"MODIFIED_COMMAND_RESOURCE\n" if changed == "resource" else original
+    )
+    assert payload.stat().st_mode & stat.S_IXUSR == (
+        mode & stat.S_IXUSR if changed == "resource" else (mode ^ stat.S_IXUSR) & stat.S_IXUSR
+    )
+    assert ledger.read_bytes() == ledger_before
+    assert lock.read_bytes() == lock_before
+    assert scenario.native_state() == state_before
+
+    payload.write_bytes(original)
+    payload.chmod(mode)
+    restored = json.loads(scenario.run(*audit).stdout)
+    assert all(row["passed"] for row in restored["checks"])
+    assert ledger.read_bytes() == ledger_before
+    assert lock.read_bytes() == lock_before
+    assert scenario.native_state() == state_before
 
 
 @pytest.mark.parametrize("empty", [False, True], ids=["selected-command", "explicit-empty"])

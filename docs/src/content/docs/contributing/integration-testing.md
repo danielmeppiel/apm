@@ -393,6 +393,10 @@ explicit-empty commands, intact resources, source pins, disabled-by-default
 registration, reinstall/update/removal, and absence of loose duplicates.
 Ordinary and frozen reinstalls preserve both user activation choices in the
 substituted host; removal clears APM's acquired source and final lockfile.
+The saved native fingerprint and source pin must match the selected revision.
+Read-only audit rejects modified bundled resources (including `__pycache__` data)
+and, on POSIX, executable-bit changes, even with an empty command selection,
+without repairing files or changing registration, ownership, or the lockfile.
 Unreadable retained hook settings stop native admission without rewriting command
 resources or user commands, including when command selection is explicitly empty.
 Standalone APM commands retain their existing behavior.
