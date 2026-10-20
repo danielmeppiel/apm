@@ -336,6 +336,18 @@ descendants, are skipped.
 
 ## Security and audit
 
+Audit replay and coverage use current manifest targets, otherwise concrete
+recorded deployment targets, before directory discovery. Unrelated workflow
+files cannot add Copilot output to a recorded Grok Cloud installation.
+Legacy lockfiles without recorded `deployments` retain directory discovery,
+even when compatibility paths imply a target.
+`apm config target` remains an install/update default, not retroactive audit
+intent. A disabled selected experimental target exits `3` with an enable hint
+on stderr, not a JSON audit report. Missing or modified managed files retain
+the existing drift and CI-check rules; bare audit drift is advisory unless
+configured otherwise. Retained historical paths remain eligible for CI
+presence and recorded-hash checks. Audit does not repair them.
+
 For shared hook targets, drift compares only APM-owned hook entries. Ownership
 sidecars are compared as JSON: object-key order and formatting do not cause
 drift, but changed fields, ownership markers, or list order do. Malformed JSON,
@@ -365,6 +377,8 @@ rewriting files. Explicit `--file` remains user-directed.
 | `apm audit [PKG]` | Scan installed primitives for hidden Unicode, drift, and lockfile/policy violations | `--file PATH`, `--strip`, `--dry-run`, `-v`, `-f [text\|json\|sarif\|md]`, `-o PATH`, `--ci`, `--policy SOURCE`, `--no-cache`, `--no-fail-fast`, `--no-drift`, `--external NAME` (experimental; ingest a third-party SARIF scanner, e.g. `skillspector`), `--external-sarif PATH`, `--external-llm/--no-external-llm`, `--external-args TEXT` |
 
 `apm audit` runs **drift detection by default** (issue #1071). It replays `apm install` cache-only into a temporary scratch tree and diffs the result against your working tree. It catches four failure modes: (1) `.apm/` source added without re-running `apm install`, (2) hand-edits to deployed files that diverge from canonical source, (3) orphan files left after their source was removed, and (4) `unrecorded` files that install deploys but no lockfile entry claims. The scan is read-only -- never writes to your project, lockfile, or live `apm_modules/`. Build IDs, CRLF line endings, and BOMs are normalized away so they cannot trigger false positives.
+
+Native Copilot Agent Plugins replay through the canonical package loader, with or without a plugin `apm.yml`. A clean install or reinstall can audit successfully. Set the consumer's `targets: [copilot]` in `apm.yml`; audit has no `--target` flag. Invalid native manifests fail replay instead of entering legacy conversion. Admitted local native cache units are compared with a scratch copy of their original source using install's validated copying; modified or missing cached skills fail audit. Remote native units use the recorded package content hash, including in cold-cache CI. Run `apm install` to restore drift or establish a missing remote hash. Cache files remain outside deployed-file tracking, and native registration files are not covered by this content comparison.
 
 Bare `apm audit` uses the warmed local cache and skips drift with an informational message when the cache is absent; run `apm install` before relying on non-CI drift. `apm audit --ci` is stricter: when `apm_modules/` is missing but `apm.lock.yaml` is present, it self-hydrates a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without touching the checkout. No checkout install is required first. Missing gitignored deployed outputs do not fail `deployed-files-present`, so repos that gitignore them can use audit-only CI too. Without committed deployed bytes, that pattern lacks deployed-byte integrity and drift coverage; use full-install CI when outputs need to be materialized.
 
