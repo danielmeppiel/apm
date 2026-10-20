@@ -48,6 +48,7 @@ def _native_run(self, *args):
     elif args == ["plugin", "list", "--json"]:
         output = json.dumps(state["plugins"])
     elif args[:3] == ["plugin", "marketplace", "add"]:
+        assert args[4:] == ["--scope", "user"], "Marketplace must stay user-scoped"
         root = Path(args[3])
         catalog = json.loads((root / ".claude-plugin" / "marketplace.json").read_text())
         state["marketplaces"] = [{
@@ -55,6 +56,7 @@ def _native_run(self, *args):
             "path": str(root), "installLocation": str(root)
         }]
     elif args[:2] in (["plugin", "install"], ["plugin", "update"]):
+        assert args[3:] == ["--scope", "user"], "Plugin registration must stay user-scoped"
         name, marketplace = args[2].split("@")
         selected = next(m for m in state["marketplaces"] if m["name"] == marketplace)
         root = Path(selected["path"])
@@ -71,7 +73,9 @@ def _native_run(self, *args):
             "version": manifest["version"]
         })
     elif args[:2] == ["plugin", "uninstall"]:
-        assert "--keep-data" in args, "Native removal must retain user plugin data"
+        assert args[3:] == ["--scope", "user", "--keep-data"], (
+            "Native removal must stay user-scoped and retain user plugin data"
+        )
         state["plugins"] = [p for p in state["plugins"] if p["id"] != args[2]]
     else:
         raise AssertionError(f"Unexpected native CLI call: {args!r}")
@@ -187,14 +191,16 @@ def _scenario(tmp_path: Path, command: tuple[str, ...], *, empty: bool = False) 
     return scenario
 
 
-def _assert_intact_native_source(scenario: _Scenario, revision: str, *, empty: bool) -> Path:
+def _assert_intact_native_source(
+    scenario: _Scenario, revision: str, *, empty: bool, enabled: bool = False
+) -> Path:
     """Bind the native registration to acquired source bytes and immutable identity."""
     state = scenario.native_state()
     assert len(state["plugins"]) == 1
     plugin = state["plugins"][0]
     assert plugin["id"] == "apm-command-context@apm-claude"
     assert plugin["scope"] == "user"
-    assert plugin["enabled"] is False
+    assert plugin["enabled"] is enabled
     source = Path(plugin["readFromFolder"])
     assert source.is_relative_to(scenario.modules)
     assert source != Path(plugin["installPath"])
@@ -240,13 +246,17 @@ def test_global_git_path_command_install_reinstall_and_empty_selection(
     assert not any(call[:2] == ["plugin", "enable"] for call in scenario.native_state()["calls"])
 
 
+@pytest.mark.parametrize("enabled", [False, True], ids=["user-disabled", "user-enabled"])
 def test_global_git_path_command_update_and_owned_removal(
-    tmp_path: Path, apm_engine_command: tuple[str, ...]
+    tmp_path: Path, apm_engine_command: tuple[str, ...], enabled: bool
 ) -> None:
     """Ref replacement updates live resources and uninstall retains user command/data."""
     scenario = _scenario(tmp_path, apm_engine_command)
     scenario.install()
     _assert_intact_native_source(scenario, scenario.revision, empty=False)
+    state = scenario.native_state()
+    state["plugins"][0]["enabled"] = enabled
+    Path(scenario.environment["APM_NATIVE_TEST_STATE"]).write_text(json.dumps(state))
     user_command = scenario.claude / "commands" / "personal.md"
     user_command.parent.mkdir(parents=True, exist_ok=True)
     user_command.write_bytes(b"# User-owned command\n")
@@ -262,7 +272,7 @@ def test_global_git_path_command_update_and_owned_removal(
 
     scenario.install()
 
-    source = _assert_intact_native_source(scenario, revision, empty=False)
+    source = _assert_intact_native_source(scenario, revision, empty=False, enabled=enabled)
     assert (source / "resources" / "identity.txt").read_bytes() == resource.read_bytes()
     scenario.run("uninstall", "-g", f"{_DEPENDENCY}/plugins/context")
     assert scenario.native_state()["plugins"] == []

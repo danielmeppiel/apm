@@ -19,6 +19,7 @@ from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.skill_integrator import SkillIntegrator
 from apm_cli.integration.targets import KNOWN_TARGETS
 from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType
+from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.validation import validate_apm_package
 from apm_cli.utils.diagnostics import DiagnosticCollector
 
@@ -50,6 +51,13 @@ def _plugin(
         package=result.package,
         install_path=root,
         package_type=PackageType.SKILL_BUNDLE if virtual else result.package_type,
+        dependency_ref=DependencyReference(
+            repo_url="fixture/native-commands",
+            virtual_path="plugins/context",
+            is_virtual=True,
+        )
+        if virtual
+        else None,
     )
 
 
