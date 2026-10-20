@@ -652,6 +652,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Catalog-only marketplace manifest materialization loses its owner.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-claude-ownership",
+        rule_id="marketplace-integrations-claude-ownership",
+        path="src/apm_cli/claude_plugins/registrar.py",
+        old='"defaultEnabled": False',
+        new='"defaultEnabled": True',
+        intent="New Claude registrations silently activate without native user consent.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-copilot-ownership",
         rule_id="marketplace-integrations-copilot-ownership",
         path="src/apm_cli/copilot_plugins/registrar.py",

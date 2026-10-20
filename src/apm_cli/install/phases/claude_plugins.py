@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from apm_cli.claude_plugins.registrar import resync_claude_plugins
+from apm_cli.deps.lockfile import LockFile, get_lockfile_path
 
 if TYPE_CHECKING:
     from apm_cli.install.context import InstallContext
@@ -17,10 +18,10 @@ def run(ctx: InstallContext) -> None:
     resync_claude_plugins(
         modules_dir=ctx.apm_modules_dir,
         scope=ctx.scope,
-        lockfile=ctx.lockfile,
+        lockfile=LockFile.read(get_lockfile_path(ctx.apm_dir)),
         targets=ctx.targets,
         prepared=ctx.claude_native_plugins,
-        allow_executables=getattr(ctx.apm_package, "allow_executables", None),
+        allow_executables=ctx.exec_allow_map,
         logger=ctx.logger,
         dry_run=ctx.dry_run,
     )

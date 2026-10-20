@@ -362,10 +362,12 @@ def integrate_package_primitives(  # noqa: PLR0913
         hooks_approved=_hooks_approved,
         skip_bin=_skip_bin,
     )
+    native_target_names = {native_claude_plugin.target_name} if native_claude_plugin else set()
+    projection_targets = [target for target in targets if target.name not in native_target_names]
 
     source_plan = DeployableSourcePlan.create(
         package_info,
-        targets,
+        projection_targets,
         skill_subset=skill_subset,
         hooks_approved=_hooks_approved,
         canvas_approved=_canvas_approved or is_first_party,
@@ -390,22 +392,6 @@ def integrate_package_primitives(  # noqa: PLR0913
         logger=logger,
     ):
         return result
-
-    if native_claude_plugin is not None:
-        result["native_plugin"] = True
-        if callable(reconcile_package_targets):
-            reconcile_stats = reconcile_package_targets(
-                package_info,
-                project_root,
-                [t for t in targets if t.name == "claude"],
-            )
-            _warn_target_reconcile_failure(diagnostics, package_name, reconcile_stats)
-        targets = [target for target in targets if target.name != "claude"]
-        if not targets:
-            _reconcile_excluded_targets()
-            if ctx is not None:
-                ctx.claude_native_plugins[package_name] = native_claude_plugin
-            return result
 
     # A natively registered Agent Plugin stays opaque: Copilot loads the whole
     # unit live from apm_modules, so decomposing its skills or MCP servers here
@@ -435,7 +421,14 @@ def integrate_package_primitives(  # noqa: PLR0913
 
     from apm_cli.install.target_warnings import warn_unsupported_primitives
 
-    warn_unsupported_primitives(package_info, package_name, targets, ctx, diagnostics, logger)
+    warn_unsupported_primitives(
+        package_info,
+        package_name,
+        projection_targets,
+        ctx,
+        diagnostics,
+        logger,
+    )
 
     def _log_integration(msg):
         if logger:
@@ -468,7 +461,7 @@ def integrate_package_primitives(  # noqa: PLR0913
     # or identity-target instructions from the same package active.
     if integrators.instruction is not None:
         integrators.instruction.preflight_instructions_for_targets(
-            targets,
+            projection_targets,
             package_info,
             project_root,
             source_plan,
@@ -477,6 +470,25 @@ def integrate_package_primitives(  # noqa: PLR0913
         )
 
     _reconcile_excluded_targets()
+    if native_claude_plugin is not None:
+        from apm_cli.claude_plugins.admission import ClaudeNativePluginError
+
+        result["native_plugin"] = True
+        if callable(reconcile_package_targets):
+            reconcile_stats = reconcile_package_targets(
+                package_info,
+                project_root,
+                [target for target in targets if target.name in native_target_names],
+            )
+            if reconcile_stats.get("errors"):
+                raise ClaudeNativePluginError(
+                    "Cannot retire previous APM-owned loose Claude hooks safely. "
+                    "Repair the reported hook settings before native registration."
+                )
+        if not projection_targets:
+            if ctx is not None:
+                ctx.claude_native_plugins[package_name] = native_claude_plugin
+            return result
 
     # Aggregate per-primitive across targets so we emit ONE line per kind
     # (per the 1/2/3+ collapse rule), not one per target.
@@ -522,6 +534,8 @@ def integrate_package_primitives(  # noqa: PLR0913
         _agg_hook_payloads: list = []
         _label = _prim_name
         for _target in targets:
+            if _target not in projection_targets:
+                continue
             _mapping = _target.primitives.get(_prim_name)
             if _mapping is None:
                 continue
@@ -652,7 +666,7 @@ def integrate_package_primitives(  # noqa: PLR0913
         diagnostics=diagnostics,
         managed_files=managed_files,
         force=force,
-        targets=targets,
+        targets=projection_targets,
         skill_subset=skill_subset,
         scope=scope,
         policy=policy,

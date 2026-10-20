@@ -428,6 +428,78 @@ def _check_copilot_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
     return tuple(findings)
 
 
+_RID_CLAUDE = "marketplace-integrations-claude-ownership"
+_CLAUDE_OWNER = "src/apm_cli/claude_plugins/registrar.py"
+
+
+def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
+    inv = frozenset(provider.inventory)
+    findings: list[Violation] = []
+    for path, symbol in (
+        (_CLAUDE_OWNER, "synchronize_claude_plugins"),
+        ("src/apm_cli/claude_plugins/admission.py", "plan_native_claude_plugin"),
+    ):
+        count = _count_across(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            _src_python(provider),
+            re.compile(rf"^def {symbol}\("),
+        )
+        if count != 1:
+            findings.append(
+                violation(
+                    _RID_CLAUDE,
+                    path,
+                    f"{symbol} must have exactly one owner, found {count}",
+                )
+            )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            _CLAUDE_OWNER,
+            (
+                '"defaultEnabled": False',
+                'client.run("plugin", "uninstall"',
+                'expected_enabled = live[plugin_id]["enabled"]',
+            ),
+            "Claude registration must preserve native consent and remove through the native CLI",
+        )
+    )
+    findings.extend(
+        _forbid_scan(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            tuple(
+                p for p in _src_python(provider) if not p.startswith("src/apm_cli/claude_plugins/")
+            ),
+            re.compile(r'["\']apm-claude["\']|^class ClaudePluginCLI'),
+            "Claude native marketplace and CLI ownership must stay in claude_plugins/",
+            exempt=False,
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            "src/apm_cli/install/services.py",
+            (
+                "plan_native_claude_plugin(",
+                "native_plugin_root=",
+                "projection_targets = [target for target in targets if target.name not in native_target_names]",
+                "if _target not in projection_targets:",
+                "targets=projection_targets,",
+            ),
+            "Native Claude routing must use shared admission/source scan and suppress loose projection",
+        )
+    )
+    return tuple(findings)
+
+
 RULES: tuple[Rule, ...] = (
     Rule(
         id=_RID_CONSTRUCTION,
@@ -470,6 +542,13 @@ RULES: tuple[Rule, ...] = (
         guard_ids=(_RID_COPILOT,),
         description="APM-owned Copilot marketplace catalog and settings stay in copilot_plugins/.",
         check=_check_copilot_ownership,
+    ),
+    Rule(
+        id=_RID_CLAUDE,
+        group=GROUP,
+        guard_ids=(_RID_CLAUDE,),
+        description="Native Claude registration has one owner and never auto-enables plugins.",
+        check=_check_claude_ownership,
     ),
 )
 
