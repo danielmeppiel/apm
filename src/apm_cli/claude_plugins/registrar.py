@@ -9,7 +9,9 @@ state against intent before continuing a partially completed reconciliation.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,11 @@ from apm_cli.utils.atomic_io import atomic_write_text
 from apm_cli.utils.path_security import ensure_path_within, has_symlink_component
 from apm_cli.utils.paths import portable_relpath
 
-from .admission import ClaudeNativePlugin, ClaudeNativePluginError
+from .admission import (
+    ClaudeNativePlugin,
+    ClaudeNativePluginError,
+    fingerprint_native_claude_source,
+)
 from .client import ClaudePluginCLI
 
 MARKETPLACE_NAME = "apm-claude"
@@ -32,20 +38,38 @@ def _read_ledger(path: Path, modules_dir: Path) -> dict[str, dict[str, str]]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
         entries = document["plugins"]
-        if document["version"] != 1 or document["marketplace"] != MARKETPLACE_NAME:
+        version = document["version"]
+        if (
+            type(version) is not int
+            or version not in {1, 2}
+            or document["marketplace"] != MARKETPLACE_NAME
+        ):
             raise ValueError("unsupported ledger")
         if not isinstance(entries, dict):
             raise ValueError("invalid plugin map")
         for plugin_id, entry in entries.items():
+            # Intent can embed retiring v1 entries in a v2 ledger. Retaining
+            # those identities permits removal retries, never fresh attestation.
             if (
                 not isinstance(plugin_id, str)
                 or not plugin_id.endswith("@" + MARKETPLACE_NAME)
                 or not isinstance(entry, dict)
-                or set(entry) != {"dependency_key", "source"}
+                or set(entry)
+                not in (
+                    {"dependency_key", "source"},
+                    {"dependency_key", "source", "bundle_hash", "source_pin"}
+                    if version == 2
+                    else set(),
+                )
                 or not all(isinstance(value, str) and value for value in entry.values())
             ):
                 raise ValueError("invalid plugin ownership")
             ensure_path_within(modules_dir / entry["source"], modules_dir)
+            if (
+                "bundle_hash" in entry
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", entry["bundle_hash"]) is None
+            ):
+                raise ValueError("invalid native fingerprint")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise ClaudeNativePluginError(
             "Cannot safely read APM's Claude ownership ledger; refusing native state changes."
@@ -58,7 +82,7 @@ def _write_ledger(path: Path, entries: dict[str, dict[str, str]]) -> None:
         path,
         json.dumps(
             {
-                "version": 1,
+                "version": 2,
                 "marketplace": MARKETPLACE_NAME,
                 "plugins": entries,
             },
@@ -100,6 +124,69 @@ def _check_live_root(
         )
 
 
+def _check_bundle_fingerprint(root: Path, expected: str | None) -> None:
+    """Fail closed when an owned or prepared native snapshot cannot be attested."""
+    if not expected:
+        raise ClaudeNativePluginError(
+            "APM's Claude ownership ledger has no complete native fingerprint. "
+            "Run 'apm uninstall --global <package>', then reinstall with the original targets."
+        )
+    if fingerprint_native_claude_source(root) != expected:
+        raise ClaudeNativePluginError(
+            f"Native Claude source fingerprint changed at {root}. Restore the pinned package "
+            "before retrying; APM will not adopt modified publisher resources or executable modes."
+        )
+
+
+def _locked_source_pin(locked: Any) -> str:
+    """Bind native ownership to the resolver's saved source identity."""
+    revision = (
+        locked.local_path
+        if locked.source == "local"
+        else locked.resolved_commit or locked.resolved_hash
+    )
+    if not revision:
+        raise ClaudeNativePluginError(
+            f"Native Claude source {locked.get_unique_key()} has no immutable pin. "
+            "Reinstall from a pinned commit or registry artifact."
+        )
+    return f"{locked.source}:{revision}"
+
+
+def verify_claude_native_cache(*, modules_dir: Path, locked: Any, source_root: Path) -> None:
+    """Verify Claude's saved native baseline without invoking its metadata client."""
+    from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+
+    try:
+        ledger = modules_dir / LEDGER_RELATIVE
+        if has_symlink_component(modules_dir, ledger):
+            raise ClaudeNativePluginError("Refusing symlinked native Claude ownership ledger.")
+        entries = [
+            entry
+            for entry in _read_ledger(ledger, modules_dir).values()
+            if entry["dependency_key"] == locked.get_unique_key()
+        ]
+        if len(entries) != 1:
+            raise ClaudeNativePluginError(
+                "Native Claude cache has no unique owned fingerprint. "
+                "Reinstall the package with the original targets before auditing."
+            )
+        entry = entries[0]
+        live_root = locked.to_dependency_ref().get_install_path(modules_dir)
+        if (modules_dir / entry["source"]).resolve() != live_root.resolve() or entry.get(
+            "source_pin"
+        ) != _locked_source_pin(locked):
+            raise ClaudeNativePluginError(
+                "Native Claude fingerprint ownership or source pin changed. "
+                "Reinstall with the original target selection before auditing."
+            )
+        _check_bundle_fingerprint(source_root, entry.get("bundle_hash"))
+        if live_root.exists() and live_root.resolve() != source_root.resolve():
+            _check_bundle_fingerprint(live_root, entry.get("bundle_hash"))
+    except ClaudeNativePluginError as exc:
+        raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
+
+
 def synchronize_claude_plugins(
     *,
     modules_dir: Path,
@@ -131,11 +218,24 @@ def synchronize_claude_plugins(
         entry = {
             "dependency_key": plugin.dependency_key,
             "source": portable_relpath(plugin.source_root, modules_dir),
+            "bundle_hash": plugin.bundle_hash,
+            "source_pin": plugin.source_pin,
         }
-        if plugin_id in desired or (plugin_id in previous and previous[plugin_id] != entry):
+        if plugin_id in desired or (
+            plugin_id in previous
+            and any(previous[plugin_id][key] != entry[key] for key in ("dependency_key", "source"))
+        ):
             raise ClaudeNativePluginError(
                 f"Native Claude plugin name collision: {plugin.name}. Use distinct plugin names."
             )
+        if not plugin.source_pin:
+            raise ClaudeNativePluginError(
+                "Native Claude admission has no immutable source identity. "
+                "Reinstall the package from a pinned source."
+            )
+        # An admitted plan is not exclusive filesystem ownership: another
+        # process can change its source before this independently callable step.
+        _check_bundle_fingerprint(plugin.source_root, plugin.bundle_hash)
         desired[plugin_id] = entry
 
     client = ClaudePluginCLI()
@@ -204,6 +304,7 @@ def synchronize_claude_plugins(
         )
     for plugin_id, entry in desired.items():
         _check_live_root(after[plugin_id], entry, modules_dir)
+        _check_bundle_fingerprint(modules_dir / entry["source"], entry["bundle_hash"])
         expected_enabled = live[plugin_id]["enabled"] if plugin_id in live else False
         if after[plugin_id]["enabled"] != expected_enabled:
             raise ClaudeNativePluginError(
@@ -263,6 +364,15 @@ def resync_claude_plugins(
     if has_symlink_component(modules_dir, ledger):
         raise ClaudeNativePluginError("Refusing symlinked native Claude ownership ledger.")
     previous = _read_ledger(ledger, modules_dir)
+    if any(
+        entry["dependency_key"] in lockfile.dependencies
+        and not (modules_dir / entry["source"]).is_dir()
+        for entry in previous.values()
+    ):
+        raise ClaudeNativePluginError(
+            "A retained native Claude source is missing. Restore the pinned package "
+            "before retrying; existing native ownership was preserved."
+        )
     known_keys = {entry["dependency_key"] for entry in previous.values()} | set(prepared or {})
     plans: list[ClaudeNativePlugin] = []
     for candidate in candidates_from_lockfile(lockfile, modules_dir):
@@ -316,7 +426,25 @@ def resync_claude_plugins(
             raise ClaudeNativePluginError(
                 "Native Claude source changed after deployment admission."
             )
-        plans.append(plan)
+        source_pin = _locked_source_pin(locked)
+        prior = previous.get(f"{plan.name}@{MARKETPLACE_NAME}")
+        if prior is not None:
+            if not prior.get("bundle_hash"):
+                _check_bundle_fingerprint(root, None)
+            if not prepared or key not in prepared:
+                _check_bundle_fingerprint(root, prior["bundle_hash"])
+                if prior.get("source_pin") != source_pin:
+                    raise ClaudeNativePluginError(
+                        "Native Claude source pin changed without fresh admission. "
+                        "Reinstall with the original target selection before retrying."
+                    )
+            elif (
+                locked.source != "local"
+                and prior.get("source_pin") == source_pin
+                and prior["bundle_hash"] != plan.bundle_hash
+            ):
+                _check_bundle_fingerprint(root, prior["bundle_hash"])
+        plans.append(replace(plan, source_pin=source_pin))
     if set(prepared or {}) - {plan.dependency_key for plan in plans}:
         raise ClaudeNativePluginError(
             "An admitted native Claude plugin is absent from the authorized locked set. "

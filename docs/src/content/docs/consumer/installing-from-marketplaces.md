@@ -59,6 +59,25 @@ APM preserves manifest selection, frontmatter, plugin-root expressions and sibli
 files, without duplicate loose Claude commands or hook-settings merges.
 Standalone APM primitives, project installs and other selected targets are unchanged.
 
+Native ownership records fingerprint every publisher file, including
+`__pycache__` resources and the owner executable bit. Git transport metadata and
+the root `.apm-pin` marker are excluded; ordinary lockfile hashes are unchanged.
+Registration checks the admitted fingerprint again after metadata readback.
+Reinstalling the same remote revision cannot adopt changed bytes or modes.
+Freshly admitted revision updates and local-source updates remain supported.
+Audit checks the saved native fingerprint without invoking Claude or repairing
+the source or cache. An older ownership record without this baseline requires
+explicit global uninstall and reinstall with the original targets.
+
+To verify this user installation, run `apm audit --ci` from its manifest
+directory (normally `~/.apm`). Include `claude` in that manifest's `targets`,
+preserving any other targets; audit has no `--target` flag. This checks stored
+source integrity, not native activation or hook execution.
+
+Raw local plugins without a source `apm.yml` can also report a separate
+MCP configuration-consistency error. In that case, `apm audit --ci` exits 1
+even when its native drift check passes.
+
 If this package already owns loose Claude hooks, APM preserves them and refuses
 the native transition instead of deleting retained-target state or enabling both
 routes. Explicitly uninstall that package with `apm uninstall --global <package>`,

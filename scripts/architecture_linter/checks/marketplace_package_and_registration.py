@@ -468,6 +468,7 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
     findings: list[Violation] = []
     for path, symbol in (
         (_CLAUDE_OWNER, "synchronize_claude_plugins"),
+        (_CLAUDE_OWNER, "verify_claude_native_cache"),
         ("src/apm_cli/claude_plugins/admission.py", "plan_native_claude_plugin"),
     ):
         count = _count_across(
@@ -495,8 +496,36 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
                 '"defaultEnabled": False',
                 'client.run("plugin", "uninstall"',
                 'expected_enabled = live[plugin_id]["enabled"]',
+                "fingerprint_native_claude_source(root) != expected",
+                "_locked_source_pin(locked)",
+                '_check_bundle_fingerprint(root, prior["bundle_hash"])',
+                '_check_bundle_fingerprint(modules_dir / entry["source"], entry["bundle_hash"])',
             ),
             "Claude registration must preserve native consent and remove through the native CLI",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            "src/apm_cli/claude_plugins/admission.py",
+            ("return compute_native_bundle_hash(root)",),
+            "Claude fingerprinting must consume the canonical complete native hash",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            "src/apm_cli/install/drift.py",
+            (
+                'if result.get("native_claude_plugin"):',
+                "verify_claude_native_cache(",
+                'scratch_root / "normalized-local-sources"',
+            ),
+            "Claude replay must verify owned fingerprints without normalizing into the live cache",
         )
     )
     findings.extend(
@@ -520,6 +549,7 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
             "src/apm_cli/install/services.py",
             (
                 "plan_native_claude_plugin(",
+                'result["native_claude_plugin"] = True',
                 "native_plugin_root=",
                 "projection_targets = [target for target in targets if target.name not in native_target_names]",
                 "if _target not in projection_targets:",

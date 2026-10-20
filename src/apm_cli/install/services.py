@@ -452,6 +452,7 @@ def integrate_package_primitives(  # noqa: PLR0913
         from apm_cli.claude_plugins.admission import ClaudeNativePluginError
 
         result["native_plugin"] = True
+        result["native_claude_plugin"] = True
         if callable(reconcile_package_targets):
             reconcile_stats = reconcile_package_targets(
                 package_info,

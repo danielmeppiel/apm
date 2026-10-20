@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -28,8 +29,9 @@ ClaudePluginCLI.run = _controlled_native_run
 
 
 @pytest.mark.parametrize("failure", ["", "install", "uninstall"])
+@pytest.mark.parametrize("local", [False, True])
 def test_installed_hook_source_reinstall_and_removal(
-    tmp_path: Path, apm_engine_command: tuple[str, ...], failure: str
+    tmp_path: Path, apm_engine_command: tuple[str, ...], failure: str, local: bool
 ) -> None:
     """Run acquisition, consent, lock, scan and removal through the installed CLI."""
     isolated = IsolatedApmEnvironment.create(tmp_path / "scenario", base_env=dict(os.environ))
@@ -63,15 +65,28 @@ def test_installed_hook_source_reinstall_and_removal(
         }
     }
     (source / "hooks/hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+    (source / "__pycache__").mkdir()
+    (source / "__pycache__/resource.bin").write_bytes(b"publisher-owned resource")
+    (source / "hooks/resource.cjs").write_text("// inert publisher resource\n", encoding="ascii")
     revision = factory.commit(repository, message="Owned inert hook fixture").sha
     dependency = "fixture/native-hooks"
+    package_argument = str(source) if local else dependency + "/plugins/context"
     env = factory.url_rewrite_subprocess_env(repository, f"https://github.com/{dependency}.git")
     manifest = {
         "name": "hook-consumer",
         "version": "1.0.0",
-        "dependencies": {"apm": [{"git": dependency, "ref": revision, "path": "plugins/context"}]},
+        "targets": ["claude"],
+        "dependencies": {
+            "apm": [
+                str(source)
+                if local
+                else {"git": dependency, "ref": revision, "path": "plugins/context"}
+            ]
+        },
         "allowExecutables": {
-            f"github.com/{dependency}/plugins/context#{revision}": {"hooks": True}
+            str(source) if local else f"github.com/{dependency}/plugins/context#{revision}": {
+                "hooks": True
+            }
         },
     }
     (isolated.config_root / "apm.yml").write_text(json.dumps(manifest), encoding="utf-8")
@@ -79,9 +94,14 @@ def test_installed_hook_source_reinstall_and_removal(
 
     def run(*args: str, expected: int = 0) -> str:
         result = runner.run(
-            args, scenario_id="claude-native-hook-lifecycle", cwd=isolated.work_root, env=env
+            args,
+            scenario_id="claude-native-hook-lifecycle",
+            cwd=isolated.config_root if args[0] == "audit" else isolated.work_root,
+            env=env,
         )
         assert result.returncode == expected, result.stdout + result.stderr
+        if args[0] == "audit":
+            return result.stdout
         return " ".join((result.stdout + result.stderr).split())
 
     if failure == "install":
@@ -102,15 +122,58 @@ def test_installed_hook_source_reinstall_and_removal(
         assert live_source.is_relative_to(isolated.config_root / "apm_modules")
         assert json.loads((live_source / "hooks/hooks.json").read_text()) == hooks
         lock = load_yaml(isolated.config_root / "apm.lock.yaml")
-        assert lock["dependencies"][0]["resolved_commit"] == revision
+        if local:
+            assert lock["dependencies"][0]["local_path"] == str(source)
+        else:
+            assert lock["dependencies"][0]["resolved_commit"] == revision
         assert not (isolated.home / ".claude/settings.json").exists()
         assert not (isolated.home / ".claude/hooks").exists()
 
+    if not failure:
+        audit = ("audit", "--ci", "--no-policy", "--no-fail-fast", "--format", "json")
+        healthy = json.loads(run(*audit, expected=int(local)))
+        # Raw local plugins lack apm.yml at their original source. The existing
+        # MCP consistency check reports that separately from native integrity.
+        assert [row["name"] for row in healthy["checks"] if not row["passed"]] == (
+            ["config-consistency"] if local else []
+        )
+        assert next(row for row in healthy["checks"] if row["name"] == "drift")["passed"] is True
+        ledger = isolated.config_root / "apm_modules/.claude-plugin/apm-registration.json"
+        baseline = ledger.read_bytes()
+        calls_before = state_file.read_bytes()
+        asset = live_source / "__pycache__/resource.bin"
+        original = asset.read_bytes()
+        asset.write_bytes(b"tampered publisher resource")
+        output = run(*audit, expected=1)
+        assert "fingerprint changed" in output
+        assert (
+            next(row for row in json.loads(output)["checks"] if row["name"] == "drift")["passed"]
+            is False
+        )
+        assert asset.read_bytes() == b"tampered publisher resource"
+        asset.write_bytes(original)
+        if local:
+            original_asset = source / "__pycache__/resource.bin"
+            original_asset.write_bytes(b"changed local source")
+            assert "fingerprint changed" in run(*audit, expected=1)
+            assert asset.read_bytes() == original
+            assert original_asset.read_bytes() == b"changed local source"
+            original_asset.write_bytes(original)
+        if os.name != "nt":
+            script = live_source / "hooks/resource.cjs"
+            mode = script.stat().st_mode
+            script.chmod(mode ^ stat.S_IXUSR)
+            assert "fingerprint changed" in run(*audit, expected=1)
+            assert script.stat().st_mode & stat.S_IXUSR != mode & stat.S_IXUSR
+            script.chmod(mode)
+        restored = json.loads(run(*audit, expected=int(local)))
+        assert next(row for row in restored["checks"] if row["name"] == "drift")["passed"] is True
+        assert ledger.read_bytes() == baseline
+        assert state_file.read_bytes() == calls_before
+
     fails_removal = failure == "uninstall"
     env["APM_NATIVE_FAIL"] = "uninstall" if fails_removal else ""
-    output = run(
-        "uninstall", "--global", dependency + "/plugins/context", expected=1 if fails_removal else 0
-    )
+    output = run("uninstall", "--global", package_argument, expected=1 if fails_removal else 0)
     assert not live_source.exists()
     lock_path = isolated.config_root / "apm.lock.yaml"
     assert lock_path.exists() is fails_removal

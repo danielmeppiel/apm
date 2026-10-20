@@ -612,7 +612,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             install_path = _normalize_legacy_local_plugin_for_replay(
                                 lock_dep,
                                 install_path,
-                                apm_modules_dir,
+                                scratch_root / "normalized-local-sources",
                             )
 
                     if lock_dep.local_path == _SELF_KEY:
@@ -668,6 +668,14 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             package_info.deployment_package_root,
                             live_modules_dir,
                             scratch_root,
+                        )
+                    if result.get("native_claude_plugin"):
+                        from apm_cli.claude_plugins.registrar import verify_claude_native_cache
+
+                        verify_claude_native_cache(
+                            modules_dir=live_modules_dir,
+                            locked=lock_dep,
+                            source_root=install_path,
                         )
                     replayed_count += 1
     finally:

@@ -14,7 +14,8 @@ from apm_cli.deps.plugin_parser import (
 )
 from apm_cli.models.apm_package import PackageInfo, PackageType
 from apm_cli.models.dependency.subsets import skill_subset_filter_tokens
-from apm_cli.utils.path_security import has_symlink_component
+from apm_cli.utils.content_hash import compute_native_bundle_hash
+from apm_cli.utils.path_security import PathTraversalError, has_symlink_component
 
 
 class ClaudeNativePluginError(RuntimeError):
@@ -28,7 +29,20 @@ class ClaudeNativePlugin:
     dependency_key: str
     name: str
     source_root: Path
+    bundle_hash: str
+    source_pin: str = ""
     target_name: ClassVar[str] = "claude"
+
+
+def fingerprint_native_claude_source(root: Path) -> str:
+    """Translate canonical native fingerprint failures at the Claude boundary."""
+    try:
+        return compute_native_bundle_hash(root)
+    except (OSError, PathTraversalError) as exc:
+        raise ClaudeNativePluginError(
+            f"Cannot fingerprint native Claude source {root}: unreadable data, unsafe path or "
+            "symlink. Restore the intact package before retrying."
+        ) from exc
 
 
 _MANIFEST_FIELDS = frozenset(
@@ -121,4 +135,6 @@ def plan_native_claude_plugin(
     name = manifest.get("name")
     if not isinstance(name, str) or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", name) is None:
         raise ClaudeNativePluginError("Native Claude plugin requires a safe, explicit plugin name.")
-    return ClaudeNativePlugin(package_name, name, root.resolve())
+    return ClaudeNativePlugin(
+        package_name, name, root.resolve(), fingerprint_native_claude_source(root)
+    )
