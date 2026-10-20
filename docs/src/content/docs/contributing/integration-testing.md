@@ -389,6 +389,8 @@ The lifecycle suite uses local Git sources and substitutes only
 `ClaudePluginCLI.run`, the external Claude CLI boundary. It checks selected and
 explicit-empty commands, intact resources, source pins, disabled-by-default
 registration, reinstall/update/removal, and absence of loose duplicates.
+Ordinary and frozen reinstalls preserve both user activation choices in the
+substituted host; removal clears APM's acquired source and final lockfile.
 Standalone APM commands retain their existing behavior.
 
 These tests do **not** prove native command loading, plugin-root substitution or

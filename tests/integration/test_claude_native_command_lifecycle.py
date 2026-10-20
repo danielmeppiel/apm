@@ -35,7 +35,7 @@ from apm_cli.claude_plugins.client import ClaudePluginCLI
 
 def _native_run(self, *args):
     state_path = Path(os.environ["APM_NATIVE_TEST_STATE"])
-    state = json.loads(state_path.read_text()) if state_path.exists() else {
+    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {
         "marketplaces": [], "plugins": [], "calls": []
     }
     args = list(args)
@@ -79,7 +79,7 @@ def _native_run(self, *args):
         state["plugins"] = [p for p in state["plugins"] if p["id"] != args[2]]
     else:
         raise AssertionError(f"Unexpected native CLI call: {args!r}")
-    state_path.write_text(json.dumps(state))
+    state_path.write_text(json.dumps(state), encoding="utf-8")
     return output
 
 
@@ -222,10 +222,11 @@ def _assert_intact_native_source(
 
 
 @pytest.mark.parametrize("empty", [False, True], ids=["selected-command", "explicit-empty"])
+@pytest.mark.parametrize("enabled", [False, True], ids=["user-disabled", "user-enabled"])
 def test_global_git_path_command_install_reinstall_and_empty_selection(
-    tmp_path: Path, apm_engine_command: tuple[str, ...], empty: bool
+    tmp_path: Path, apm_engine_command: tuple[str, ...], empty: bool, enabled: bool
 ) -> None:
-    """Normal and frozen reinstall retain a disabled intact native unit, never loose files."""
+    """Normal and frozen reinstall retain user activation and an intact native unit."""
     scenario = _scenario(tmp_path, apm_engine_command, empty=empty)
     user_command = scenario.claude / "commands" / "personal.md"
     user_command.parent.mkdir(parents=True)
@@ -235,15 +236,39 @@ def test_global_git_path_command_install_reinstall_and_empty_selection(
     source = _assert_intact_native_source(scenario, scenario.revision, empty=empty)
     first_lock = (scenario.isolated.config_root / "apm.lock.yaml").read_bytes()
     first_manifest = (source / ".claude-plugin" / "plugin.json").read_bytes()
+    state = scenario.native_state()
+    state["plugins"][0]["enabled"] = enabled
+    Path(scenario.environment["APM_NATIVE_TEST_STATE"]).write_text(
+        json.dumps(state), encoding="utf-8"
+    )
     scenario.install()
+    assert (
+        _assert_intact_native_source(scenario, scenario.revision, empty=empty, enabled=enabled)
+        == source
+    )
     scenario.run("install", "-g", "--target", "claude", "--only", "apm", "--frozen")
 
-    assert _assert_intact_native_source(scenario, scenario.revision, empty=empty) == source
+    assert (
+        _assert_intact_native_source(scenario, scenario.revision, empty=empty, enabled=enabled)
+        == source
+    )
     assert (scenario.isolated.config_root / "apm.lock.yaml").read_bytes() == first_lock
     assert (source / ".claude-plugin" / "plugin.json").read_bytes() == first_manifest
     assert user_command.read_bytes() == b"# User-owned command\n"
     assert sorted(path.name for path in user_command.parent.iterdir()) == ["personal.md"]
-    assert not any(call[:2] == ["plugin", "enable"] for call in scenario.native_state()["calls"])
+    registration_calls = [
+        call
+        for call in scenario.native_state()["calls"]
+        if call[:2] in (["plugin", "install"], ["plugin", "update"])
+    ]
+    assert registration_calls == [
+        ["plugin", operation, "apm-command-context@apm-claude", "--scope", "user"]
+        for operation in ("install", "update", "update")
+    ]
+    assert not any(
+        call[:2] in (["plugin", "enable"], ["plugin", "disable"])
+        for call in scenario.native_state()["calls"]
+    )
 
 
 @pytest.mark.parametrize("enabled", [False, True], ids=["user-disabled", "user-enabled"])
@@ -256,7 +281,9 @@ def test_global_git_path_command_update_and_owned_removal(
     _assert_intact_native_source(scenario, scenario.revision, empty=False)
     state = scenario.native_state()
     state["plugins"][0]["enabled"] = enabled
-    Path(scenario.environment["APM_NATIVE_TEST_STATE"]).write_text(json.dumps(state))
+    Path(scenario.environment["APM_NATIVE_TEST_STATE"]).write_text(
+        json.dumps(state), encoding="utf-8"
+    )
     user_command = scenario.claude / "commands" / "personal.md"
     user_command.parent.mkdir(parents=True, exist_ok=True)
     user_command.write_bytes(b"# User-owned command\n")
@@ -276,6 +303,8 @@ def test_global_git_path_command_update_and_owned_removal(
     assert (source / "resources" / "identity.txt").read_bytes() == resource.read_bytes()
     scenario.run("uninstall", "-g", f"{_DEPENDENCY}/plugins/context")
     assert scenario.native_state()["plugins"] == []
+    assert not source.exists()
+    assert not (scenario.isolated.config_root / "apm.lock.yaml").exists()
     assert user_command.read_bytes() == b"# User-owned command\n"
     assert (user_data / "notes.txt").read_bytes() == b"USER_DATA\n"
     assert not (scenario.claude / "commands" / "status.md").exists()
