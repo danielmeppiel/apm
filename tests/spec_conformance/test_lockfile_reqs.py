@@ -453,6 +453,51 @@ def test_lockfile_reader_tolerates_bare_hex_hash():
     validate_against("lockfile-v0.1.41.schema.json", load_yaml_fixture(*BARE_HEX_LOCKFILE))
 
 
+@pytest.mark.req("req-lk-016")
+@pytest.mark.parametrize("hash_format", ["envelope", "bare64"])
+def test_frozen_consumer_accepts_equivalent_local_content_hash_encodings(
+    tmp_path: Path, hash_format: str
+) -> None:
+    """Consume both existing digest encodings without rewriting the frozen lock."""
+    import os
+    import sys
+
+    from apm_cli.utils.yaml_io import dump_yaml, load_yaml
+    from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
+    from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
+    from tests.utils.local_package import LocalPackageFactory
+
+    isolated = IsolatedApmEnvironment.create(tmp_path / "reader", base_env=dict(os.environ))
+    factory = LocalPackageFactory(isolated.work_root)
+    provider = factory.create("provider", targets=("agent-skills",))
+    source = factory.add_skill(
+        provider, "review", "---\nname: review\ndescription: fixture\n---\nunchanged\n"
+    )
+    consumer = factory.create("consumer", dependencies=("../provider",), targets=("agent-skills",))
+    runner = ApmLifecycleRunner((sys.executable, "-m", "apm_cli.cli"))
+    environment = isolated.subprocess_env()
+    installed = runner.run(("install", "--no-policy"), cwd=consumer.root, env=environment)
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+
+    lockfile = consumer.root / "apm.lock.yaml"
+    locked = load_yaml(lockfile)
+    (dependency,) = locked["dependencies"]
+    digest = dependency["content_hash"]
+    assert digest.startswith("sha256:") and len(digest.removeprefix("sha256:")) == 64
+    if hash_format == "bare64":
+        dependency["content_hash"] = digest.removeprefix("sha256:")
+        dump_yaml(locked, lockfile)
+    original_lock = lockfile.read_bytes()
+    deployed = consumer.root / ".agents" / "skills" / "review" / "SKILL.md"
+    assert deployed.read_bytes() == source.read_bytes()
+
+    frozen = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=environment)
+
+    assert frozen.returncode == 0, frozen.stdout + frozen.stderr
+    assert lockfile.read_bytes() == original_lock
+    assert deployed.read_bytes() == source.read_bytes()
+
+
 @pytest.mark.req("req-lk-017")
 def test_lockfile_deployed_file_hash_mismatch_fails_closed():
     """Deployed-file re-verification oracle.
