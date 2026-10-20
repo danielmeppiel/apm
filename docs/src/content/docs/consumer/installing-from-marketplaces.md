@@ -67,6 +67,8 @@ selected native marketplace refresh with a new transport generation. Publisher
 bytes, publisher version, and original dependency pins remain unchanged;
 a healthy reinstall does not create a new generation. Keep the ownership
 journal: APM refuses to adopt a matching native registration without it.
+Running `apm audit --ci` from the APM user directory checks the cached source
+bundle without starting Codex. Native-copy verification happens during install.
 
 Removal fails and retains APM declarations when native ownership has changed,
 another plugin shares the owned marketplace, or the entry contains activation

@@ -115,6 +115,7 @@ def _environment(root: Path) -> dict[str, str]:
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
+        "GIT_ALLOW_PROTOCOL": "file",
         **{key: os.environ[key] for key in ("SYSTEMROOT", "WINDIR") if key in os.environ},
     }
 

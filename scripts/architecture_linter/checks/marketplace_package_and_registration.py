@@ -177,8 +177,7 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
             "src/apm_cli/install/drift.py",
             (
                 "native_detection = route_agent_plugin_package(install_path)",
-                "agent_plugin_detection=native_detection",
-                "read_only=True",
+                "agent_plugin_detection=native_detection,\n            read_only=True",
                 "with native_registration_scope(targets):",
                 'if result.get("native_plugin"):',
                 "from apm_cli.install.native_plugin_admission import verify_native_plugin_cache",
@@ -526,6 +525,10 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
         "src/apm_cli/integration/mcp_config_view.py": (
             "is_codex_compatibility_manifest(package_dir, selected_manifest)",
             "dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value",
+        ),
+        "src/apm_cli/install/drift.py": (
+            "is_codex_compatibility_manifest(install_path, selected_manifest)",
+            "validation = validate_apm_package(install_path, read_only=True)",
         ),
         "src/apm_cli/commands/uninstall/cli.py": ("remove_codex_plugins(",),
     }
