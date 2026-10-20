@@ -55,6 +55,7 @@ from ..utils.diagnostics import DiagnosticCollector
 from ..utils.path_security import PathTraversalError
 from .errors import AuthenticationError, DirectDependencyError, InstallFailureAlreadyRendered
 from .integrity import enforce_installed_hash_policy as _enforce_require_hashes
+from .phases import claude_plugins as _claude_plugins_phase
 from .transaction import InstallTransaction
 
 if TYPE_CHECKING:
@@ -947,6 +948,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, RUF100
         # ------------------------------------------------------------------
         if not lockfile_only:
             _run_phase("copilot_plugins", _copilot_plugins_phase, ctx)
+            _run_phase("claude_plugins", _claude_plugins_phase, ctx)
 
         # Emit verbose integration stats + bare-success fallback + return result
         from .phases import finalize as _finalize_phase

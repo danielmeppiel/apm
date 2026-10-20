@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from apm_cli.claude_plugins.admission import ClaudeNativePlugin
     from apm_cli.core.target_detection import EffectiveTargetDecision
     from apm_cli.deps.tiered_ref_resolver import RefFreshnessPolicy
     from apm_cli.install.helpers.ref_reuse import RefResolverCacheKey
@@ -71,6 +72,7 @@ class InstallContext:
     allow_insecure_hosts: tuple[str, ...] = ()
     trust_bin: bool | None = None
     transaction: Any = None  # InstallTransaction
+    claude_native_plugins: dict[str, ClaudeNativePlugin] = field(default_factory=dict)
 
     dry_run: bool = False
     lockfile_only: bool = False

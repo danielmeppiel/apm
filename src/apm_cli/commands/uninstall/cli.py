@@ -758,6 +758,16 @@ def _resync_native_registration_after_uninstall(
     Downgrades registration failures to a warning so an unrelated uninstall
     is never bricked by a Copilot settings collision or a missing client.
     """
+    from ...claude_plugins.registrar import resync_claude_plugins
+
+    # Unlike advisory Copilot settings refresh, a live Claude source removal
+    # must not report success while its native registration still survives.
+    resync_claude_plugins(
+        modules_dir=modules_dir,
+        scope=scope,
+        lockfile=lockfile,
+        logger=logger,
+    )
     try:
         from ...agent_plugins.errors import AgentPluginError
         from ...copilot_plugins.registrar import resync_native_plugins
