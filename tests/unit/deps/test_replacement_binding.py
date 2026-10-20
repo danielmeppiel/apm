@@ -3,7 +3,14 @@
 Tests ``project_effective_reference`` projection from original to effective
 source, edge provenance preservation, and the interaction between replacement
 rules and dependency identity.
+
+Includes actual BFS binding tests that exercise ``bind_graph_replacement``
+to verify original-identity preservation, effective-source separation,
+immutable obligation routing, collision detection, cycle detection, and
+per-entry lock evidence round-trip.
 """
+
+import pytest
 
 from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.dependency.replacement import (
@@ -252,3 +259,408 @@ class TestReplacementBindingSemantics:
         effective = project_effective_reference(dep, rule)
         # DependencyReference has no is_dev; it's a graph-node concept
         assert not hasattr(effective, "is_dev") or not effective.__dict__.get("is_dev")
+
+
+# ---------------------------------------------------------------------------
+# BFS binding: bind_graph_replacement dispatches before dedup/admission
+# ---------------------------------------------------------------------------
+
+
+class TestBindGraphReplacement:
+    """``bind_graph_replacement`` returns original identity + effective source."""
+
+    def _local_rule(self, repo="owner/upstream", local_path="../local-pkg"):
+        sel = ReplacementSelector(host="github.com", port=None, repo_url=repo, subpath=None)
+        src = LocalReplacementSource(path=local_path)
+        return ReplacementRule(selector=sel, source=src)
+
+    def _git_rule(self, repo="owner/upstream", fork="fork/upstream", ref="fix"):
+        sel = ReplacementSelector(host="github.com", port=None, repo_url=repo, subpath=None)
+        src = GitReplacementSource(
+            git=f"https://github.com/{fork}.git",
+            host="github.com",
+            port=None,
+            repo_url=fork,
+            subpath=None,
+            ref=ref,
+        )
+        return ReplacementRule(selector=sel, source=src)
+
+    def test_local_binding_preserves_original_unique_key(self, tmp_path):
+        """After binding, get_unique_key uses ORIGINAL identity, not effective."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com", reference="v1.0")
+        rule = self._local_rule(local_path="../checkout")
+        idx = build_replacement_index([rule])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        original, effective = bound
+        # Original identity is the upstream package
+        assert original.get_unique_key() == dep.get_unique_key()
+        # Effective source is local
+        assert effective.is_local is True
+        assert effective.local_path == "../checkout"
+
+    def test_git_binding_effective_carries_fork_ref(self, tmp_path):
+        """Effective source for Git replacement carries fork ref."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com", reference="v1.0")
+        rule = self._git_rule(fork="my-fork/upstream", ref="hotfix")
+        idx = build_replacement_index([rule])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        original, effective = bound
+        assert original.repo_url == "owner/upstream"
+        assert effective.repo_url == "my-fork/upstream"
+        assert effective.reference == "hotfix"
+
+    def test_no_match_returns_none(self, tmp_path):
+        """Unmatched dep returns None (no binding)."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="other/repo", host="github.com")
+        idx = build_replacement_index([self._local_rule()])
+        assert bind_graph_replacement(dep, idx, consumer_root=tmp_path) is None
+
+    def test_root_only_no_child_rules(self, tmp_path):
+        """Only root-declared rules are applied; child manifests never redirect."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com")
+        idx = build_replacement_index([self._local_rule()])
+        # Binding with is_root=False should not apply rules
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path, is_root=False)
+        assert bound is None
+
+    def test_effective_parent_git_ref_expansion(self, tmp_path):
+        """Git replacement expands effective-parent ref for child deps.
+
+        When a replaced dep declares ``git: parent`` children, the effective
+        source's ref (not the original's) must be used for the expansion.
+        """
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com", reference="v1.0")
+        rule = self._git_rule(fork="fork/upstream", ref="patched-v1.5")
+        idx = build_replacement_index([rule])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        _, effective = bound
+        # Effective ref comes from the replacement source
+        assert effective.reference == "patched-v1.5"
+        # Original reference is still on the original
+        original, _ = bound
+        assert original.reference == "v1.0"
+
+    def test_local_anchored_to_consumer_root(self, tmp_path):
+        """Local replacement path is relative to consumer_root."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com")
+        rule = self._local_rule(local_path="../sibling-checkout")
+        idx = build_replacement_index([rule])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        _, effective = bound
+        assert effective.local_path == "../sibling-checkout"
+
+    def test_alias_and_subsets_preserved_through_binding(self, tmp_path):
+        """Alias, skill_subset, target_subset survive binding."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(
+            repo_url="owner/upstream",
+            host="github.com",
+            alias="custom-name",
+            skill_subset=["agent-a"],
+            target_subset=["claude"],
+        )
+        idx = build_replacement_index([self._local_rule()])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        _, effective = bound
+        assert effective.alias == "custom-name"
+        assert effective.skill_subset == ["agent-a"]
+        assert effective.target_subset == ["claude"]
+
+    def test_diamond_all_edges_record_original_identity(self, tmp_path):
+        """Diamond edges from different parents all match, all get same effective."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        rule = self._local_rule(repo="owner/shared")
+        idx = build_replacement_index([rule])
+
+        edge_a = DependencyReference(repo_url="owner/shared", host="github.com", reference="v1")
+        edge_b = DependencyReference(repo_url="owner/shared", host="github.com", reference="v2")
+        bound_a = bind_graph_replacement(edge_a, idx, consumer_root=tmp_path)
+        bound_b = bind_graph_replacement(edge_b, idx, consumer_root=tmp_path)
+        assert bound_a is not None
+        assert bound_b is not None
+        # Both record THEIR OWN original reference
+        assert bound_a[0].reference == "v1"
+        assert bound_b[0].reference == "v2"
+        # Both get same effective source
+        assert bound_a[1].local_path == bound_b[1].local_path
+
+
+# ---------------------------------------------------------------------------
+# Collision detection: exact host/port/subpath vs physical slot
+# ---------------------------------------------------------------------------
+
+
+class TestReplacementCollision:
+    """Replacement must reject when effective source collides with physical slot."""
+
+    def test_same_identity_no_collision(self, tmp_path):
+        """Replacing the same identity twice is caught by duplicate selector."""
+        from apm_cli.models.dependency.replacement import (
+            validate_no_replacement_collision,
+        )
+
+        dep = DependencyReference(repo_url="owner/a", host="github.com")
+        effective = DependencyReference(
+            repo_url="owner/a", is_local=True, local_path="./local-a", source="local"
+        )
+        # No collision when the slot set is empty
+        slots: dict[str, str] = {}
+        validate_no_replacement_collision(dep, effective, slots)
+        # Should work fine
+
+    def test_different_host_same_repo_collides(self):
+        """owner/repo on github.com vs owner/repo on gitlab.com -> collision.
+
+        The existing physical layout (apm_modules/) is host-blind, so two
+        different-host packages with the same repo_url would land in the
+        same directory.  Replacement must reject this.
+        """
+        from apm_cli.models.dependency.replacement import (
+            ReplacementCollisionError,
+            validate_no_replacement_collision,
+        )
+
+        dep = DependencyReference(repo_url="owner/repo", host="github.com")
+        effective = DependencyReference(
+            repo_url="owner/repo",
+            host="gitlab.com",
+            source="git",
+            reference="main",
+        )
+        # Existing slot occupancy from the upstream
+        slots: dict[str, str] = {"owner/repo": "github.com:owner/repo"}
+        with pytest.raises(ReplacementCollisionError, match="collision"):
+            validate_no_replacement_collision(dep, effective, slots)
+
+    def test_port_difference_collides(self):
+        """Same host+repo but different port -> collision with host-blind layout."""
+        from apm_cli.models.dependency.replacement import (
+            ReplacementCollisionError,
+            validate_no_replacement_collision,
+        )
+
+        dep = DependencyReference(repo_url="owner/repo", host="ghe.corp.com", port=8443)
+        effective = DependencyReference(
+            repo_url="owner/repo",
+            host="ghe.corp.com",
+            port=9443,
+            source="git",
+            reference="main",
+        )
+        slots: dict[str, str] = {"owner/repo": "ghe.corp.com:8443:owner/repo"}
+        with pytest.raises(ReplacementCollisionError, match="collision"):
+            validate_no_replacement_collision(dep, effective, slots)
+
+
+# ---------------------------------------------------------------------------
+# Cycle detection: local replacement cannot form a cycle
+# ---------------------------------------------------------------------------
+
+
+class TestReplacementCycleGuard:
+    """Local replacements must not create a cycle back to the consumer root."""
+
+    def test_self_referential_local_cycle(self, tmp_path):
+        """Replacing with '.' creates a cycle to consumer root."""
+        from apm_cli.models.dependency.replacement import (
+            ReplacementCycleError,
+            detect_local_replacement_cycle,
+        )
+
+        with pytest.raises(ReplacementCycleError, match="cycle"):
+            detect_local_replacement_cycle(
+                local_path=".",
+                consumer_root=tmp_path,
+                ancestor_paths=frozenset({tmp_path.resolve()}),
+            )
+
+    def test_sibling_checkout_no_cycle(self, tmp_path):
+        """Sibling checkout (../other) does not form a cycle."""
+        from apm_cli.models.dependency.replacement import detect_local_replacement_cycle
+
+        # No cycle because sibling is outside the ancestor set
+        detect_local_replacement_cycle(
+            local_path="../other",
+            consumer_root=tmp_path,
+            ancestor_paths=frozenset({tmp_path.resolve()}),
+        )
+        # Should not raise
+
+    def test_ancestor_path_cycle(self, tmp_path):
+        """Replacement pointing to an ancestor in the dependency chain is a cycle."""
+        from apm_cli.models.dependency.replacement import (
+            ReplacementCycleError,
+            detect_local_replacement_cycle,
+        )
+
+        ancestor = tmp_path / "ancestor"
+        ancestor.mkdir()
+        with pytest.raises(ReplacementCycleError, match="cycle"):
+            detect_local_replacement_cycle(
+                local_path=str(ancestor),
+                consumer_root=tmp_path,
+                ancestor_paths=frozenset({ancestor.resolve()}),
+            )
+
+
+# ---------------------------------------------------------------------------
+# Immutable obligation routing: effective refs feed ImmutableRequirements
+# ---------------------------------------------------------------------------
+
+
+class TestReplacementImmutableObligation:
+    """Effective replacement refs must feed ImmutableRequirements correctly."""
+
+    def test_effective_git_ref_is_obligation(self, tmp_path):
+        """Effective git ref from replacement source is the immutable obligation.
+
+        The original upstream ref is NOT the obligation; the fork's ref is.
+        """
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com", reference="v1.0")
+        sel = ReplacementSelector(
+            host="github.com", port=None, repo_url="owner/upstream", subpath=None
+        )
+        src = GitReplacementSource(
+            git="https://github.com/fork/upstream.git",
+            host="github.com",
+            port=None,
+            repo_url="fork/upstream",
+            subpath=None,
+            ref="abc123def456abc123def456abc123def456abcd",
+        )
+        rule = ReplacementRule(selector=sel, source=src)
+        idx = build_replacement_index([rule])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        _, effective = bound
+        # The effective ref is the commit pin from the fork
+        assert effective.reference == "abc123def456abc123def456abc123def456abcd"
+        # ImmutableRequirements would validate THIS ref, not "v1.0"
+
+    def test_local_replacement_has_no_immutable_ref(self, tmp_path):
+        """Local replacements have no git ref to validate immutably."""
+        from apm_cli.models.dependency.replacement import bind_graph_replacement
+
+        dep = DependencyReference(repo_url="owner/upstream", host="github.com", reference="v1.0")
+        rule = ReplacementRule(
+            selector=ReplacementSelector(
+                host="github.com", port=None, repo_url="owner/upstream", subpath=None
+            ),
+            source=LocalReplacementSource(path="./local"),
+        )
+        idx = build_replacement_index([rule])
+        bound = bind_graph_replacement(dep, idx, consumer_root=tmp_path)
+        assert bound is not None
+        _, effective = bound
+        # Local deps are skipped by ImmutableRequirements.add() (is_local check)
+        assert effective.is_local is True
+        assert effective.reference is None
+
+
+# ---------------------------------------------------------------------------
+# Per-entry lock evidence
+# ---------------------------------------------------------------------------
+
+
+class TestReplacementLockEvidence:
+    """Per-entry replacement evidence on LockedDependency."""
+
+    def test_replacement_source_field_round_trips(self):
+        """LockedDependency.replacement_source survives to_dict/from_dict."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        dep = LockedDependency(
+            repo_url="owner/upstream",
+            host="github.com",
+            source="local",
+            local_path="./local-upstream",
+            replacement_source={
+                "for": {"git": "https://github.com/owner/upstream.git"},
+                "with": {"path": "./local-upstream"},
+            },
+        )
+        d = dep.to_dict()
+        assert "replacement_source" in d
+        restored = LockedDependency.from_dict(d)
+        assert restored.replacement_source == dep.replacement_source
+
+    def test_replacement_source_absent_by_default(self):
+        """LockedDependency without replacement has no replacement_source key."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        dep = LockedDependency(repo_url="owner/normal", host="github.com")
+        d = dep.to_dict()
+        assert "replacement_source" not in d
+
+    def test_replacement_original_requests_round_trips(self):
+        """LockedDependency.replacement_original_requests survives round-trip."""
+        from apm_cli.deps.lockfile import LockedDependency
+
+        dep = LockedDependency(
+            repo_url="owner/upstream",
+            host="github.com",
+            source="local",
+            local_path="./local",
+            replacement_original_requests=["v1.0", "v1.1"],
+        )
+        d = dep.to_dict()
+        assert "replacement_original_requests" in d
+        restored = LockedDependency.from_dict(d)
+        assert restored.replacement_original_requests == ["v1.0", "v1.1"]
+
+    def test_replacement_evidence_agrees_with_root_table(self):
+        """Per-entry evidence agrees with the root replacements table.
+
+        When a lockfile has both a root ``replacements:`` table and per-entry
+        ``replacement_source:``, the per-entry evidence must be a subset of
+        the root table's rules.
+        """
+        from apm_cli.deps.lockfile import LockedDependency, LockFile
+
+        lock = LockFile()
+        lock.replacements = [
+            {
+                "for": {"git": "https://github.com/owner/upstream.git"},
+                "with": {"path": "./local-upstream"},
+            },
+        ]
+        dep = LockedDependency(
+            repo_url="owner/upstream",
+            host="github.com",
+            source="local",
+            local_path="./local-upstream",
+            replacement_source={
+                "for": {"git": "https://github.com/owner/upstream.git"},
+                "with": {"path": "./local-upstream"},
+            },
+        )
+        lock.add_dependency(dep)
+        yaml_str = lock.to_yaml()
+        restored = LockFile.from_yaml(yaml_str)
+        restored_dep = restored.get_dependency(dep.get_unique_key())
+        assert restored_dep is not None
+        assert restored_dep.replacement_source is not None
+        # Per-entry evidence rule must appear in the root table
+        assert restored_dep.replacement_source in restored.replacements

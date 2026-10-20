@@ -336,6 +336,16 @@ class LockedDependency:
     # in declaration order. Omitted from YAML when empty so lockfiles that
     # declare no extensions stay byte-identical. Values are not interpreted.
     extensions: dict[str, Any] = field(default_factory=dict)
+    # Per-entry replacement evidence (issue #3180).  Present only when this
+    # dependency was resolved via a root ``replace:`` rule.
+    # ``replacement_source``: the rule dict (``{for: ..., with: ...}``) that
+    # redirected this entry, so frozen validation can verify per-entry
+    # consistency against the root ``replacements:`` table.
+    # ``replacement_original_requests``: the original upstream ref(s) that
+    # incoming edges requested before replacement was applied (e.g.
+    # ``["v1.0", "v1.1"]`` for a diamond).  Preserves full provenance.
+    replacement_source: dict[str, Any] | None = None
+    replacement_original_requests: list[str] | None = None
     # Forward-compat carrier: keys we don't recognise are preserved
     # through a from_dict / to_dict round-trip so an older APM build
     # reading a lockfile written by a newer build doesn't silently drop
@@ -488,6 +498,10 @@ class LockedDependency:
             result["extensions"] = dict(self.extensions)
         if self.exec_status:
             result["exec_status"] = self.exec_status
+        if self.replacement_source is not None:
+            result["replacement_source"] = self.replacement_source
+        if self.replacement_original_requests is not None:
+            result["replacement_original_requests"] = self.replacement_original_requests
         # Replay forward-compat unknown fields LAST so they never shadow a
         # known field that this build understands.
         for k, v in self._unknown_fields.items():
@@ -570,6 +584,8 @@ class LockedDependency:
             "extensions",
             "exec_status",
             "name",
+            "replacement_source",
+            "replacement_original_requests",
             # legacy migration key handled above
             "deployed_skills",
         }
@@ -620,6 +636,8 @@ class LockedDependency:
             exec_status=exec_status,
             name=data.get("name"),
             extensions=_copy_extension_map(data.get("extensions")),
+            replacement_source=data.get("replacement_source"),
+            replacement_original_requests=data.get("replacement_original_requests"),
             _unknown_fields=unknown_fields,
         )
 

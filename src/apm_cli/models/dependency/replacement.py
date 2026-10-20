@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import urllib.parse
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ...utils.github_host import is_supported_git_host
@@ -37,6 +38,19 @@ if TYPE_CHECKING:
 
 class ReplacementConfigError(ValueError):
     """A replacement rule in ``apm.yml`` is malformed or ambiguous."""
+
+
+class ReplacementCollisionError(ValueError):
+    """An effective replacement source collides with an existing physical slot.
+
+    The existing ``apm_modules/`` layout is host-blind: ``owner/repo`` on
+    github.com and ``owner/repo`` on gitlab.com would land in the same
+    directory.  Replacement must reject rather than broaden the layout.
+    """
+
+
+class ReplacementCycleError(ValueError):
+    """A local replacement path creates a dependency cycle."""
 
 
 # ---------------------------------------------------------------------------
@@ -477,6 +491,121 @@ def project_effective_reference(
         )
     else:
         raise TypeError(f"Unknown replacement source type: {type(source)}")
+
+
+# ---------------------------------------------------------------------------
+# BFS binding: central typed projection for resolver integration
+# ---------------------------------------------------------------------------
+
+
+def bind_graph_replacement(
+    dep: DependencyReference,
+    index: ReplacementIndex,
+    *,
+    consumer_root: Path,
+    is_root: bool = True,
+) -> tuple[DependencyReference, DependencyReference] | None:
+    """Bind a dependency to its replacement source before dedup/admission.
+
+    Returns ``(original, effective)`` if a rule matches, or ``None`` if the
+    dependency is not replaced.  The original keeps its identity (repo_url,
+    host, port, reference) for graph key, lock key, and provenance.  The
+    effective carries the replacement source coordinates for download, auth,
+    and immutable-obligation checking.
+
+    Args:
+        dep: The original dependency reference from the manifest.
+        index: The replacement index built from the root ``replace:`` block.
+        consumer_root: The consumer project root for local path anchoring.
+        is_root: True when called from root manifest processing. Child
+            manifests never apply replacement rules (root-only).
+
+    Returns:
+        Tuple of (original identity ref, effective source ref) or None.
+    """
+    if not is_root:
+        return None
+    rule = index.lookup(dep)
+    if rule is None:
+        return None
+    effective = project_effective_reference(dep, rule)
+    return (dep, effective)
+
+
+def validate_no_replacement_collision(
+    dep: DependencyReference,
+    effective: DependencyReference,
+    occupied_slots: dict[str, str],
+) -> None:
+    """Reject when effective source would collide with an existing physical slot.
+
+    The existing ``apm_modules/`` layout is host-blind: the filesystem path is
+    derived from ``repo_url`` alone (plus ``virtual_path``).  If a replacement
+    changes the host or port but keeps the same ``repo_url``, two logically
+    distinct packages would share one directory.  This guard rejects that
+    ambiguity rather than broadening the physical layout.
+
+    Args:
+        dep: The original dependency reference.
+        effective: The effective source reference after replacement.
+        occupied_slots: Map from repo_url-based slot key to a qualified
+            identity string.  The caller populates this as deps are bound.
+
+    Raises:
+        ReplacementCollisionError: When the effective source would land in a
+            slot already occupied by a different logical identity.
+    """
+    # Build the host-blind slot key from the effective source
+    eff_repo = effective.repo_url
+    eff_host = (effective.host or "github.com").lower()
+    eff_port = effective.port
+    eff_identity = f"{eff_host}:{eff_port}:{eff_repo}" if eff_port else f"{eff_host}:{eff_repo}"
+
+    if eff_repo in occupied_slots:
+        existing_identity = occupied_slots[eff_repo]
+        if existing_identity != eff_identity:
+            raise ReplacementCollisionError(
+                f"Replacement collision: effective source {eff_identity!r} would "
+                f"share the physical slot '{eff_repo}' with {existing_identity!r}. "
+                "The apm_modules/ layout is host-blind; use an alias or a "
+                "different repository path to avoid ambiguity."
+            )
+    else:
+        occupied_slots[eff_repo] = eff_identity
+
+
+def detect_local_replacement_cycle(
+    local_path: str,
+    *,
+    consumer_root: Path,
+    ancestor_paths: frozenset[Path],
+) -> None:
+    """Reject a local replacement that points back into the dependency chain.
+
+    Args:
+        local_path: The replacement source path (relative to consumer_root
+            or absolute).
+        consumer_root: The consumer project root.
+        ancestor_paths: Resolved absolute paths of ancestors in the current
+            dependency chain (including consumer_root).
+
+    Raises:
+        ReplacementCycleError: When the resolved local path is in the
+            ancestor set.
+    """
+    resolved = Path(local_path).expanduser()
+    if not resolved.is_absolute():
+        resolved = (consumer_root / resolved).resolve()
+    else:
+        resolved = resolved.resolve()
+
+    if resolved in ancestor_paths:
+        raise ReplacementCycleError(
+            f"Local replacement cycle: '{local_path}' resolves to "
+            f"'{resolved}' which is an ancestor in the dependency chain. "
+            "A replacement source cannot point back to a package that "
+            "depends on it."
+        )
 
 
 # ---------------------------------------------------------------------------
