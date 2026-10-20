@@ -256,6 +256,43 @@ When three or more declarations share a slot, one exact-path uninstall must not
 leave multiple physical survivors. Pass enough exact paths in the same command
 that at most one declaration remains.
 
+### Root source replacement (candidate)
+
+Unratified development-build contract; no first supported release or published
+JSON Schema is assigned. Require this exact selector whenever root `replace`
+is present:
+
+```yaml
+$schema: https://microsoft.github.io/apm/specs/schemas/manifest-source-replacements-v1.schema.json
+replace:
+  - for:
+      git: https://github.com/example/catalog.git
+      path: packages/base
+    with:
+      path: ../catalog/packages/base
+```
+
+`for` matches normalized host, endpoint, repository and optional subdirectory
+exactly, at every graph depth. Only consumer-root rules apply. For a fork use
+`with: {git: https://github.com/my-org/catalog-fork.git, path: packages/base, ref: patched-base}`.
+`ref` is required; omitted fork `path` selects its repository root.
+Local `with.path` is anchored to the consumer manifest, not a transitive parent.
+The complete source/ref is substituted; original refs remain provenance.
+No chaining, wildcards, single-file selectors or dependency-owned overrides.
+Unknown fields, duplicate selectors, collisions and cycles fail.
+
+Original identity and selections still own one installed slot. Auth, policy,
+integrity and executable approval evaluate the selected source; upstream consent
+is not transferred. HTTP replacement sources are rejected, even with CLI consent.
+Missing/invalid selected sources never fall back upstream. Unused rules warn
+without accessing their sources. Removing a rule and running `apm install`
+restores upstream obligations and reconciles owned outputs.
+
+The complete table and incoming requests are recorded in candidate lock version
+`"3"`. Verified v0.25.0/v0.32.0/v0.33.0 readers reject the selector/version;
+v0.24.1 may ignore them and install upstream. Rejection is not feature support:
+do not recommend a minimum released client or use unqualified readers.
+
 ### Marketplace (`name` + `marketplace`)
 
 | Field | Required | Description |

@@ -18,6 +18,7 @@ from apm_cli.deps.why_walker import compute_why
 from apm_cli.install.drift import _materialize_install_path
 from apm_cli.install.exec_gate import check_executable_approval, resolve_package_key
 from apm_cli.install.helpers.ref_reuse import maybe_resolve_git_semver
+from apm_cli.install.helpers.ref_seed import seed_ref_resolver_from_lockfile
 from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
 from apm_cli.install.pipeline import _preflight_auth_check
 from apm_cli.install.resolution_staging import ResolutionStagingSession
@@ -318,3 +319,39 @@ def test_update_auth_preflight_never_uses_original_source_coordinates(tmp_path: 
     unused_auth = Mock()
     _preflight_auth_check(SimpleNamespace(deps_to_install=[local]), unused_auth, False)
     assert unused_auth.mock_calls == []
+
+
+@pytest.mark.parametrize("state", ["matching", "changed", "removed"])
+def test_replacement_lock_seed_uses_only_matching_clean_selected_source(
+    tmp_path: Path, state: str
+) -> None:
+    selected, _, lock = _locked(tmp_path, {"git": "https://gitlab.com/team/fork", "ref": "patched"})
+    rules = [selected.replacement.rule]
+    if state == "changed":
+        other, _, _ = _locked(tmp_path, {"git": "https://gitlab.com/team/other", "ref": "patched"})
+        rules = [other.replacement.rule]
+    elif state == "removed":
+        rules = []
+    seed = Mock(return_value=True)
+    context = SimpleNamespace(
+        apm_package=SimpleNamespace(replace_rules=rules),
+        existing_lockfile=lock,
+        ref_resolver=SimpleNamespace(seed=seed),
+        ref_freshness_policy=None,
+        update_refs=False,
+        refresh=False,
+        logger=None,
+    )
+    seed_ref_resolver_from_lockfile(context)
+    if state == "matching":
+        seed.assert_called_once()
+        reference, ref, sha = seed.call_args.args
+        assert reference.replacement is None
+        assert (reference.host, reference.repo_url, ref, sha) == (
+            "gitlab.com",
+            "team/fork",
+            "patched",
+            "a" * 40,
+        )
+    else:
+        seed.assert_not_called()

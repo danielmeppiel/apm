@@ -20,12 +20,15 @@ APM keeps using the recorded commits until you run `apm update`, `apm lock
 
 ## Purpose
 
-This is a **Working Draft**. The lock file format has two versions in use:
+This is a **Working Draft**. Ordinary projects use two lockfile versions:
 `"1"` (plain Git projects) and `"2"` (projects with at least one registry-sourced
 dependency or Git semver-resolved dependency). The bump is opportunistic; see
 [Version bumping](#version-bumping). Registry-sourced dependencies require the
 experimental registries feature (`apm experimental enable registries`) before
 install or replay.
+
+The explicit, unratified [root source replacement candidate](#root-source-replacement-evidence-candidate)
+uses version `"3"`. It does not change the version chosen for ordinary projects.
 
 The lockfile gives APM four things:
 
@@ -172,7 +175,7 @@ deployments:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `lockfile_version` | string | yes | Schema version. `"1"` for plain Git projects; `"2"` when any dependency has `source: "registry"` or Git semver resolution fields (`constraint`, `resolved_tag`, `resolved_at`). |
+| `lockfile_version` | string | yes | `"1"` for plain Git projects; `"2"` for registry/Git semver evidence; candidate `"3"` when a root replacement table is present. |
 | _(Deprecated)_ `generated_at` | ISO 8601 string | no | Legacy write timestamp. New lockfiles omit it; when an existing lockfile carries it, APM refreshes it on substantive writes. Ignored by equivalence checks. |
 | `apm_version` | string | no | APM CLI version that wrote the file. Diagnostic except for a narrow compatibility path: exact APM 0.28 metadata, a locked `marketplace_plugin` type, and a matching content hash together authorize the receipt-less cached-plugin upgrade. It never overrides canonical `apm.yml` precedence or applies to freshly fetched dependencies. |
 | `dependencies` | list | yes | Resolved APM packages. See [per-entry fields](#per-entry-fields). |
@@ -320,20 +323,50 @@ The synthesized entry is **not** written back to YAML - the flat
 `local_deployed_*` fields remain the on-disk source of truth. Treat the self
 entry as an implementation detail; do not author it by hand.
 
+## Root source replacement evidence (candidate)
+
+Version `"3"` is an **unratified implementation candidate**, not a published
+OpenAPM schema. It requires a feature-capable development build and the explicit
+[replacement manifest selector](../manifest-schema/#313-replace-candidate).
+No first supported release has been assigned. Verified older readers v0.25.0,
+v0.32.0 and v0.33.0 reject this version; v0.24.1 may accept and rewrite it without
+honoring replacement semantics.
+
+The generated `replacements` list stores the complete normalized root table,
+including unused rules. A used dependency has a `replacement` record:
+`source` stores the selected `path`, or `git`/optional `path`/required `ref`;
+`requests` stores original incoming `parent`, `ref`, `skills`, `targets`, `dev`
+and `alias` evidence. Shared parents and direct-plus-transitive requests remain
+inspectable. Each selected source must agree with the root table.
+
+Top-level dependency coordinates and materialization ownership remain the
+original identity, even for a selected local source. Resolved commits/tags and
+content hashes describe the selected bytes. A local replacement has no invented
+Git pin. Parent references in this format use exact original lock keys rather
+than legacy repository-only strings.
+
+Frozen install compares the full table and verifies selected local content
+through the existing local-content preflight. It refuses missing baseline
+hashes and changed, added or removed source files before deployment.
+Audit replays selected sources, including native plugin cache bytes, without
+mutating the project. Uninstall repairs surviving request evidence and retains
+dormant rules; it refuses unverifiable replacement reachability before removal.
+Do not edit this evidence by hand.
+
 ## Version bumping
 
-The lock file uses two schema versions:
+Version selection follows the persisted content:
 
 | Version | Triggered by | Adds |
 |---|---|---|
 | `"1"` | Default for Git-only projects. | Baseline schema. |
 | `"2"` | Any dependency with `source: "registry"` or Git semver resolution fields. | `resolved_url`, `resolved_hash`, and registry `version`; `constraint`, `resolved_tag`, and `resolved_at` for Git semver pins. |
+| `"3"` (candidate) | Root `replacements` table, including an empty table. | Complete root rules, per-entry selected source and original incoming requests. |
 
-The bump is **opportunistic**: a project that never opts into a registry keeps
-`lockfile_version: "1"` forever, even on a newer client. The first registry
-dep added to the graph promotes the lockfile to `"2"`; if every registry dep is
-later removed, the next write demotes back to `"1"`. Both versions are valid
-on-disk formats; consumers MUST handle either.
+The bump is **content-driven**. Without replacement rules, registry dependencies
+or Git semver evidence select `"2"`; otherwise the writer uses `"1"`.
+Removing the `replace` block and running a normal install restores that ordinary
+selection. Keeping `replace: []` retains the candidate opt-in and version `"3"`.
 
 For the registry workflow this enables, see the [Registries guide](../../guides/registries/).
 
