@@ -14,7 +14,12 @@ from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_git_repository import LocalGitRepositoryFactory
 from tests.utils.local_package import LocalPackage, LocalPackageFactory
 
-pytestmark = [pytest.mark.integration, pytest.mark.e2e, pytest.mark.windows_compat]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.e2e,
+    pytest.mark.windows_compat,
+    pytest.mark.lifecycle_smoke,
+]
 
 _AUDIT = ("audit", "--ci", "--no-policy", "--no-fail-fast", "--format", "json")
 _INSTALL = ("--target", "opencode", "--no-policy", "--no-audit", "--parallel-downloads", "0")
