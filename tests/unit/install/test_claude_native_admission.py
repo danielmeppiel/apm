@@ -74,6 +74,10 @@ def test_partial_selection_refused(tmp_path: Path) -> None:
         _plan(_plugin(tmp_path), skill_subset=("only-one",))
 
 
+def test_reset_to_complete_skill_selection_is_not_a_subset(tmp_path: Path) -> None:
+    assert _plan(_plugin(tmp_path), skill_subset=()).name == "owned"
+
+
 def test_root_hooks_cannot_bypass_approval(tmp_path: Path) -> None:
     from apm_cli.claude_plugins.admission import ClaudeNativePluginError
 

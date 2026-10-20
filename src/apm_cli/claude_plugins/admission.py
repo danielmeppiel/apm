@@ -13,6 +13,7 @@ from apm_cli.deps.plugin_parser import (
     parse_plugin_manifest,
 )
 from apm_cli.models.apm_package import PackageInfo, PackageType
+from apm_cli.models.dependency.subsets import skill_subset_filter_tokens
 from apm_cli.utils.path_security import has_symlink_component
 
 
@@ -92,7 +93,7 @@ def plan_native_claude_plugin(
         raise ClaudeNativePluginError(
             "Native Claude registration requires an intact .claude-plugin/plugin.json."
         )
-    if skill_subset is not None:
+    if skill_subset_filter_tokens(skill_subset) is not None:
         raise ClaudeNativePluginError(
             "Native Claude plugins cannot honor a skill subset. Install the complete plugin "
             "or exclude Claude from this dependency's targets."

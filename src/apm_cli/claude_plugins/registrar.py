@@ -312,6 +312,11 @@ def resync_claude_plugins(
                 "Native Claude source changed after deployment admission."
             )
         plans.append(plan)
+    if set(prepared or {}) - {plan.dependency_key for plan in plans}:
+        raise ClaudeNativePluginError(
+            "An admitted native Claude plugin is absent from the authorized locked set. "
+            "Resolve the install's dependency or executable-approval errors before retrying."
+        )
     synchronize_claude_plugins(
         modules_dir=modules_dir,
         scope=scope,
