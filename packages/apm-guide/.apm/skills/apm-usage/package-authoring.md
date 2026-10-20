@@ -249,6 +249,13 @@ Copilot's hook loader scans project `.github/hooks/` and user
 use a non-JSON format for hook runtime configuration. Use the `.mjs`
 extension for ES module scripts targeting Copilot or VS Code.
 
+Nested module boundaries also get minimal type-only metadata, including
+boundaries above deeper script directories. Source metadata must pass the
+same selection, authorization and containment gates as bundle assets;
+symlinked metadata is not read. Full npm manifests, dependency installation
+and lifecycle-script execution are not supported. Install and audit replay
+generate identical metadata; audit still detects modified or missing files.
+
 ### Hook command paths: project-scope stays repo-relative
 
 `apm install` (project-scope, no `-g`) keeps hook `command` paths

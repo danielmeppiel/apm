@@ -820,9 +820,7 @@ def test_hook_bundle_preserves_nested_esm_package_json_sidecar(tmp_path: Path) -
 
     # Hook references the nested script
     (hooks_dir / "hooks.json").write_text(
-        json.dumps(
-            _session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/esm/entry.js")
-        ),
+        json.dumps(_session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/esm/entry.js")),
         encoding="utf-8",
     )
 
@@ -833,29 +831,27 @@ def test_hook_bundle_preserves_nested_esm_package_json_sidecar(tmp_path: Path) -
     )
 
     pkg_info = _package_info(package_path, "esmhooks")
-    result = HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
+    HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
 
     # The nested script is deployed
     deployed_script = project / ".claude" / "hooks" / "esmhooks" / "hooks" / "esm" / "entry.js"
     assert deployed_script.exists(), "Nested entry.js must be deployed"
 
     # A module-type sidecar is generated at the nested boundary
-    deployed_nested_pkg = project / ".claude" / "hooks" / "esmhooks" / "hooks" / "esm" / "package.json"
+    deployed_nested_pkg = (
+        project / ".claude" / "hooks" / "esmhooks" / "hooks" / "esm" / "package.json"
+    )
     assert deployed_nested_pkg.exists(), (
         "Nested package.json sidecar must be generated at the esm/ boundary"
     )
     nested_type = json.loads(deployed_nested_pkg.read_text(encoding="utf-8")).get("type")
-    assert nested_type == "module", (
-        f"Nested sidecar must declare type=module, got {nested_type!r}"
-    )
+    assert nested_type == "module", f"Nested sidecar must declare type=module, got {nested_type!r}"
 
     # Root sidecar must still reflect the hook root module type (commonjs by default)
     root_sidecar = project / ".claude" / "hooks" / "esmhooks" / "hooks" / "package.json"
     assert root_sidecar.exists()
     root_type = json.loads(root_sidecar.read_text(encoding="utf-8")).get("type")
-    assert root_type == "commonjs", (
-        f"Root sidecar should default to commonjs, got {root_type!r}"
-    )
+    assert root_type == "commonjs", f"Root sidecar should default to commonjs, got {root_type!r}"
 
 
 def test_hook_bundle_preserves_nested_commonjs_package_json_sidecar(tmp_path: Path) -> None:
@@ -888,21 +884,21 @@ def test_hook_bundle_preserves_nested_commonjs_package_json_sidecar(tmp_path: Pa
         encoding="utf-8",
     )
     (hooks_dir / "hooks.json").write_text(
-        json.dumps(
-            _session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/main.js")
-        ),
+        json.dumps(_session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/main.js")),
         encoding="utf-8",
     )
 
     pkg_info = _package_info(package_path, "cjsnested")
-    result = HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
+    HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
 
     # The nested script is deployed
     deployed_script = project / ".claude" / "hooks" / "cjsnested" / "hooks" / "cjslib" / "helper.js"
     assert deployed_script.exists(), "Nested helper.js must be deployed"
 
     # A module-type sidecar is generated at the nested boundary
-    deployed_nested_pkg = project / ".claude" / "hooks" / "cjsnested" / "hooks" / "cjslib" / "package.json"
+    deployed_nested_pkg = (
+        project / ".claude" / "hooks" / "cjsnested" / "hooks" / "cjslib" / "package.json"
+    )
     assert deployed_nested_pkg.exists(), (
         "Nested package.json sidecar must be generated at the cjslib/ boundary"
     )
@@ -935,9 +931,7 @@ def test_hook_bundle_root_isolation_preserved_with_nested_module_type(tmp_path: 
         encoding="utf-8",
     )
     (hooks_dir / "hooks.json").write_text(
-        json.dumps(
-            _session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/entry.js")
-        ),
+        json.dumps(_session_start_hook("${CLAUDE_PLUGIN_ROOT}/hooks/entry.js")),
         encoding="utf-8",
     )
 
@@ -948,7 +942,7 @@ def test_hook_bundle_root_isolation_preserved_with_nested_module_type(tmp_path: 
     )
 
     pkg_info = _package_info(package_path, "isolated")
-    result = HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
+    HookIntegrator().integrate_package_hooks_claude(pkg_info, project)
 
     # Root sidecar must reflect the hook package's type (commonjs), not the consumer's
     root_sidecar = project / ".claude" / "hooks" / "isolated" / "hooks" / "package.json"

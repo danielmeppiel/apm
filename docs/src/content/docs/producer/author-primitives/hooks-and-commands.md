@@ -125,6 +125,14 @@ available at runtime:
   Copilot or VS Code, use the `.mjs` file extension -- Node.js
   recognises it without a `package.json`.
 
+Nested source `package.json` files preserve their own module boundaries,
+including boundaries above deeper script directories. APM generates only
+`{"type": "module"}` or `{"type": "commonjs"}`, not full npm manifests.
+These inputs must be selected, authorized, contained, and non-symlinked;
+generated files use the normal ownership and collision checks. Install,
+reinstall, update, and audit replay use the same metadata projection.
+APM does not install npm dependencies or run lifecycle scripts.
+
 Use simple hook filenames. APM computes their reach as:
 
 ```text

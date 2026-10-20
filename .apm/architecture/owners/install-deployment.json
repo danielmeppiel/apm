@@ -78,8 +78,12 @@
     {
       "id": "authorized-deployable-source-paths",
       "decision": "Authorized deployable source paths",
-      "owner": "install/deployable_source_plan.py (DeployableSourcePlan)",
-      "selectors": ["src/apm_cli/install/deployable_source_plan.py"],
+      "owner": "install/deployable_source_plan.py (DeployableSourcePlan), integration/hook_source_selection.py (HookSourceSelection), integration/hook_bundle.py (admitted module metadata and materialization)",
+      "selectors": [
+        "src/apm_cli/install/deployable_source_plan.py",
+        "src/apm_cli/integration/hook_source_selection.py",
+        "src/apm_cli/integration/hook_bundle.py"
+      ],
       "guards": ["install-deployment-source-plan"]
     },
     {

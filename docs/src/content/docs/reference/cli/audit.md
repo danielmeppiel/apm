@@ -84,6 +84,12 @@ Automatic `--strip` also refuses user-scoped prompt files when auditing from
 `~/.apm`, even though the traversal root is the home directory. The explicit
 single-file `--file` operation is unchanged.
 
+For merged hook targets, a supporting `package.json` containing only a valid
+Node `type` is reported as `not-applicable` for prompt scanning, not as a
+missing hook container. This does not exempt other JSON content or malformed
+hook definitions. Managed metadata still receives hash and replay-drift
+checks, and audit does not execute hooks or npm scripts.
+
 ### CI gate
 
 | Flag | Default | Description |

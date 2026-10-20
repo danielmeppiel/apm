@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from apm_cli.install.cache_pin import MARKER_FILENAME
+from apm_cli.install.deployable_source_plan import _is_safe_source_path
 from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.utils.path_security import ensure_path_within
 from apm_cli.utils.paths import portable_relpath
@@ -62,59 +63,51 @@ def _target_root_for_hook_source(
     return target_root
 
 
-def _hook_module_type(package_path: Path, hook_source_root: Path) -> str:
-    """Return the Node module type that governs a source hooks root."""
+def iter_hook_root_metadata(package_path: Path, hook_source_root: Path) -> Iterator[Path]:
+    """Select the nearest contained, non-symlink source module declaration."""
     current = hook_source_root
-    while True:
+    while current.is_relative_to(package_path):
         package_json = current / "package.json"
-        if package_json.exists():
-            try:
-                data = json.loads(package_json.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                return "commonjs"
-            package_type = data.get("type") if isinstance(data, dict) else None
-            return package_type if package_type in {"commonjs", "module"} else "commonjs"
+        if _is_safe_source_path(package_json, package_path) and package_json.is_file():
+            yield package_json
+            return
         if current in (package_path, current.parent):
-            return "commonjs"
+            return
         current = current.parent
 
 
-def _nested_module_type(
-    source_root: Path,
-) -> dict[str, str]:
-    """Return {relative_subdir: module_type} for nested package.json boundaries.
+def _read_hook_module_type(package_json: Path) -> str:
+    """Project admitted source metadata to Node's module type only."""
+    try:
+        data = json.loads(package_json.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return "commonjs"
+    package_type = data.get("type") if isinstance(data, dict) else None
+    return package_type if package_type in ("commonjs", "module") else "commonjs"
 
-    Walks the hook source root for ``package.json`` files that sit at a
-    directory boundary (i.e. a subdirectory containing a .js hook script
-    or other deployable content).  The returned dict maps the relative
-    path from *source_root* to the directory containing the
-    ``package.json`` with the module type declared in that file.
 
-    Only directories that are *below* the root are considered; the root
-    itself is handled by ``_hook_module_type``.
-    """
-    result: dict[str, str] = {}
-    for package_json in source_root.rglob("package.json"):
-        # Skip the root-level package.json -- that's handled by _hook_module_type
-        if package_json.parent == source_root:
-            continue
-        rel = package_json.parent.relative_to(source_root)
-        # Only record if this directory has deployable content (a JS script)
-        has_script = any(
-            (package_json.parent / child).is_file()
-            for child in package_json.parent.iterdir()
-            if child.suffix.lower() in _HOOK_SCRIPT_EXTENSIONS
-        )
-        if not has_script:
-            continue
-        try:
-            data = json.loads(package_json.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-        package_type = data.get("type") if isinstance(data, dict) else None
-        if package_type in {"commonjs", "module"}:
-            result[str(rel)] = package_type
-    return result
+def _hook_module_type(
+    package_path: Path, hook_source_root: Path, selected_files: frozenset[Path]
+) -> str:
+    """Read root isolation only from already admitted metadata inputs."""
+    current = hook_source_root
+    while current.is_relative_to(package_path):
+        package_json = current / "package.json"
+        if package_json in selected_files:
+            return _read_hook_module_type(package_json)
+        if current in (package_path, current.parent):
+            break
+        current = current.parent
+    return "commonjs"
+
+
+def is_minimal_hook_module_metadata(document: object) -> bool:
+    """Recognize exactly the supporting module metadata that bundles generate."""
+    return (
+        isinstance(document, dict)
+        and set(document) == {"type"}
+        and document["type"] in ("commonjs", "module")
+    )
 
 
 def _same_text(path: Path, content: str) -> bool:
@@ -196,7 +189,15 @@ def copy_deployed_hook_bundle(
     package_path = package_path.resolve()
     if hook_file_dir is not None:
         hook_file_dir = hook_file_dir.resolve()
-    selected_bundle_files = frozenset(path.resolve() for path in selected_bundle_files)
+    selected_bundle_files = frozenset(
+        path.resolve()
+        for path in selected_bundle_files
+        if _is_safe_source_path(path, package_path)
+        and (
+            source_plan is None
+            or source_plan.includes(portable_relpath(path, source_plan.source_root))
+        )
+    )
     source_target_roots: dict[tuple[Path, Path], str] = {}
     root_has_js_hook: dict[tuple[Path, Path], bool] = {}
     command_target_rels = {target_rel for _source_file, target_rel in scripts}
@@ -210,9 +211,10 @@ def copy_deployed_hook_bundle(
             source_file,
             source_root,
         )
-        source_target_roots[(source_root, target_root)] = _hook_module_type(
-            package_path,
-            source_root,
+        source_target_roots[(source_root, target_root)] = (
+            _hook_module_type(package_path, source_root, selected_bundle_files)
+            if not exclude_json_files
+            else "commonjs"
         )
         root_has_js_hook.setdefault((source_root, target_root), False)
 
@@ -229,17 +231,28 @@ def copy_deployed_hook_bundle(
         for source_file in files_by_ancestor.get(source_root, ()):
             if source_file in descriptor_files:
                 continue
-            if source_plan is not None and not source_plan.includes(
-                portable_relpath(source_file, source_plan.source_root)
-            ):
-                continue
             source_rel = source_file.relative_to(source_root)
             target_file = target_root / source_rel
             copy_plan[portable_relpath(target_file, project_root)] = source_file
             if source_file.suffix.lower() in _HOOK_SCRIPT_EXTENSIONS:
                 root_has_js_hook[(source_root, target_root)] = True
 
+    script_ancestors: set[Path] = set()
+    for source_file in copy_plan.values():
+        if source_file.suffix.lower() in _HOOK_SCRIPT_EXTENSIONS:
+            current = source_file.parent
+            while current.is_relative_to(package_path):
+                script_ancestors.add(current)
+                if current == package_path:
+                    break
+                current = current.parent
+
+    metadata_plan: dict[str, str] = {}
     for target_rel, source_file in copy_plan.items():
+        if source_file.name == "package.json":
+            if not exclude_json_files and source_file.parent in script_ancestors:
+                metadata_plan[target_rel] = _read_hook_module_type(source_file)
+            continue
         target_file = project_root / target_rel
         ensure_path_within(target_file, project_root)
         if integrator.try_adopt_identical(target_file, source_file, target_paths):
@@ -266,8 +279,10 @@ def copy_deployed_hook_bundle(
     for (_source_root, target_root), module_type in source_target_roots.items():
         if not root_has_js_hook.get((_source_root, target_root), False):
             continue
-        target_file = target_root / "package.json"
-        target_rel = portable_relpath(target_file, project_root)
+        metadata_plan[portable_relpath(target_root / "package.json", project_root)] = module_type
+
+    for target_rel, module_type in metadata_plan.items():
+        target_file = project_root / target_rel
         ensure_path_within(target_file, project_root)
         content = json.dumps({"type": module_type}, indent=2, sort_keys=True) + "\n"
         if target_file.exists() and _same_text(target_file, content):
@@ -282,31 +297,7 @@ def copy_deployed_hook_bundle(
         ):
             continue
         target_file.parent.mkdir(parents=True, exist_ok=True)
-        target_file.write_text(content, encoding="utf-8")
+        target_file.write_text(content, encoding="utf-8", newline="\n")
         target_paths.append(target_file)
-
-        # Generate sidecars at nested module boundaries (issue #2950)
-        nested_types = _nested_module_type(_source_root)
-        for rel_subdir, nested_type in nested_types.items():
-            nested_target = target_root / rel_subdir / "package.json"
-            nested_rel = portable_relpath(nested_target, project_root)
-            ensure_path_within(nested_target, project_root)
-            nested_content = json.dumps(
-                {"type": nested_type}, indent=2, sort_keys=True
-            ) + "\n"
-            if nested_target.exists() and _same_text(nested_target, nested_content):
-                target_paths.append(nested_target)
-                continue
-            if integrator.check_collision(
-                nested_target,
-                nested_rel,
-                managed_files,
-                force,
-                diagnostics=diagnostics,
-            ):
-                continue
-            nested_target.parent.mkdir(parents=True, exist_ok=True)
-            nested_target.write_text(nested_content, encoding="utf-8")
-            target_paths.append(nested_target)
 
     return result

@@ -402,6 +402,36 @@ def check_source_plan(provider: FactsProvider) -> tuple[Violation, ...]:
                     "Primitive materializers must consume the canonical deployable source plan",
                 )
             )
+    metadata_routes = {
+        "src/apm_cli/integration/hook_source_selection.py": {
+            "select_hook_sources": {"iter_hook_root_metadata"},
+        },
+        "src/apm_cli/integration/hook_bundle.py": {
+            "iter_hook_root_metadata": {"_is_safe_source_path"},
+            "copy_deployed_hook_bundle": {
+                "_is_safe_source_path",
+                "includes",
+                "_read_hook_module_type",
+            },
+            "_hook_module_type": {"_read_hook_module_type"},
+        },
+    }
+    for path, functions in metadata_routes.items():
+        facts, fail = _facts_for(provider, path, rule_id)
+        findings.extend(fail)
+        for function, required in functions.items():
+            calls = {
+                call.qualname.rsplit(".", 1)[-1]
+                for call in facts.calls
+                if call.scope.rsplit(".", 1)[-1] == function
+            }
+            if required - calls or (
+                function in {"copy_deployed_hook_bundle", "_hook_module_type"}
+                and calls & {"rglob", "glob", "iterdir", "read_text"}
+            ):
+                findings.append(
+                    _summary(rule_id, path, "Hook metadata must use admitted source inputs")
+                )
     return tuple(findings)
 
 

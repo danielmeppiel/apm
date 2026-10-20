@@ -25,6 +25,7 @@ import tomllib
 
 from ..deps.lockfile import LockFile, get_lockfile_path
 from ..integration.base_integrator import BaseIntegrator
+from ..integration.hook_bundle import is_minimal_hook_module_metadata
 from ..integration.hook_integrator import native_hook_config
 from ..integration.hook_native_formats import HookContentEntry, inspect_native_hooks
 from ..integration.targets import TargetProfile
@@ -161,8 +162,16 @@ def _content_entries(path: Path, surface: PrimitiveSurface) -> tuple[HookContent
     text = path.read_text(encoding="utf-8")
     if surface.kind == "hooks":
         config = native_hook_config(surface.target)
+        document = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+        if (
+            config is not None
+            and not surface.shared
+            and path.name == "package.json"
+            and is_minimal_hook_module_metadata(document)
+        ):
+            return (HookContentEntry(""),)
         return inspect_native_hooks(
-            json.loads(text, object_pairs_hook=_reject_duplicate_keys),
+            document,
             surface.format_id,
             container=config.event_container_key if config else "hooks",
             prompt_types=config.prompt_handler_types if config else (),

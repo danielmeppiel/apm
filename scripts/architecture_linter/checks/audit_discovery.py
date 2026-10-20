@@ -15,7 +15,7 @@ _REQUIRED = {
     _SCANNER: {
         "_scan_claimed_files": {"primitive_surfaces", "_scan_primitive"},
         "_scan_deployed_trees": {"primitive_surfaces", "iter_surface_files", "_scan_primitive"},
-        "_content_entries": {"inspect_native_hooks"},
+        "_content_entries": {"inspect_native_hooks", "is_minimal_hook_module_metadata"},
         "_scan_primitive": {"safe_surface_path"},
         "scan_project_result": {"_scan_claimed_files", "_scan_deployed_trees"},
     },

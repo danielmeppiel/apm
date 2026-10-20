@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from apm_cli.hook_contract import walk_hook_commands
-from apm_cli.integration.hook_bundle import _hook_source_root
+from apm_cli.integration.hook_bundle import _hook_source_root, iter_hook_root_metadata
 from apm_cli.integration.hook_command_paths import (
     iter_plugin_root_paths,
     iter_relative_script_paths,
@@ -176,6 +176,8 @@ def select_hook_sources(
 
         bundle_files: set[Path] = set()
         for source_root in sorted(source_roots):
+            if target_name != "copilot":
+                bundle_files.update(iter_hook_root_metadata(package_path, source_root))
             bundle_files.update(
                 iter_bundle_files(
                     source_root,
