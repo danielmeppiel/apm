@@ -261,6 +261,25 @@ def test_frozen_whole_plugin_subdirectory(tmp_path: Path, apm_binary_path: Path)
         _assert_mcp_matches_producer(scenario)
 
 
+def test_frozen_replays_pin_after_remote_head_advances(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """Source bytes must come from the locked commit, not the repository's newer head."""
+    scenario = _scenario(tmp_path, apm_binary_path)
+    source_skill = scenario.repository.worktree / "skills/frozen-skill/SKILL.md"
+    source_skill.write_bytes(_SKILL + b"\nUnselected repository head.\n")
+    newer = scenario.repositories.commit(scenario.repository, message="Unselected newer head")
+    assert newer.sha not in scenario.pins
+    for _ in range(2):
+        scenario.freeze()
+        assert (scenario.consumer / ".agents/skills/frozen-skill/SKILL.md").read_bytes() == _SKILL
+        assert {
+            entry["resolved_commit"]
+            for entry in load_yaml(scenario.consumer / "apm.lock.yaml")["dependencies"]
+        } == scenario.pins
+        _assert_mcp_matches_producer(scenario)
+
+
 def _assert_mcp_matches_producer(scenario: _Scenario) -> None:
     """Compare actual native config, not merely the lockfile's intended server set."""
     relative = Path(".github/mcp.json")

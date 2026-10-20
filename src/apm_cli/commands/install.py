@@ -1717,8 +1717,7 @@ def install(  # noqa: PLR0913
 def _install_apm_packages(ctx, outcome):
     """Execute the APM + transitive MCP installation pipeline.
 
-    Parses ``apm.yml``, installs APM dependencies, collects and installs
-    transitive MCP servers, and handles lockfile updates.
+    Install packages and transitive MCP servers, updating non-frozen lock state.
     Args:
         ctx: :class:`InstallContext` with configuration and environment.
         outcome: ``_ValidationOutcome`` from package validation (may be
