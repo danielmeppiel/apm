@@ -14,7 +14,12 @@ from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_package import LocalPackageFactory
 
-pytestmark = [pytest.mark.integration, pytest.mark.e2e, pytest.mark.lifecycle_smoke]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.e2e,
+    pytest.mark.lifecycle_smoke,
+    pytest.mark.requires_apm_binary,
+]
 
 
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
