@@ -29,6 +29,7 @@ At project scope APM only writes to ``opencode.json`` when the
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,26 @@ class OpenCodeClientAdapter(CopilotClientAdapter):
         if not isinstance(env_vars, dict):
             return super()._resolve_environment_variables(env_vars, env_overrides)
         return self._resolve_explicit_environment_values(env_vars, env_overrides)
+
+    def _format_server_config(self, server_info, env_overrides=None, runtime_vars=None):
+        """Preserve per-server authored registry env values after normal rendering."""
+        config = super()._format_server_config(server_info, env_overrides, runtime_vars)
+        overlay = server_info.get("_apm_env_overlay")
+        env = config.get("env")
+        if server_info.get("_raw_stdio") or not overlay or not isinstance(env, dict):
+            return config
+
+        # Only declared/emitted keys participate, as on the legacy registry path.
+        # Never recover authored values from the shared collected overrides.
+        authored = {name: value for name, value in overlay.items() if name in env}
+        previous_keys = self._last_env_placeholder_keys - set(env)
+        env.update(self._resolve_explicit_environment_values(authored))
+        self._last_env_placeholder_keys = previous_keys | {
+            name
+            for value in env.values()
+            for name in re.findall(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}", value)
+        }
+        return config
 
     @staticmethod
     def config_path_for(project_root: Path, user_scope: bool) -> Path:

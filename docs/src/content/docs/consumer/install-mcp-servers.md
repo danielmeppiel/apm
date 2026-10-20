@@ -172,7 +172,10 @@ unresolved required entries fail closed.
 OpenCode resolves environment references when it starts MCP servers. APM translates
 `${VAR}`, `${env:VAR}`, and legacy `<VAR>` references to OpenCode's native
 `{env:VAR}` in remote `headers`, local `environment` (from manifest `env`), and
-command arguments. Explicit static values stay literal; command executables and
+command arguments. Registry-backed manifest `env` overlays preserve authored values
+for declared environment keys, including literal tool selections and references to
+a differently named variable. Undeclared overlay keys are not added.
+Explicit static values stay literal; command executables and
 URLs are unchanged. Export referenced variables in the environment that launches
 OpenCode: values supplied to APM at install time are no longer saved in generated
 configuration. See [OpenCode environment substitution](https://opencode.ai/docs/config/#env-vars)

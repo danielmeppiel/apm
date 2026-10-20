@@ -565,6 +565,10 @@ class MCPIntegrator:
                         existing_args.append({"value_hint": f"--{k}={v}"})
                 pkg["runtime_arguments"] = existing_args
 
+        # Keep authored values separate from collected install-time values.
+        if dep.env:
+            info["_apm_env_overlay"] = dict(dep.env)
+
         # Tools overlay: embed for adapters to pick up
         if dep.tools:
             info["_apm_tools_override"] = dep.tools
