@@ -29,11 +29,11 @@ Design constraints (see ``WIP/drift/06-final-plan.md``):
 from __future__ import annotations
 
 import atexit
-import shutil
 import tempfile
 import tracemalloc
 from dataclasses import dataclass
 from pathlib import Path
+from shutil import copytree, rmtree
 from typing import TYPE_CHECKING, Any
 
 import click
@@ -156,7 +156,7 @@ def _make_scratch_root(project_root: Path) -> Path:
 
     def _cleanup() -> None:
         try:
-            shutil.rmtree(scratch, ignore_errors=False)
+            rmtree(scratch, ignore_errors=False)
         except OSError as exc:
             click.echo(
                 f"{STATUS_SYMBOLS['warning']} failed to clean drift scratch dir {scratch}: {exc}",
@@ -172,7 +172,7 @@ def _clear_path(path: Path) -> None:
     if not path.exists():
         return
     if path.is_dir():
-        shutil.rmtree(path)
+        rmtree(path)
         return
     path.unlink()
 
@@ -181,7 +181,7 @@ def _copy_install_tree(source: Path, target: Path) -> None:
     """Clone one materialized package tree into the scratch modules root."""
     _clear_path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, target, symlinks=True)
+    copytree(source, target, symlinks=True)
 
 
 # ---------------------------------------------------------------------------
@@ -355,7 +355,11 @@ def _normalize_legacy_local_plugin_for_replay(
     """Normalize a local legacy plugin only in the scratch replay tree."""
     from apm_cli.agent_plugins.loader import detect_agent_plugin
     from apm_cli.deps.plugin_parser import normalize_plugin_directory
+    from apm_cli.models.validation import PackageType
     from apm_cli.utils.helpers import find_plugin_json
+
+    if lock_dep.package_type == PackageType.AGENT_PLUGIN.value:
+        return install_path
 
     if detect_agent_plugin(install_path) is not None:
         return install_path
@@ -381,36 +385,22 @@ def _build_package_info(
     Loads ``apm.yml`` when present so integrators that read
     ``package_info.package.name`` see the right package identity.
     """
+    from apm_cli.agent_plugins.errors import (
+        AgentPluginDeploymentBoundaryError,
+        AgentPluginError,
+    )
+    from apm_cli.bundle.local_bundle import route_agent_plugin_package
     from apm_cli.models.apm_package import (
         APMPackage,
         GitReferenceType,
         PackageInfo,
         ResolvedReference,
     )
-    from apm_cli.models.validation import PackageType, detect_package_type
-
-    apm_yml = install_path / "apm.yml"
-    if apm_yml.exists():
-        try:
-            pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
-        except Exception:
-            if lock_dep.replacement is not None:
-                raise
-            pkg = APMPackage(
-                name=install_path.name,
-                version=lock_dep.version or "unknown",
-                package_path=install_path,
-                source=lock_dep.repo_url,
-            )
-        if not pkg.source:
-            pkg.source = lock_dep.repo_url
-    else:
-        pkg = APMPackage(
-            name=install_path.name,
-            version=lock_dep.version or "unknown",
-            package_path=install_path,
-            source=lock_dep.repo_url,
-        )
+    from apm_cli.models.validation import (
+        PackageType,
+        detect_package_type,
+        validate_apm_package,
+    )
 
     resolved_ref = ResolvedReference(
         original_ref=lock_dep.resolved_ref or "locked",
@@ -419,23 +409,56 @@ def _build_package_info(
         ref_name=lock_dep.resolved_ref or "locked",
     )
 
-    info = PackageInfo(
+    try:
+        native_detection = route_agent_plugin_package(install_path)
+    except AgentPluginError as exc:
+        raise AgentPluginDeploymentBoundaryError(str(exc)) from exc
+
+    if native_detection is not None:
+        validation = validate_apm_package(
+            install_path,
+            agent_plugin_detection=native_detection,
+            read_only=True,
+        )
+        if not validation.is_valid or validation.package is None:
+            raise AgentPluginDeploymentBoundaryError(
+                "; ".join(validation.errors) or "Agent Plugin validation produced no package"
+            )
+        pkg = validation.package
+        package_type = PackageType.AGENT_PLUGIN
+    else:
+        apm_yml = install_path / "apm.yml"
+        pkg = None
+        if apm_yml.exists():
+            try:
+                pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
+            except Exception:
+                if lock_dep.replacement is not None:
+                    raise
+                pkg = None
+        if pkg is None:
+            pkg = APMPackage(
+                name=install_path.name,
+                version=lock_dep.version or "unknown",
+                package_path=install_path,
+                source=lock_dep.repo_url,
+            )
+        try:
+            package_type = PackageType(
+                lock_dep.package_type or detect_package_type(install_path)[0].value
+            )
+        except Exception:
+            package_type = None
+    if not pkg.source:
+        pkg.source = lock_dep.repo_url
+
+    return PackageInfo(
         package=pkg,
         install_path=install_path,
         resolved_reference=resolved_ref,
         dependency_ref=lock_dep.to_dependency_ref(),
+        package_type=package_type,
     )
-    try:
-        package_type = lock_dep.package_type or detect_package_type(install_path)[0].value
-        info.package_type = PackageType(package_type)
-    except Exception:
-        info.package_type = None
-    return info
-
-
-# ---------------------------------------------------------------------------
-# Replay orchestrator
-# ---------------------------------------------------------------------------
 
 
 def _make_integrators():
@@ -517,6 +540,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     """
     from apm_cli.deps.lockfile import _SELF_KEY, LockFile
     from apm_cli.install.audit_target_roots import replay_target
+    from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
     from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
     from apm_cli.integration.targets import resolve_targets
@@ -607,75 +631,92 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     replayed_count = 0
     local_parent_index = build_local_parent_index(lock)
     local_resolved_cache: dict[str, Path] = {}
+    from apm_cli.agent_plugins.errors import AgentPluginTargetExcludedError
+    from apm_cli.copilot_plugins.capability import native_registration_scope
+
     try:
-        with _ReadOnlyProjectGuard(project_root, protected_subpaths):
-            for lock_dep in lock.get_all_dependencies():
-                if lock_dep.local_path == _SELF_KEY:
-                    # Synthesized self-entry: project's own local content.
-                    # Re-integrate from project_root itself.
-                    install_path = project_root
-                else:
-                    install_path = _materialize_install_path(
-                        lock_dep,
-                        project_root,
-                        apm_modules_dir,
-                        cache_only=config.cache_only,
-                        lockfile=lock,
-                        parent_index=local_parent_index,
-                        resolved_cache=local_resolved_cache,
-                        live_modules_dir=live_modules_dir,
-                        downloader=downloader,
-                        registry_resolver=registry_resolver,
-                        registries=registries,
-                    )
-                    if lock_dep.is_local_source:
-                        install_path = _normalize_legacy_local_plugin_for_replay(
+        with native_registration_scope(targets):
+            with _ReadOnlyProjectGuard(project_root, protected_subpaths):
+                for lock_dep in lock.get_all_dependencies():
+                    if lock_dep.local_path == _SELF_KEY:
+                        # Synthesized self-entry: project's own local content.
+                        # Re-integrate from project_root itself.
+                        install_path = project_root
+                    else:
+                        install_path = _materialize_install_path(
+                            lock_dep,
+                            project_root,
+                            apm_modules_dir,
+                            cache_only=config.cache_only,
+                            lockfile=lock,
+                            parent_index=local_parent_index,
+                            resolved_cache=local_resolved_cache,
+                            live_modules_dir=live_modules_dir,
+                            downloader=downloader,
+                            registry_resolver=registry_resolver,
+                            registries=registries,
+                        )
+                        if lock_dep.is_local_source:
+                            install_path = _normalize_legacy_local_plugin_for_replay(
+                                lock_dep,
+                                install_path,
+                                apm_modules_dir,
+                            )
+
+                    if lock_dep.local_path == _SELF_KEY:
+                        package_info = build_project_local_package_info(install_path)
+                        package_info.root_local_project_root = project_root
+                        package_info.deployment_package_root = scratch_root
+                    else:
+                        package_info = _build_package_info(lock_dep, install_path)
+                        package_info.deployment_package_root = (
+                            lock_dep.to_dependency_ref().get_install_path(
+                                scratch_root / "apm_modules"
+                            )
+                        )
+                    dep_key = lock_dep.get_unique_key()
+
+                    try:
+                        result = integrate_package_primitives(
+                            package_info,
+                            scratch_root,
+                            targets=targets,
+                            integrators=IntegratorBundle(
+                                prompt=integrators["prompt"],
+                                agent=integrators["agent"],
+                                skill=integrators["skill"],
+                                instruction=integrators["instruction"],
+                                command=integrators["command"],
+                                hook=integrators["hook"],
+                            ),
+                            force=True,
+                            managed_files=set(),
+                            diagnostics=diagnostics,
+                            package_name=dep_key,
+                            logger=None,
+                            scope=None,
+                            skill_subset=(
+                                tuple(package_info.dependency_ref.skill_subset or ()) or None
+                                if package_info.dependency_ref
+                                else None
+                            ),
+                            ctx=None,
+                            scratch_root=scratch_root,
+                            # Honor per-dependency 'targets:' narrowing from apm.yml so the
+                            # replay does not write to targets excluded by the consumer (#1923).
+                            dep_target_subset=lock_dep.target_subset or None,
+                        )
+                    except AgentPluginTargetExcludedError:
+                        continue
+                    if result.get("native_plugin"):
+                        verify_native_plugin_cache(
                             lock_dep,
                             install_path,
-                            apm_modules_dir,
+                            package_info.deployment_package_root,
+                            live_modules_dir,
+                            scratch_root,
                         )
-
-                if lock_dep.local_path == _SELF_KEY:
-                    package_info = build_project_local_package_info(install_path)
-                    package_info.root_local_project_root = project_root
-                    package_info.deployment_package_root = scratch_root
-                else:
-                    package_info = _build_package_info(lock_dep, install_path)
-                    package_info.deployment_package_root = (
-                        lock_dep.to_dependency_ref().get_install_path(scratch_root / "apm_modules")
-                    )
-                dep_key = lock_dep.get_unique_key()
-
-                integrate_package_primitives(
-                    package_info,
-                    scratch_root,
-                    targets=targets,
-                    integrators=IntegratorBundle(
-                        prompt=integrators["prompt"],
-                        agent=integrators["agent"],
-                        skill=integrators["skill"],
-                        instruction=integrators["instruction"],
-                        command=integrators["command"],
-                        hook=integrators["hook"],
-                    ),
-                    force=True,
-                    managed_files=set(),
-                    diagnostics=diagnostics,
-                    package_name=dep_key,
-                    logger=None,
-                    scope=None,
-                    skill_subset=(
-                        tuple(package_info.dependency_ref.skill_subset or ()) or None
-                        if package_info.dependency_ref
-                        else None
-                    ),
-                    ctx=None,
-                    scratch_root=scratch_root,
-                    # Honor per-dependency 'targets:' narrowing from apm.yml so the
-                    # replay does not write to targets excluded by the consumer (#1923).
-                    dep_target_subset=lock_dep.target_subset or None,
-                )
-                replayed_count += 1
+                    replayed_count += 1
     finally:
         if snapshot_started:
             try:

@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from urllib.parse import urlparse
 
 import pytest
 
+from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.commands.deps.why import _render_human, _render_json
 from apm_cli.commands.outdated import _check_one_dep
 from apm_cli.deps.lockfile import LockedDependency, LockFile
@@ -15,6 +17,7 @@ from apm_cli.deps.why_walker import compute_why
 from apm_cli.install.drift import _materialize_install_path
 from apm_cli.install.exec_gate import check_executable_approval, resolve_package_key
 from apm_cli.install.helpers.ref_reuse import maybe_resolve_git_semver
+from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
 from apm_cli.install.resolution_staging import ResolutionStagingSession
 from apm_cli.models.dependency.materialization import prepare_materialization_path
 from apm_cli.models.dependency.reference import DependencyReference
@@ -26,6 +29,7 @@ from apm_cli.models.dependency.replacement import (
 from apm_cli.models.dependency.types import GitReferenceType, RemoteRef
 from apm_cli.policy.policy_checks import _check_dependency_allowlist, _check_dependency_denylist
 from apm_cli.policy.schema import DependencyPolicy
+from apm_cli.utils.content_hash import compute_package_hash
 
 pytestmark = pytest.mark.component
 
@@ -73,7 +77,13 @@ def test_fork_outdated_queries_clean_selected_reference(tmp_path: Path) -> None:
     assert queried.replacement is None
     assert row.package == "mixedorg/mixedrepo"
     assert row.status == "outdated"
-    assert "gitlab.com/team/fork" in row.source
+    source = row.source.partition(": ")[2].split()[0]
+    parsed = urlparse(source if "://" in source else "//" + source)
+    assert (parsed.hostname, parsed.path, parsed.fragment) == (
+        "gitlab.com",
+        "/team/fork",
+        "patched",
+    )
 
 
 def test_replacement_why_keeps_exact_diamond_parents_and_original_refs(tmp_path: Path) -> None:
@@ -124,6 +134,25 @@ def test_local_replacement_audit_reads_source_not_upstream_cache(tmp_path: Path)
         _materialize_install_path(locked, tmp_path, tmp_path / "scratch", True, lockfile=lock)
         == source
     )
+
+
+def test_native_local_replacement_audit_uses_current_selected_source_bytes(tmp_path: Path) -> None:
+    selected, locked, _ = _locked(tmp_path, {"path": "./selected"})
+    source = tmp_path / "selected"
+    source.mkdir()
+    (source / "SKILL.md").write_text("new selected content\n", encoding="ascii")
+    modules = tmp_path / "apm_modules"
+    candidate = selected.get_install_path(modules)
+    candidate.mkdir(parents=True)
+    (candidate / "SKILL.md").write_text("old selected content\n", encoding="ascii")
+    locked.content_hash = compute_package_hash(candidate)
+    scratch = tmp_path / "scratch"
+    replay = selected.get_install_path(scratch / "apm_modules")
+    with pytest.raises(AgentPluginDeploymentBoundaryError, match="cache differs"):
+        verify_native_plugin_cache(locked, source, replay, modules, scratch)
+    (candidate / "SKILL.md").write_bytes((source / "SKILL.md").read_bytes())
+    verify_native_plugin_cache(locked, source, replay, modules, scratch)
+    assert (replay / "SKILL.md").read_bytes() == (source / "SKILL.md").read_bytes()
 
 
 def test_missing_replacement_audit_source_is_not_a_soft_cache_miss(tmp_path: Path) -> None:
