@@ -670,3 +670,46 @@ def test_skill_receipt_scope_does_not_restrict_install_target_contraction(
     assert len(records) == 2
     assert not (tmp_path / _MARKER).exists()
     assert (tmp_path / claude_marker).read_bytes() == marker_bytes
+
+
+@pytest.mark.parametrize("empty_table", [False, True], ids=["dormant", "empty"])
+def test_empty_builder_persists_replacement_intent_without_absence_authority(
+    tmp_path: Path, empty_table: bool
+) -> None:
+    """Changed rules must persist without treating unprocessed claims as obsolete."""
+    from apm_cli.models.dependency.replacement import parse_replace_block
+
+    rule = {
+        "for": {"git": "https://github.com/unused-replacement-fixture/base.git"},
+        "with": {"path": "../intentionally-absent"},
+    }
+    declared = [] if empty_table else [rule]
+    existing = LockFile(replacements=[rule] if empty_table else [])
+    existing.add_dependency(LockedDependency(repo_url=_OWNER))
+    prior = _record()
+    DeploymentLedgerCodec.apply_to_lockfile(DeploymentLedger({prior.locator.key: prior}), existing)
+    lock_path = tmp_path / "apm.lock.yaml"
+    existing.write(lock_path)
+    ctx = InstallContext(
+        project_root=tmp_path,
+        apm_dir=tmp_path,
+        existing_lockfile=existing,
+        intended_dep_keys={_OWNER},
+        apm_package=APMPackage(
+            name="consumer", version="1.0.0", replace_rules=parse_replace_block(declared)
+        ),
+        targets=[KNOWN_TARGETS["codex"]],
+        diagnostics=DiagnosticCollector(),
+    )
+
+    LockfileBuilder(ctx).build_and_save()
+
+    written = LockFile.read(lock_path)
+    assert written is not None
+    assert written.replacements == declared
+    dependency = written.get_dependency(_OWNER)
+    assert dependency.deployed_files == [_OBSOLETE]
+    assert dependency.deployed_file_hashes == {_OBSOLETE: _HASH}
+    assert DeploymentLedgerCodec.from_lockfile(written).records == {prior.locator.key: prior}
+    assert not (tmp_path / _OBSOLETE).exists()
+    assert ctx.package_completed_reintegrations == {}

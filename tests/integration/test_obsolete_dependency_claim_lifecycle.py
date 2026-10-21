@@ -359,3 +359,81 @@ def test_dependency_target_narrowing_keeps_cleanup_and_lock_scope_aligned(
         (scenario.deploy_root / value).read_bytes() == data for value, data in sibling_bytes.items()
     )
     assert not (scenario.deploy_root / ".claude/skills/s/SKILL.md").exists()
+
+
+@pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
+def test_replacement_table_survives_absent_repair_partial_install_and_narrowing(
+    tmp_path: Path, apm_binary_path: Path, user_scope: bool
+) -> None:
+    """Replacement intent survives full and partial dependency-state repair."""
+    scenario = _shared_scenario(tmp_path, apm_binary_path, user_scope)
+    scenario.install("a")
+    lock_path = scenario.lock_root / "apm.lock.yaml"
+    baseline = load_yaml(lock_path)
+    roots = (".claude/skills/s", ".agents/skills/s")
+    obsolete = {f"{root}/a.md" for root in roots}
+    markers = {f"{root}/SKILL.md" for root in roots}
+    marker_bytes = (scenario.packages["a"] / "skills/s/SKILL.md").read_bytes()
+    marker_hash = "sha256:" + hashlib.sha256(marker_bytes).hexdigest()
+    for row in baseline["deployments"]:
+        if row["value"].startswith(".agents/"):
+            row["target"] = "legacy"
+    dump_yaml(baseline, lock_path)
+    (scenario.packages["a"] / "skills/s/a.md").unlink()
+    for path in obsolete:
+        (scenario.deploy_root / path).unlink()
+    rule = {
+        "for": {"git": "https://github.com/unused-replacement-fixture/base.git"},
+        "with": {"path": "../intentionally-absent"},
+    }
+    scenario.manifest(
+        **{
+            "$schema": (
+                "https://microsoft.github.io/apm/specs/schemas/"
+                "manifest-source-replacements-v1.schema.json"
+            ),
+            "replace": [rule],
+        }
+    )
+    scenario.run("install")
+    repaired = load_yaml(lock_path)
+    dependency = repaired["dependencies"][0]
+    assert repaired["replacements"] == [rule]
+    assert obsolete.isdisjoint(dependency["deployed_files"])
+    assert obsolete.isdisjoint(dependency["deployed_file_hashes"])
+    assert obsolete.isdisjoint(row["value"] for row in repaired["deployments"])
+    assert dependency["deployed_file_hashes"] == dict.fromkeys(markers, marker_hash)
+    assert all((scenario.deploy_root / path).read_bytes() == marker_bytes for path in markers)
+    assert all(not (scenario.deploy_root / path).exists() for path in obsolete)
+    scenario.run("audit", "--ci", "--format", "json")
+
+    scenario.manifest(replace=[])
+    before_refusal = ArtifactSnapshot.capture(tmp_path)
+    refused = scenario.run("install", str(scenario.packages["a"]), expected=1)
+    assert "Replacement rules changed during a" in refused.stdout
+    assert_unchanged(before_refusal, ArtifactSnapshot.capture(tmp_path))
+    scenario.run("install")
+    assert load_yaml(lock_path)["replacements"] == []
+    scenario.install("a", target=None)
+    assert load_yaml(lock_path)["replacements"] == []
+    scenario.manifest(
+        targets=["claude", "codex"],
+        dependencies={"apm": [{"path": str(scenario.packages["a"]), "targets": ["claude"]}]},
+    )
+    scenario.run("install")
+    narrowed = load_yaml(lock_path)
+    expected = {".claude/skills/s", ".claude/skills/s/SKILL.md"}
+    assert narrowed["replacements"] == []
+    assert set(narrowed["dependencies"][0]["deployed_files"]) == expected
+    assert narrowed["dependencies"][0]["deployed_file_hashes"] == {
+        ".claude/skills/s/SKILL.md": marker_hash
+    }
+    assert {row["value"] for row in narrowed["deployments"]} == expected
+    assert not (scenario.deploy_root / ".agents/skills/s").exists()
+    assert (scenario.deploy_root / ".claude/skills/s/SKILL.md").read_bytes() == marker_bytes
+    assert load_yaml(scenario.lock_root / "apm.yml")["targets"] == ["claude", "codex"]
+    settled = lock_path.read_bytes()
+    for flags in ((), ("--frozen",)):
+        scenario.run("install", *flags)
+        assert lock_path.read_bytes() == settled
+        scenario.run("audit", "--ci", "--format", "json")
