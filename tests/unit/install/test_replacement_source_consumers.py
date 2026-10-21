@@ -202,6 +202,7 @@ def test_materialization_owner_preserves_original_slot_for_bound_references(
 
 def test_local_replacement_outdated_is_not_remotely_comparable(tmp_path: Path) -> None:
     _, locked, _ = _locked(tmp_path, {"path": "../local"})
+    assert locked.is_local_source is True
     downloader = Mock()
     row = _check_one_dep(locked, downloader, False)
     assert row.package == "mixedorg/mixedrepo"
