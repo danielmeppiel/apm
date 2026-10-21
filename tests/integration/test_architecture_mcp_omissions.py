@@ -31,6 +31,11 @@ def test_mcp_omission_owner_routes_are_intact() -> None:
             "include_dependency_mcp=True",
         ),
         (
+            "src/apm_cli/install/mcp/integration.py",
+            "current_view if should_install else None",
+            "current_view",
+        ),
+        (
             "src/apm_cli/integration/mcp_config_view.py",
             "if valid and name not in admitted:",
             "if valid:",

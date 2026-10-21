@@ -391,6 +391,7 @@ def _check_mcp_omission_evidence(provider: FactsProvider) -> Iterable[Violation]
         "src/apm_cli/install/mcp/integration.py": (
             "include_dependency_mcp=should_install",
             "current_view.omission_evidence(lockfile or LockFile())",
+            "current_view if should_install else None",
         ),
     }
     facts_by_path, failures = _read_required(provider, rule_id, tuple(required))

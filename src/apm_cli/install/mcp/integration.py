@@ -6,14 +6,77 @@ with runtime-neutral target selection.
 
 import builtins
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from apm_cli.core.command_logger import InstallLogger
     from apm_cli.core.target_detection import EffectiveTargetDecision
+    from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
     from apm_cli.models.apm_package import APMPackage
     from apm_cli.models.dependency.mcp import MCPDependency
+    from apm_cli.utils.diagnostics import DiagnosticCollector
+
+
+@dataclass(frozen=True)
+class PreparedMcpIntegration:
+    """Selected comparison view, filtered declarations, and pre-write omission evidence."""
+
+    dependencies: list["MCPDependency"]
+    current_view: "CurrentMcpConfigView | None"
+    omissions: dict[str, dict[str, str]] | None
+
+
+def prepare_mcp_integration(
+    *,
+    apm_package: "APMPackage",
+    mcp_deps: list["MCPDependency"],
+    apm_modules_path: Path,
+    lock_path: Path,
+    should_install: bool,
+    trust_transitive_mcp: bool,
+    logger: "InstallLogger",
+    diagnostics: "DiagnosticCollector | None" = None,
+    trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
+    allow_pending: bool | None = None,
+    active_package_keys: frozenset[str] | None = None,
+) -> PreparedMcpIntegration:
+    """Collect and filter once, without native writes or ownership adoption."""
+    from apm_cli.deps.lockfile import LockFile
+    from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
+    from apm_cli.security.executables import filter_mcp_by_allow_executables
+
+    current_view = None
+    omissions = None
+    if should_install or mcp_deps or apm_modules_path.exists() or lock_path.exists():
+        lockfile = LockFile.read(lock_path) if lock_path.exists() else None
+        current_view = CurrentMcpConfigView.derive(
+            apm_package,
+            lockfile,
+            apm_modules_path,
+            trust_transitive_self_defined=trust_transitive_mcp,
+            diagnostics=diagnostics,
+            logger=logger,
+            trusted_transitive_configs=trusted_transitive_configs,
+            allow_pending=allow_pending,
+            active_package_keys=active_package_keys,
+            include_dependency_mcp=should_install,
+        )
+        omissions = current_view.omission_evidence(lockfile or LockFile())
+    if should_install and current_view is not None:
+        root_count = len(apm_package.get_all_mcp_dependencies())
+        transitive_count = max(0, len(current_view.dependencies) - root_count)
+        if transitive_count:
+            logger.verbose_detail(f"Collected {transitive_count} transitive MCP dependency(ies)")
+        mcp_deps = list(current_view.dependencies)
+    return PreparedMcpIntegration(
+        filter_mcp_by_allow_executables(
+            mcp_deps, getattr(apm_package, "allow_executables", None), logger
+        ),
+        current_view if should_install else None,
+        omissions,
+    )
 
 
 def run_owned_mcp_integration(
@@ -136,6 +199,8 @@ def run_mcp_integration(  # noqa: PLR0913
     target_decision: "EffectiveTargetDecision | None" = None,
     scope=None,
     trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
+    prepared: PreparedMcpIntegration | None = None,
+    active_package_keys: frozenset[str] | None = None,
 ) -> tuple[int, dict]:
     """Run MCP server integration after APM package installation.
 
@@ -186,37 +251,22 @@ def run_mcp_integration(  # noqa: PLR0913
             packages are left in place.
     """
     from apm_cli.deps.lockfile import LockFile
-    from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
     from apm_cli.integration.mcp_integrator import MCPIntegrator
     from apm_cli.policy.install_preflight import run_policy_preflight
 
-    current_view = None
-    omissions: dict[str, dict[str, str]] = {}
-    if mcp_deps or apm_modules_path.exists() or lock_path.exists():
-        lockfile = LockFile.read(lock_path) if lock_path.exists() else None
-        current_view = CurrentMcpConfigView.derive(
-            apm_package,
-            lockfile,
-            apm_modules_path,
-            trust_transitive_self_defined=trust_transitive_mcp,
-            diagnostics=diagnostics,
-            logger=logger,
-            trusted_transitive_configs=trusted_transitive_configs,
-            include_dependency_mcp=should_install,
-        )
-        omissions = current_view.omission_evidence(lockfile or LockFile())
-        root_count = len(apm_package.get_all_mcp_dependencies())
-        transitive_count = max(0, len(current_view.dependencies) - root_count)
-        if transitive_count:
-            logger.verbose_detail(f"Collected {transitive_count} transitive MCP dependency(ies)")
-        mcp_deps = list(current_view.dependencies)
-
-    # allowExecutables MCP gate.
-    from apm_cli.security.executables import filter_mcp_by_allow_executables
-
-    mcp_deps = filter_mcp_by_allow_executables(
-        mcp_deps, getattr(apm_package, "allow_executables", None), logger
+    prepared = prepared or prepare_mcp_integration(
+        apm_package=apm_package,
+        mcp_deps=mcp_deps,
+        apm_modules_path=apm_modules_path,
+        lock_path=lock_path,
+        should_install=should_install,
+        trust_transitive_mcp=trust_transitive_mcp,
+        logger=logger,
+        diagnostics=diagnostics,
+        trusted_transitive_configs=trusted_transitive_configs,
+        active_package_keys=active_package_keys,
     )
+    mcp_deps, current_view = prepared.dependencies, prepared.current_view
 
     # The pipeline gate phase (policy_gate.py) checks direct APM deps
     # and direct MCP deps from apm.yml.  However, transitive MCP
@@ -404,9 +454,11 @@ def run_mcp_integration(  # noqa: PLR0913
             fail_on_write_error=True,
         )
 
-    if current_view is not None and lock_path.exists():
+    if prepared.omissions is not None and lock_path.exists():
         lockfile = LockFile.read(lock_path)
-        if lockfile is not None and omissions != lockfile.mcp_omissions:
-            replace(lockfile, mcp_omissions=omissions).write(lock_path, existing_lockfile=lockfile)
+        if lockfile is not None and prepared.omissions != lockfile.mcp_omissions:
+            replace(lockfile, mcp_omissions=prepared.omissions).write(
+                lock_path, existing_lockfile=lockfile
+            )
 
     return mcp_count, mcp_apm_config

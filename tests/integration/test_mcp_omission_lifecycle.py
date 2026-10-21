@@ -222,6 +222,11 @@ def test_skills_only_preserves_admitted_baseline_and_real_drift(
     for field in ("mcp_configs", "mcp_servers", "mcp_config_provenance", "mcp_target_servers"):
         assert after.get(field) == baseline.get(field)
     assert native.read_bytes() == native_before
+    frozen_lock = lock_path.read_bytes()
+    scenario.run("install", "--only", "apm", "--frozen")
+    assert lock_path.read_bytes() == frozen_lock
+    assert native.read_bytes() == native_before
+    scenario.audit(passed=True)
     source_manifest = (
         scenario.project / "apm.yml"
         if root_declared

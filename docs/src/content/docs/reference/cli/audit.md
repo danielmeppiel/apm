@@ -16,12 +16,15 @@ apm audit [PACKAGE] [OPTIONS]
 `apm audit` is the explicit security and integrity tool. It runs in two modes:
 
 - **Content scan mode** (default). Discovers recognized deployed primitives and checks applicable prompt content for hidden Unicode, including untracked primitives and recorded files outside currently selected target directories. It replays the install pipeline into a scratch tree to detect drift (hand-edits to deployed files, missing integrations, orphaned files vs the lockfile). Can also remediate regular prompt documents with `--strip` or scan an arbitrary file with `--file`.
-- **CI gate mode** (`--ci`). Runs lockfile consistency checks plus drift in machine-readable form (text, JSON, or SARIF) suitable for branch-protection gates. When `apm_modules/` is absent but `apm.lock.yaml` is present, CI mode self-hydrates a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without mutating the checkout. Auto-discovers org policy from your project's git remote unless `--no-policy` is set.
+- **CI gate mode** (`--ci`). Runs lockfile consistency checks plus drift in machine-readable form (text, JSON, or SARIF) suitable for branch-protection gates. In a project checkout with `apm.yml` and `apm.lock.yaml` but no `apm_modules/`, CI mode prepares a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without mutating the checkout. Local dependencies must remain available at their declared paths. Windows long and native 8.3 spellings of the same project use the same project scope. Auto-discovers org policy from your project's git remote unless `--no-policy` is set.
 
 Global audit also checks resolved external deployment roots such as
 `HERMES_HOME` and `CLAUDE_CONFIG_DIR`. Default audit compares tracked files in
 those roots for drift. `apm audit --ci` also scans target-governed external
 subtrees for content integrity. Neither mode modifies those roots.
+Auditing the user metadata workspace (`~/.apm`) still requires its installed
+`apm_modules/`; if missing, restore it with `apm install --global`. Project
+scratch replay does not enable cold replay for global installations.
 
 Both modes also enforce the lockfile's canonical deployment ownership; see
 [Deployment-owner integrity](#deployment-owner-integrity).
