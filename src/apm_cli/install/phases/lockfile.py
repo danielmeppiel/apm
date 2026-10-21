@@ -274,11 +274,6 @@ class LockfileBuilder:
             prior_files = list(claim.prior_files)
             prior_hashes = claim.prior_hashes
             completed = completed_reintegrations.get(dep_key)
-            processed_targets = self.ctx.targets
-            if completed is not None:
-                processed_targets = [
-                    target for target in self.ctx.targets if target.name in completed.targets
-                ]
 
             def _log_ghost_drop(path: str, package_key: str = dep_key) -> None:
                 nonlocal ghost_count
@@ -297,7 +292,7 @@ class LockfileBuilder:
                 current_hashes=current_hashes,
                 prior_files=prior_files,
                 prior_hashes=prior_hashes,
-                active_targets=processed_targets,
+                active_targets=self.ctx.targets,
                 declared_targets=declared,
                 diagnostics=diagnostics,
                 on_ghost_drop=None if lockfile_only else _log_ghost_drop,

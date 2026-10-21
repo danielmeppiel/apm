@@ -41,6 +41,15 @@ REQUEST_DEFAULTS_RULE = "install-deployment-request-defaults"
 
 MUTATIONS: tuple[CompoundMutation, ...] = (
     CompoundMutation(
+        "absent-claim-receipt-must-not-narrow-install-scope",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/phases/lockfile.py",
+        _replace(
+            "active_targets=self.ctx.targets,",
+            "active_targets=[t for t in self.ctx.targets if t.name in completed.targets],",
+        ),
+    ),
+    CompoundMutation(
         "absent-claim-discovery-receipt",
         BASE_RULE,
         "src/apm_cli/install/services.py",

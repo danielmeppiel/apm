@@ -219,3 +219,143 @@ def test_historical_absence_respects_live_preservation_boundaries(
             assert marker.read_bytes() == b"User-edited skill marker.\n"
         elif protection == "required-selection":
             assert lock_path.read_bytes() == prior_bytes
+
+
+@pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
+@pytest.mark.parametrize("protection", ["managed", "edited", "unprocessed"])
+def test_dependency_target_narrowing_keeps_cleanup_and_lock_scope_aligned(
+    tmp_path: Path, apm_binary_path: Path, user_scope: bool, protection: str
+) -> None:
+    """Narrow one dependency, not the consumer, without retaining deleted-file claims."""
+    scenario = _shared_scenario(tmp_path, apm_binary_path, user_scope)
+    sibling_skill = scenario.packages["b"] / "skills/s"
+    sibling_skill.rename(sibling_skill.with_name("other"))
+    (sibling_skill.with_name("other") / "SKILL.md").write_text(_skill("other"), encoding="ascii")
+    scenario.install("a", "b")
+    lock_path = scenario.lock_root / "apm.lock.yaml"
+    baseline = load_yaml(lock_path)
+    codex = ".agents/skills/s"
+    marker = f"{codex}/SKILL.md"
+    asset = f"{codex}/a.md"
+    owner = str(scenario.packages["a"])
+    owned = {marker, asset}
+    expected_asset = b"a asset\n"
+    baseline_hash = "sha256:" + hashlib.sha256(expected_asset).hexdigest()
+    initial_rows = {row["value"]: row for row in baseline["deployments"]}
+    assert owned <= initial_rows.keys()
+    assert initial_rows[asset]["content_hash"] == baseline_hash
+    sibling_rows = {
+        value: row
+        for value, row in initial_rows.items()
+        if str(scenario.packages["b"]) in row["owners"]
+    }
+    sibling_bytes = {
+        value: (scenario.deploy_root / value).read_bytes()
+        for value in sibling_rows
+        if (scenario.deploy_root / value).is_file()
+    }
+    untracked = scenario.deploy_root / codex / "personal.txt"
+    untracked.write_bytes(b"Untracked personal content.\n")
+    if protection == "edited":
+        (scenario.deploy_root / asset).write_bytes(b"User-edited asset.\n")
+
+    scenario.manifest(
+        targets=["claude", "codex"],
+        dependencies={
+            "apm": [
+                {"path": owner, "targets": ["claude"]},
+                {"path": str(scenario.packages["b"])},
+            ]
+        },
+    )
+    flags = ("--target", "claude") if protection == "unprocessed" else ()
+    before_preview = ArtifactSnapshot.capture(tmp_path)
+    scenario.run("install", *flags, "--dry-run")
+    assert_unchanged(before_preview, ArtifactSnapshot.capture(tmp_path))
+    for _ in range(2):
+        scenario.run("install", *flags)
+        current = load_yaml(lock_path)
+        dependency = next(row for row in current["dependencies"] if row["repo_url"] == "_local/a")
+        rows = {row["value"]: row for row in current["deployments"]}
+        assert load_yaml(scenario.lock_root / "apm.yml")["targets"] == ["claude", "codex"]
+        assert {value: rows[value] for value in sibling_rows} == sibling_rows
+        assert all(
+            (scenario.deploy_root / value).read_bytes() == data
+            for value, data in sibling_bytes.items()
+        )
+        assert untracked.read_bytes() == b"Untracked personal content.\n"
+        assert untracked.relative_to(scenario.deploy_root).as_posix() not in rows
+        assert rows[codex] == initial_rows[codex]
+        if protection == "managed":
+            assert not (scenario.deploy_root / marker).exists()
+            assert not (scenario.deploy_root / asset).exists()
+            assert owned.isdisjoint(dependency["deployed_files"])
+            assert owned.isdisjoint(dependency["deployed_file_hashes"])
+            assert owned.isdisjoint(rows)
+        elif protection == "edited":
+            assert (scenario.deploy_root / asset).read_bytes() == b"User-edited asset.\n"
+            assert asset in dependency["deployed_files"]
+            assert dependency["deployed_file_hashes"][asset] == baseline_hash
+            assert rows[asset] == initial_rows[asset]
+        else:
+            assert (scenario.deploy_root / asset).read_bytes() == expected_asset
+            assert owned <= set(dependency["deployed_files"])
+            assert {value: rows[value] for value in owned} == {
+                value: initial_rows[value] for value in owned
+            }
+        result = scenario.run(
+            "audit", "--ci", "--format", "json", expected=0 if protection == "managed" else 1
+        )
+        audit = json.loads(result.stdout)
+        assert (
+            next(check for check in audit["checks"] if check["name"] == "deployed-files-present")[
+                "passed"
+            ]
+            is True
+        )
+        if protection != "managed":
+            assert (
+                next(check for check in audit["checks"] if check["name"] == "drift")["passed"]
+                is False
+            )
+        scenario.run("audit", "--format", "json")
+
+    if protection == "edited":
+        (scenario.deploy_root / asset).write_bytes(expected_asset)
+    scenario.run("install")
+    repaired = load_yaml(lock_path)
+    dependency = next(row for row in repaired["dependencies"] if row["repo_url"] == "_local/a")
+    assert owned.isdisjoint(dependency["deployed_files"])
+    assert owned.isdisjoint(dependency["deployed_file_hashes"])
+    assert owned.isdisjoint(row["value"] for row in repaired["deployments"])
+    assert (
+        next(row for row in repaired["deployments"] if row["value"] == codex) == initial_rows[codex]
+    )
+    settled = lock_path.read_bytes()
+    scenario.run("install", "--frozen")
+    assert lock_path.read_bytes() == settled
+    scenario.run("audit", "--ci", "--format", "json")
+    uninstall = ("uninstall", *(("-g",) if user_scope else ()), owner)
+    refused = scenario.runner.run(
+        uninstall,
+        scenario_id="dependency-target-narrowing-protected-uninstall",
+        cwd=scenario.project,
+        env=scenario.environment.subprocess_env(),
+    )
+    assert refused.returncode == 1, (refused.command, refused.stdout, refused.stderr)
+    assert "Resolve or remove the listed files" in refused.stdout
+    assert untracked.read_bytes() == b"Untracked personal content.\n"
+    saved_personal = scenario.deploy_root / "personal.txt"
+    untracked.rename(saved_personal)
+    removed = scenario.runner.run(
+        uninstall,
+        scenario_id="dependency-target-narrowing-uninstall",
+        cwd=scenario.project,
+        env=scenario.environment.subprocess_env(),
+    )
+    assert removed.returncode == 0, (removed.command, removed.stdout, removed.stderr)
+    assert saved_personal.read_bytes() == b"Untracked personal content.\n"
+    assert all(
+        (scenario.deploy_root / value).read_bytes() == data for value, data in sibling_bytes.items()
+    )
+    assert not (scenario.deploy_root / ".claude/skills/s/SKILL.md").exists()

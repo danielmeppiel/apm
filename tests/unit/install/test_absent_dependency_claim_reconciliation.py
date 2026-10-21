@@ -622,3 +622,51 @@ def test_skill_result_reconciles_only_proven_claims_and_preserves_other_owners(
     assert not (tmp_path / _OBSOLETE).exists()
     if with_marker:
         assert marker_path.read_bytes() == marker_bytes
+
+
+def test_skill_receipt_scope_does_not_restrict_install_target_contraction(
+    tmp_path: Path,
+) -> None:
+    """Concrete target cleanup stays broader than absent historical-skill proof."""
+    marker_bytes = b"---\nname: demo\ndescription: Scope fixture\n---\nSkill body.\n"
+    digest = "sha256:" + sha256(marker_bytes).hexdigest()
+    claude_marker = ".claude/skills/demo/SKILL.md"
+    for value in (_MARKER, claude_marker):
+        path = tmp_path / value
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(marker_bytes)
+    codex = replace(_record(value=_MARKER, target="codex"), content_hash=digest)
+    historical = _record()
+    existing, current = LockFile(), LockFile()
+    for lockfile in (existing, current):
+        lockfile.add_dependency(LockedDependency(repo_url=_OWNER))
+    DeploymentLedgerCodec.apply_to_lockfile(
+        DeploymentLedger({row.locator.key: row for row in (codex, historical)}), existing
+    )
+    ctx = SimpleNamespace(
+        existing_lockfile=existing,
+        package_deployed_files={_OWNER: [claude_marker]},
+        package_completed_reintegrations={
+            _OWNER: CompletedReintegration(
+                owner=_OWNER,
+                targets=frozenset({"claude"}),
+                current_values=frozenset({claude_marker}),
+                skill_values=frozenset({claude_marker}),
+            )
+        },
+        targets=[KNOWN_TARGETS["claude"], KNOWN_TARGETS["codex"]],
+        project_root=tmp_path,
+        diagnostics=DiagnosticCollector(),
+    )
+
+    LockfileBuilder(ctx)._attach_deployed_files(current)
+
+    dependency = current.get_dependency(_OWNER)
+    assert set(dependency.deployed_files) == {claude_marker, _OBSOLETE}
+    assert dependency.deployed_file_hashes == {claude_marker: digest, _OBSOLETE: _HASH}
+    records = DeploymentLedgerCodec.from_lockfile(current).records
+    assert codex.locator.key not in records
+    assert records[historical.locator.key] == historical
+    assert len(records) == 2
+    assert not (tmp_path / _MARKER).exists()
+    assert (tmp_path / claude_marker).read_bytes() == marker_bytes

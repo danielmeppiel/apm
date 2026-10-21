@@ -264,6 +264,29 @@ def _contraction_ownership_messages(provider: FactsProvider, rule_id: str) -> li
                 "LockfileBuilder must route target contraction through manifest_reconcile",
             )
         )
+    index = provider.tree_index(_CONTRACTION_LOCKFILE)
+    attach = index.function("LockfileBuilder._attach_deployed_files") if index else None
+    reconciliation_calls = (
+        [
+            node
+            for node in index.walk(attach)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == _CLEANUP_OWNER_FN
+        ]
+        if attach is not None
+        else []
+    )
+    if len(reconciliation_calls) != 1 or not any(
+        keyword.arg == "active_targets" and ast.unparse(keyword.value) == "self.ctx.targets"
+        for keyword in reconciliation_calls[0].keywords
+    ):
+        messages.append(
+            (
+                _CONTRACTION_LOCKFILE,
+                "lock persistence must use the install target scope, not skill receipt targets",
+            )
+        )
     if "remove_stale_deployed_files" in _name_calls_in(post_local, "run"):
         messages.append(
             (_CONTRACTION_POST_LOCAL, "post-deps local must not delete target files directly")

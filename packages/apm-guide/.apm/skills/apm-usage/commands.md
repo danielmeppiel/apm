@@ -184,6 +184,11 @@ The local-source check is APM-specific frozen-install behavior, not a new
 lockfile schema requirement. Legacy bare SHA-256 digests are accepted without
 rewriting the lock. Normal non-frozen installs can establish missing baselines.
 
+Narrowing a dependency's `targets:` reconciles its removed targets within the
+current install scope, even if the consumer still enables them. Removed files
+lose their file/hash/ledger claims; edited files and targets skipped by
+`--target` retain protective records.
+
 Normal `apm install` repairs obsolete dependency claims for already-absent files
 when complete source discovery and successful skill deployment prove those
 files are no longer shipped within a current source-backed skill. It synchronizes
