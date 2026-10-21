@@ -324,6 +324,18 @@ def check_audit_replay(provider: FactsProvider) -> tuple[Violation, ...]:
         )
 
     audit_gate_calls = _name_calls_in(audit, "_audit_ci_gate")
+    audit_gate_body = _awk_body(audit, re.compile(r"^def _audit_ci_gate\("), re.compile(r"^def "))
+    if not _body_has(
+        audit_gate_body,
+        "get_workspace_deploy_root(cfg.project_root) != cfg.project_root.resolve()",
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                "src/apm_cli/commands/audit.py",
+                "CI audit must compare resolved workspace identities before refusing global replay",
+            )
+        )
     config_body = _awk_body(
         ci_checks, re.compile(r"^def _check_config_consistency\("), re.compile(r"^def ")
     )

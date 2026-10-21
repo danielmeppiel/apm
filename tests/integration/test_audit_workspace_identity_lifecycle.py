@@ -92,7 +92,7 @@ def _spellings(root: Path, env: dict[str, str]) -> tuple[tuple[str, Path], ...]:
     return (("windows-long", long), ("windows-short", short))
 
 
-def _seed(tmp_path: Path, apm_binary_path: Path) -> _Workspace:
+def _seed(tmp_path: Path, apm_binary_path: Path, *, dependency_kind: str = "local") -> _Workspace:
     """Install a baseline, commit its real outputs, then clone without modules."""
     isolated = IsolatedApmEnvironment.create(
         tmp_path / "Audit Workspace Long Name",
@@ -102,13 +102,37 @@ def _seed(tmp_path: Path, apm_binary_path: Path) -> _Workspace:
     packages = LocalPackageFactory(isolated.package_root)
     source = packages.create("sibling-package")
     packages.add_instruction(source, "dependency", _INSTRUCTION)
+    repositories = LocalGitRepositoryFactory(isolated.package_root, env=env)
+    dependency = {"path": "../sibling-package"}
+    if dependency_kind == "git":
+        remote = repositories.create("remote-dependency", source_tree=source.root)
+        pin = repositories.commit(remote, message="Pin the audit dependency").sha
+        url = "https://github.com/test/remote-dependency.git"
+        env = repositories.url_rewrite_subprocess_env(remote, url)
+        index = int(env["GIT_CONFIG_COUNT"])
+        env["GIT_CONFIG_COUNT"] = str(index + 1)
+        env[f"GIT_CONFIG_KEY_{index}"] = f"url.{remote.file_url}/.insteadOf"
+        env[f"GIT_CONFIG_VALUE_{index}"] = "git@github.com:test/remote-dependency.git"
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        dependency = {"git": url, "ref": pin}
+        gh = shutil.which("gh", path=env.get("PATH"))
+        if gh is not None:
+            # Initialize gh's device state before taking read-only audit snapshots.
+            auth = subprocess.run(
+                (gh, "auth", "token", "--hostname", "github.com"),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            assert auth.returncode == 1 and not auth.stdout
     consumer = packages.create(
         "consumer-source",
-        dependencies=({"path": "../sibling-package"},),
+        dependencies=(dependency,),
         targets=("copilot",),
     )
     (consumer.root / ".gitignore").write_text("apm_modules/\n", encoding="utf-8")
-    repositories = LocalGitRepositoryFactory(isolated.package_root, env=env)
     baseline = repositories.create("baseline", source_tree=consumer.root)
     runner = ApmLifecycleRunner((str(apm_binary_path),))
     runner.run_sequence(
@@ -126,6 +150,12 @@ def _seed(tmp_path: Path, apm_binary_path: Path) -> _Workspace:
     assert any(path.startswith(".github/instructions/") for path in tracked)
     assert not any(path.startswith("apm_modules/") for path in tracked)
     assert not (root / "apm_modules").exists()
+    if dependency_kind == "git":
+        (remote.worktree / ".apm" / "instructions" / "dependency.instructions.md").write_text(
+            "---\napplyTo: '**'\n---\n# Changed after the pin\nMust not be replayed.\n",
+            encoding="utf-8",
+        )
+        assert repositories.commit(remote, message="Advance beyond the pin").sha != pin
     return _Workspace(isolated, root, source.root, runner, env)
 
 
@@ -160,12 +190,14 @@ def _assert_clean(result: CommandResult, payload: dict) -> None:
     assert "apm install --global" not in result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("dependency_kind", ("local", "git"))
 def test_fresh_clone_audit_preserves_identity_across_cold_repeated_and_warm_runs(
     tmp_path: Path,
     apm_binary_path: Path,
+    dependency_kind: str,
 ) -> None:
     """One physical clone receives the same real audit under every native spelling."""
-    workspace = _seed(tmp_path, apm_binary_path)
+    workspace = _seed(tmp_path, apm_binary_path, dependency_kind=dependency_kind)
     spellings = _spellings(workspace.root, workspace.env)
     reference_checks = None
     for repetition in range(2):
@@ -185,12 +217,17 @@ def test_fresh_clone_audit_preserves_identity_across_cold_repeated_and_warm_runs
         env=workspace.env,
     )
     assert (workspace.root / "apm_modules").is_dir()
-    for spelling, root in spellings:
-        result, payload = _audit(workspace, root, f"{spelling}-warm")
-        _assert_clean(result, payload)
-        assert {check["name"] for check in payload["checks"]} == {
-            check["name"] for check in reference_checks
-        }
+    warm_checks = None
+    for repetition in range(2):
+        for spelling, root in spellings:
+            result, payload = _audit(workspace, root, f"{spelling}-warm-{repetition}")
+            _assert_clean(result, payload)
+            assert {check["name"] for check in payload["checks"]} == {
+                check["name"] for check in reference_checks
+            }
+            if warm_checks is None:
+                warm_checks = payload["checks"]
+            assert payload["checks"] == warm_checks
 
 
 @pytest.mark.parametrize("damage", ("missing", "modified", "missing-source"))
