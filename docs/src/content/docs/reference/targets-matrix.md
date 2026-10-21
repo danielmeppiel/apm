@@ -243,7 +243,7 @@ Windsurf / Cascade.
 
 ## kiro
 
-Kiro IDE/CLI v3 unified agent harness.
+Kiro IDE and CLI V3 target layout.
 
 - **Detection.** `.kiro/` directory.
 - **Deploy directory.** `.kiro/` (project and user scope).
@@ -261,11 +261,26 @@ Kiro IDE/CLI v3 unified agent harness.
     (accessed 2026-08-03).
   - instructions: `.kiro/steering/<name>.md` with `inclusion: always` or `inclusion: fileMatch` frontmatter
   - skills: `.kiro/skills/<name>/SKILL.md`
-  - prompts: `.kiro/prompts/<name>.prompt.md`
+  - prompts: `.kiro/prompts/<name>.md` (project) or `~/.kiro/prompts/<name>.md` (user).
+    Qualified against Kiro CLI 2.33.0's V3 prompt loader, not the IDE.
+    APM converts `<name>.prompt.md` into body-only Markdown: the filename
+    supplies the slash-command name, and YAML frontmatter is removed.
+    Native arguments `${1}` through `${10}`, `$ARGUMENTS`, and `${@}` are
+    preserved. `${input:name}` is not translated; APM warns so authors can
+    replace it. Tool/model frontmatter is not an execution control in Kiro
+    prompts; APM warns when dropping these or other unsupported fields.
+    Workflow-only prompts are excluded. Relative body links are resolved
+    using the source package, as for other prompt targets.
   - hooks: one JSON file per hook action under `.kiro/hooks/`
   - mcp: `.kiro/settings/mcp.json` (project) or `~/.kiro/settings/mcp.json` (user)
 - **MCP shape.** JSON `mcpServers` entries use `command`/`args`/`env` for stdio and `url`/`headers` for remote servers. Kiro resolves `${VAR}` placeholders at runtime, so APM preserves them rather than writing secrets to disk.
 - **Scope.** Covers the documented Kiro IDE and CLI v3 layout (unified harness). Ref: [kiro.dev/docs/cli/v3/](https://kiro.dev/docs/cli/v3/) (accessed 2026-08-03).
+- **Prompt precedence.** In the qualified CLI loader, project prompts take
+  precedence over same-name user prompts; file prompts take precedence over
+  same-name MCP prompts. APM does not change native precedence or trust.
+  Local user-authored files are preserved unless `--force` is requested;
+  uninstall removes only APM-owned prompts. This does not establish IDE
+  prompt parity or authenticated model execution.
 
 ## intellij
 
