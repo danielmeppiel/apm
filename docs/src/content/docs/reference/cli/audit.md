@@ -232,6 +232,9 @@ discovered/untracked when appropriate, without failing the prompt check.
 `tracked` means a file claim exists, not that every entry in a shared file
 is APM-owned or hash-verified. Hash and ownership checks remain independent.
 
+User-scope replay preserves the `~/.apm/apm_modules/` layout in relative
+asset links, so intact global prompts do not report drift from a scratch-path difference.
+
 The target registry supplies the following project patterns. Patterns are
 recursive inside their named directory; skill entry points are `SKILL.md`,
 not every file in a skill bundle.

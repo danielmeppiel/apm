@@ -204,7 +204,7 @@ def test_kiro_prompt_installed_lifecycle(
 
     edited = prompts / "edited.md"
     edited.write_text("USER_EDITED_MANAGED_PROMPT\n")
-    run("uninstall", *scope, "prompt-kit")
+    run("uninstall", *scope, records[".kiro/prompts/review.md"]["owners"][0])
     assert not deployed.exists()
     assert not (target_root / "agents/reviewer.md").exists()
     assert not (target_root / "steering/style.md").exists()
