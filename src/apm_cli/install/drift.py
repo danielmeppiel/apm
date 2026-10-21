@@ -587,7 +587,10 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
     from apm_cli.copilot_plugins.capability import native_registration_scope
 
     try:
-        with native_registration_scope(targets):
+        with (
+            native_registration_scope(targets),
+            integrators["skill"].ownership_snapshot(replay_lockfile=lock),
+        ):
             with _ReadOnlyProjectGuard(project_root, protected_subpaths):
                 for lock_dep in lock.get_all_dependencies():
                     if lock_dep.local_path == _SELF_KEY:

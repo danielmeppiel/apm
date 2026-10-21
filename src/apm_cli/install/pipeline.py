@@ -107,7 +107,9 @@ def _run_integration_phase(ctx: InstallContext) -> None:
     with (
         contextlib.nullcontext()
         if ctx.lockfile_only
-        else ctx.integrators["skill"].ownership_snapshot()
+        else ctx.integrators["skill"].ownership_snapshot(
+            replay_lockfile=ctx.existing_lockfile if ctx.frozen else None
+        )
     ):
         _run_phase("integrate", _integrate_phase, ctx)
 

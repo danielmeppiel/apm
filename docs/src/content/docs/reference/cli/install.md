@@ -192,6 +192,17 @@ still cleans up its managed files, subject to the usual user-edit protections.
 - **Frozen mode fails rather than rewriting.** If the install deploys files the committed `apm.lock.yaml` does not record, `--frozen` exits `1` and names those paths instead of silently updating the lockfile. A file no lockfile row claims carries no recorded hash, which leaves it outside `content-integrity`'s hash comparison *and* its hidden-Unicode scan, so this is the install-time half of that guarantee; `apm audit --ci` remains the on-disk content check. Unlike the structural checks above this one runs after the pipeline, so the deployed files are already on disk -- only the lockfile write was withheld. Recover by running `apm install` without `--frozen` and committing the updated `apm.lock.yaml`. The check is one-directional and matches the tolerance above: claims the install would *drop* (a `--target` filter, `--only`, a removed dependency) do not fail. `generated_at` and `apm_version` are excluded, so a newer CLI reading an older lockfile is not a rewrite.
 - **Local `.apm/` deployment.** After dependencies are integrated, primitives in the project's own `.apm/` directory are deployed to the same targets. Local files win on collision. Skipped with `--only mcp`. At `--global` the source root is `$HOME`, so `~/.apm/` primitives deploy to user-scope targets.
 - **User-scope skill paths.** Global skill installation reads the lockfile from the canonical user metadata root (`~/.apm/`), separate from the skill deployment root. `HOME` or `APM_HOME` directory symlink aliases work without extra flags; package-descendant symlinks and symlinked skill destinations remain rejected. Explicit dependency `alias:` placement is separate; unrelated user files remain protected.
+- **Shared skill assets.** When dependencies deploy the same skill directory,
+  matching managed files still use last-writer behavior, but reinstalling one
+  package preserves the other's unique assets. This applies to project and
+  global installs, including shared `.agents/skills/` destinations. Ownership
+  and hashes record successful source members, not unrelated destination files.
+  Edited or untracked files remain protected; `--force` permits overwriting
+  matching files, not deleting an entire shared directory. Ordinary install
+  reconciles changed sources and ownership; `--frozen` keeps the recorded owner
+  of overlapping files instead of restoring a relinquished claim.
+  An unreadable or missing expected source directory fails installation rather
+  than treating an incomplete scan as a successful replacement.
 - **User-scope root context hint.** Compilation stays explicit. After `apm install -g`, targets with native user-scope instruction files pick up global instructions during install. Targets whose user-scope instruction surface is a root context file require [`apm compile --global`](../compile/#global-compilation); install prints a one-line `[i]` hint and writes no root context file.
 - **OpenCode user scope.** `apm install -g --target opencode` deploys skills to
   `~/.config/opencode/skills/`. Run `apm compile -g` to refresh

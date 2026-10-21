@@ -25,7 +25,7 @@ Both import :func:`union_preserving` so the behaviour stays identical.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -560,6 +560,68 @@ def reconcile_dropped_merge_hook_targets(
     return HookIntegrator().reconcile_dropped_targets(
         project_root, dropped_names, user_scope=user_scope
     )
+
+
+def surviving_deployed_paths(
+    lockfile: LockFile,
+    current_claims: Mapping[str, list[str]],
+    targets: list[TargetProfile],
+    declared_targets: list[TargetProfile] | None,
+    *,
+    desired_owners: frozenset[str],
+    failed_owners: frozenset[str] = frozenset(),
+    user_scope: bool = False,
+) -> frozenset[str]:
+    """Project survivor claims through the same reconciliation used to persist them."""
+    from collections import defaultdict
+
+    from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
+    from apm_cli.core.deployment_state import DeploymentLedger, DeploymentReconciler
+
+    ledger = DeploymentLedgerCodec.from_lockfile(lockfile)
+    records_by_path = defaultdict(dict)
+    for key, record in ledger.records.items():
+        records_by_path[record.locator.value][key] = record
+    claims = DeploymentReconciler.reconcile_package_claims(
+        package_keys=lockfile.dependencies,
+        current_claims=current_claims,
+        prior_files={key: dep.deployed_files for key, dep in lockfile.dependencies.items()},
+        prior_hashes={key: dep.deployed_file_hashes for key, dep in lockfile.dependencies.items()},
+    )
+    survivors = set(DeploymentReconciler.current_claimed_paths(current_claims))
+    for owner, claim in claims.items():
+        if owner not in desired_owners:
+            continue
+        files, _ = union_preserving(
+            list(claim.current_files if owner in current_claims else claim.prior_files),
+            {},
+            list(claim.prior_files),
+            claim.prior_hashes,
+            targets,
+            declared_targets=declared_targets,
+            prior_ledger=DeploymentLedger(
+                records={
+                    key: record
+                    for path in claim.prior_files
+                    for key, record in records_by_path.get(path, {}).items()
+                }
+            ),
+            current_run_trusted=owner not in failed_owners,
+            owner=owner,
+            user_scope=user_scope,
+        )
+        survivors.update(files)
+    survivors.update(lockfile.local_deployed_files)
+    survivors.update(DeploymentLedgerCodec.local_bundle_values(ledger))
+    # A directory claim cannot authorize removal of a surviving member.
+    parents = {
+        parent.as_posix()
+        for path in survivors
+        if "://" not in path
+        for parent in Path(path).parents
+        if parent.as_posix() != "."
+    }
+    return frozenset(survivors | parents)
 
 
 def reconcile_deployed_block(  # noqa: PLR0913 -- deployed-state chokepoint wrapper; each knob is orthogonal
