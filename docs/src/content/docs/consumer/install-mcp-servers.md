@@ -146,7 +146,7 @@ For an already managed Claude stdio connection, a valid native-only `cwd`
 does not block updates when both the old and new declarations omit it.
 Stdio updates retain that directory; switching to HTTP removes the incompatible
 stdio fields. This does not adopt a user connection or relax removal checks.
-Changes to a declared `cwd`, or other managed fields, still require reconciliation.
+Native edits to a declared `cwd`, or other managed fields, still require reconciliation.
 
 For VS Code and Copilot-family adapters, non-container `npm`, `pypi`,
 and generic packages preserve typed v0.1 `runtimeArguments` and

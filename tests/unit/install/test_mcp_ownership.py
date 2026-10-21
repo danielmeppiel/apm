@@ -96,6 +96,16 @@ def test_declared_cwd_remains_part_of_baseline(managed_claude: ManagedClaude, na
     assert _compare_managed_claude(client, stored, native, _remote_request()) is expected
 
 
+def test_declared_cwd_can_be_updated_from_a_verified_baseline(
+    managed_claude: ManagedClaude,
+) -> None:
+    client, stored, native = managed_claude
+    stored["cwd"] = native["cwd"]
+    requested = {**stored, "cwd": "/replacement"}
+    result = _compare_managed_claude(client, stored, native, requested)
+    assert result is NativeMcpConnectionState.UPDATE_MANAGED
+
+
 @pytest.mark.parametrize("same", [False, True])
 def test_request_cannot_acquire_native_only_cwd(managed_claude: ManagedClaude, same: bool) -> None:
     client, stored, native = managed_claude
