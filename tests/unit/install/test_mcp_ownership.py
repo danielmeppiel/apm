@@ -91,6 +91,48 @@ def test_native_only_cwd_keeps_verified_managed_state(
     assert (native, stored, requested) == before
 
 
+def test_removal_reads_one_snapshot_without_reusing_it_on_later_calls(
+    managed_claude: ManagedClaude,
+) -> None:
+    client, stored, native = managed_claude
+    native.pop("cwd")
+    path = Path(client.get_config_path())
+    path.write_text(
+        json.dumps({"mcpServers": {"managed": native, "second": native}}), encoding="utf-8"
+    )
+    baselines = {"managed": stored, "second": {**stored, "name": "second"}}
+    with patch.object(client, "get_current_config", wraps=client.get_current_config) as read:
+        require_removable_mcp_connections(client, set(baselines), baselines)
+        assert read.call_count == 1
+        edited = {**native, "command": "personal"}
+        path.write_text(
+            json.dumps({"mcpServers": {"managed": native, "second": edited}}), encoding="utf-8"
+        )
+        before = path.read_bytes()
+        with pytest.raises(RequiredIntegrationError, match="second"):
+            require_removable_mcp_connections(client, set(baselines), baselines)
+        assert read.call_count == 2
+    assert path.read_bytes() == before
+
+
+def test_explicit_empty_snapshot_is_not_replaced_by_a_native_read(
+    managed_claude: ManagedClaude,
+) -> None:
+    client, stored, native = managed_claude
+    _compare_managed_claude(client, stored, native, stored)
+    with patch.object(client, "get_current_config", wraps=client.get_current_config) as read:
+        state = compare_native_mcp_connection(
+            client,
+            "managed",
+            requested_info=None,
+            stored_config=stored,
+            managed=True,
+            existing_configs={},
+        )
+    read.assert_not_called()
+    assert state is NativeMcpConnectionState.ABSENT
+
+
 @pytest.mark.parametrize("native_cwd", ["/declared", "/edited", None])
 def test_declared_cwd_remains_part_of_baseline(
     managed_claude: ManagedClaude, native_cwd: str | None

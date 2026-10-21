@@ -349,18 +349,22 @@ entries with:
 apm install --only mcp --target codex
 ```
 
-Add `--global` for user-scope configuration. APM reports how many entries it
-repairs and preserves other settings. It changes only entries recorded as
-APM-owned in `apm.lock.yaml`, or unchanged self-defined entries matching an
-older lockfile's saved configuration. Entries without that evidence, including
-edited legacy entries and entries you added yourself, stay untouched.
+Add `--global` for user-scope configuration. APM repairs only entries that
+match a trustworthy saved configuration, including the historical empty
+`id = ""` spelling of self-defined connections. A recorded owner name alone
+does not verify an entry with a nonempty registry ID, old header spelling,
+or other native edits. Such entries stay untouched and an unresolved
+self-defined connection conflict makes the install incomplete.
 
-If Codex still reports an unsupported `id` on an entry you maintain yourself,
+If Codex still reports an unsupported `id` on an entry you have verified,
 back up `.codex/config.toml` (or the user-scope file) and remove only that
 entry's `id = ...` setting. Keep generated comments such as
 `# apm-registry-id: "registry-uuid"`: APM uses them to prevent duplicate
 registry installs. Regeneration may expand inline TOML tables while retaining
 their values and comments; it does not change Codex's project trust settings.
+If the connection still conflicts, follow
+[native conflict recovery](#resolve-a-connection-name-conflict) rather than
+retrying with `--force`.
 
 `--transport` is inferred when omitted: a `--url` implies a remote
 transport, a post-`--` command implies `stdio`. The mutually-exclusive
@@ -433,7 +437,7 @@ For other authenticated remote servers, set headers explicitly with
 
 ## Updating and replacing a server
 
-Re-run `apm install --mcp NAME ...` against an existing entry:
+Re-run `apm install --mcp NAME ...` against an existing declaration in `apm.yml`:
 
 | Situation | Behaviour |
 |---|---|
@@ -443,6 +447,9 @@ Re-run `apm install --mcp NAME ...` against an existing entry:
 | Existing `NAME`, different config, CI | Refuses with exit 2. Re-run with `--force`. |
 
 Use `--dry-run` to preview the manifest change without writing.
+`--force` permits replacing that declaration, not taking over a conflicting
+native connection. Follow
+[native conflict recovery](#resolve-a-connection-name-conflict) for the latter.
 
 ### Repairing existing credentials
 

@@ -1023,6 +1023,9 @@ def _install_self_defined_deps(
             for name in already_configured_self_defined:
                 logger.verbose_detail(f"{name} already configured, skipping")
 
+    from apm_cli.factory import ClientFactory
+
+    protected_clients = {}
     for dep in self_defined_deps:
         if dep.name not in self_defined_to_install:
             continue
@@ -1057,11 +1060,11 @@ def _install_self_defined_deps(
                 managed_target_servers is None or dep.name in managed_target_servers.get(rt, set())
             )
             if rt in {"claude", "codex"}:
-                from apm_cli.factory import ClientFactory
-
-                client = ClientFactory.create_client(
-                    rt, project_root=project_root, user_scope=user_scope
-                )
+                if rt not in protected_clients:
+                    protected_clients[rt] = ClientFactory.create_client(
+                        rt, project_root=project_root, user_scope=user_scope
+                    )
+                client = protected_clients[rt]
                 state = compare_native_mcp_connection(
                     client,
                     dep.name,
@@ -1085,7 +1088,8 @@ def _install_self_defined_deps(
                         f"MCP server '{dep.name}' conflicts with the existing {rt} "
                         f"connection in {client.get_config_path()}. Preserved that connection. "
                         "Rename or remove the conflicting native connection yourself, then "
-                        "retry the same install command. --force does not take ownership."
+                        "retry the same install command. --force does not take ownership "
+                        "of user connections."
                     )
                     continue
                 if state in {
@@ -1335,21 +1339,25 @@ def run_mcp_install(  # noqa: PLR0913
 
     if "codex" in target_runtimes and managed_target_servers is not None:
         from apm_cli.adapters.client.codex import CodexClientAdapter
+        from apm_cli.core.conflict_detector import MCPConflictDetector
         from apm_cli.install.mcp.ownership import (
             NativeMcpConnectionState,
             compare_native_mcp_connection,
         )
 
         client = CodexClientAdapter(project_root=project_root, user_scope=user_scope)
+        owned_names = managed_target_servers.get("codex", set())
+        existing = MCPConflictDetector(client).get_existing_server_configs() if owned_names else {}
         verified_names = {
             name
-            for name in managed_target_servers.get("codex", set())
+            for name in owned_names
             if compare_native_mcp_connection(
                 client,
                 name,
                 requested_info=None,
                 stored_config=stored_mcp_configs.get(name),
                 managed=True,
+                existing_configs=existing,
             )
             is NativeMcpConnectionState.UPDATE_MANAGED
         }

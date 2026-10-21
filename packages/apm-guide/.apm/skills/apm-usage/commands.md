@@ -173,13 +173,16 @@ lock state may skip the write, so repeating that install is not a migration.
 
 Codex keeps APM registry identity in TOML comments instead of an unsupported
 native `id` setting. After upgrading, `apm install --only mcp --target codex`
-reports and repairs recorded APM-owned entries; add `--global` for user scope.
-Unchanged self-defined entries matching an older lockfile's saved configuration
-can also be repaired. Unowned or edited legacy entries stay untouched. For an
-entry you maintain yourself, back up the Codex config and remove only its
+repairs entries matching a trustworthy saved configuration, including historical
+empty `id = ""` self-defined entries; add `--global` for user scope. A recorded
+owner name alone does not verify nonempty IDs, old header spelling, or native
+edits. Unverifiable entries stay untouched; unresolved self-defined conflicts
+return nonzero. For an entry you have verified, back up the Codex config and remove only its
 unsupported `id = ...` setting. Keep comments such as
 `# apm-registry-id: "registry-uuid"` for duplicate detection. Inline containers
 being written may expand while preserving values and comments.
+When replacing a declaration with `--mcp NAME`, `--force` permits changing
+`apm.yml`, not taking over a conflicting native connection.
 
 ### Registry MCP runtime variables
 
