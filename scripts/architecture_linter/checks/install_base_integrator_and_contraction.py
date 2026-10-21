@@ -386,10 +386,13 @@ def _absent_dependency_claim_messages(provider: FactsProvider, rule_id: str) -> 
         and node.left.value.id == "intent"
         and isinstance(node.comparators[0], ast.Name)
     }
-    if not {
-        ("active_targets", "active_names"),
-        ("declared_targets", "declared_names"),
-    } <= scope_comparisons:
+    if (
+        not {
+            ("active_targets", "active_names"),
+            ("declared_targets", "declared_names"),
+        }
+        <= scope_comparisons
+    ):
         findings.append(
             _summary(
                 rule_id,

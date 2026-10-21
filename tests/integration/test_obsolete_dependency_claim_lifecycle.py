@@ -14,6 +14,7 @@ from tests.integration.test_required_lifecycle_state_machine import (
     _new_scenario,
     _skill,
 )
+from tests.utils.apm_lifecycle_runner import CommandResult
 from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
 
 pytestmark = [
@@ -56,11 +57,11 @@ def test_ordinary_install_retires_obsolete_absent_dependency_claims(
     expected_bytes = skill.read_bytes()
     expected_hash = "sha256:" + hashlib.sha256(expected_bytes).hexdigest()
 
-    def run(*args: str, expected: int = 0):
+    def run(*args: str, expected: int = 0, cwd: Path | None = None) -> CommandResult:
         result = scenario.runner.run(
             args,
             scenario_id=f"obsolete-claims-{historical}-{user_scope}-{args[0]}",
-            cwd=consumer.root,
+            cwd=cwd if cwd is not None else consumer.root,
             env=scenario.environment,
         )
         assert result.returncode == expected, (result.command, result.stdout, result.stderr)
@@ -68,10 +69,10 @@ def test_ordinary_install_retires_obsolete_absent_dependency_claims(
 
     def audit(*, ci: bool, expected: int = 0) -> dict:
         before = ArtifactSnapshot.capture(tmp_path)
-        args = ("audit", *scope_args, "--format", "json")
+        args = ("audit", "--format", "json")
         if ci:
             args += ("--ci", "--no-policy", "--no-fail-fast")
-        result = run(*args, expected=expected)
+        result = run(*args, expected=expected, cwd=state_root)
         assert_unchanged(before, ArtifactSnapshot.capture(tmp_path))
         return json.loads(result.stdout)
 
