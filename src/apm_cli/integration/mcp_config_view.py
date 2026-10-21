@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
@@ -88,20 +89,22 @@ class CurrentMcpConfigView:
         package selection: unavailable active sources still require evidence.
         """
         project_root = root.package_path or Path.cwd()
-        package_deps, problems, fingerprints, omissions, refusable, pending_packages = (
-            _collect_locked_dependencies(
-                lockfile,
-                modules_root,
-                project_root,
-                trust_transitive_self_defined=trust_transitive_self_defined,
-                diagnostics=diagnostics,
-                logger=logger,
-                trusted_transitive_configs=trusted_transitive_configs,
-                include_dependency_mcp=include_dependency_mcp,
-                allow_pending=allow_pending,
-                active_package_keys=active_package_keys,
+        with ExitStack() as scratch:
+            package_deps, problems, fingerprints, omissions, refusable, pending_packages = (
+                _collect_locked_dependencies(
+                    lockfile,
+                    modules_root,
+                    project_root,
+                    scratch=scratch,
+                    trust_transitive_self_defined=trust_transitive_self_defined,
+                    diagnostics=diagnostics,
+                    logger=logger,
+                    trusted_transitive_configs=trusted_transitive_configs,
+                    include_dependency_mcp=include_dependency_mcp,
+                    allow_pending=allow_pending,
+                    active_package_keys=active_package_keys,
+                )
             )
-        )
         # Root is the authoring project: both prod and dev MCP are intentionally
         # included here (behaviour introduced in #1780). Transitive package deps
         # are collected prod-only (see _collect_locked_dependencies and
@@ -346,6 +349,7 @@ def _package_manifest_path(
     modules_root: Path,
     project_root: Path,
     *,
+    scratch: ExitStack,
     parent_index: dict[str, tuple[LockedDependency, ...]],
     resolved_cache: dict[str, Path],
 ) -> Path:
@@ -358,6 +362,30 @@ def _package_manifest_path(
             parent_index=parent_index,
             resolved_cache=resolved_cache,
         )
+        if package_dir.is_file():
+            from tempfile import TemporaryDirectory
+
+            from apm_cli.config import get_apm_temp_dir
+            from apm_cli.deps.virtual_file import materialize_virtual_file_package
+            from apm_cli.install.phases.local_content import read_local_package_source
+
+            source_base = resolve_local_dep_dir(
+                replace(dependency, local_path="."),
+                lockfile,
+                project_root,
+                parent_index=parent_index,
+            )
+            dep_ref = dependency.to_dependency_ref()
+            source = read_local_package_source(dep_ref, source_base)
+            if source.content is None:
+                raise ValueError(
+                    f"Local single-file source changed kind during MCP inspection: {package_dir}"
+                )
+            stage = scratch.enter_context(
+                TemporaryDirectory(prefix="apm-local-mcp-", dir=get_apm_temp_dir())
+            )
+            package_dir = Path(stage) / "package"
+            materialize_virtual_file_package(dep_ref, package_dir, source.path.name, source.content)
     else:
         package_dir = dependency.to_dependency_ref().get_install_path(modules_root)
     return (package_dir / "apm.yml").resolve()
@@ -434,6 +462,7 @@ def _collect_locked_dependencies(
     modules_root: Path,
     project_root: Path,
     *,
+    scratch: ExitStack,
     trust_transitive_self_defined: bool,
     diagnostics: DiagnosticCollector | None,
     logger: _McpViewLogger | None = None,
@@ -474,6 +503,7 @@ def _collect_locked_dependencies(
                 lockfile,
                 modules_root,
                 project_root,
+                scratch=scratch,
                 parent_index=parent_index,
                 resolved_cache=resolved_cache,
             )
@@ -689,12 +719,14 @@ def _collect_transitive_compat(
             logger=logger,
         )
     project_root = lock_path.parent if lock_path is not None else Path.cwd()
-    dependencies, _, _, _, _, _ = _collect_locked_dependencies(
-        lockfile,
-        modules_root,
-        project_root,
-        trust_transitive_self_defined=trust_private,
-        diagnostics=diagnostics,
-        logger=logger,
-    )
+    with ExitStack() as scratch:
+        dependencies, _, _, _, _, _ = _collect_locked_dependencies(
+            lockfile,
+            modules_root,
+            project_root,
+            scratch=scratch,
+            trust_transitive_self_defined=trust_private,
+            diagnostics=diagnostics,
+            logger=logger,
+        )
     return dependencies

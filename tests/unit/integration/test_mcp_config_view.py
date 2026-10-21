@@ -17,6 +17,7 @@ from apm_cli.integration.mcp_config_view import (
 from apm_cli.models.apm_package import APMPackage, clear_apm_yml_cache
 from apm_cli.models.dependency.mcp import MCPDependency
 from tests.unit.copilot_plugins._builders import write_agent_plugin
+from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
 
 pytestmark = pytest.mark.component
 
@@ -239,6 +240,68 @@ def test_pending_sources_preserve_known_omission_evidence(tmp_path: Path) -> Non
         }
     }
     assert selected.configs == {}
+
+
+@pytest.mark.parametrize("include_dependency_mcp,depth", [(False, 1), (True, 2)])
+def test_omission_and_compat_views_preserve_nested_single_file_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    include_dependency_mcp: bool,
+    depth: int,
+) -> None:
+    """A sibling primitive cannot lose omission evidence or become an MCP manifest."""
+    root = _write_manifest(tmp_path / "consumer", name="consumer")
+    parent = tmp_path / "package"
+    _write_manifest(parent, name="firebase", mcp=[_self_defined("firebase", "inert")])
+    source = tmp_path / "selected.agent.md"
+    source.write_bytes(
+        b"---\ndescription: Inert primitive\ndependencies:\n  mcp: [not-a-manifest]\n"
+        b"---\n# Guidance\n"
+    )
+    package = LockedDependency(
+        repo_url="_local/firebase", source="local", local_path="../package", depth=depth
+    )
+    primitive = LockedDependency(
+        repo_url=f"_local/{source.name}",
+        source="local",
+        local_path=f"../{source.name}",
+        package_type="apm_package",
+        depth=depth + 1,
+        resolved_by=package.repo_url,
+        declaring_parent="../package",
+        anchored_local_path=source.as_posix(),
+    )
+    lock = _lock(package, primitive)
+    modules = root.package_path / "apm_modules"
+    modules.mkdir()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr("apm_cli.config.get_apm_temp_dir", lambda: str(scratch))
+    selected = CurrentMcpConfigView.derive(
+        root,
+        lock,
+        modules,
+        trust_transitive_self_defined=False,
+        include_dependency_mcp=include_dependency_mcp,
+        allow_pending=False,
+    )
+    assert selected.problems == ()
+    assert selected.configs == {}
+    lock.mcp_omissions = selected.omission_evidence(lock)
+    assert set(lock.mcp_omissions) == {"firebase"}
+    assert set(selected.declaration_fingerprints) == {"firebase"}
+    lock_path = root.package_path / "apm.lock.yaml"
+    lock.write(lock_path)
+    before = ArtifactSnapshot.capture(tmp_path)
+    audited = _derive(root, lock, modules).with_recorded_omissions(lock)
+    assert audited.problems == ()
+    assert audited.configs == {}
+    dependencies = _collect_transitive_compat(
+        modules, lock_path, True, logger=None, diagnostics=None
+    )
+    assert [dependency.name for dependency in dependencies] == ["firebase"]
+    assert list(scratch.iterdir()) == []
+    assert_unchanged(before, ArtifactSnapshot.capture(tmp_path))
 
 
 def test_omission_declaration_and_config_share_one_manifest_read(

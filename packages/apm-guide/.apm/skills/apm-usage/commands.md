@@ -64,6 +64,13 @@ outside-constraint upgrades, see the
 `apm update` remains constraint-respecting and writable; it does not take an
 outside-constraint `Latest`.
 
+Same-named skills keep other packages' unique assets and personal files;
+overlapping managed files retain last-writer behavior in project and global
+scope. Use ordinary `apm install` after source or target changes; `--frozen`
+keeps recorded ownership. Overwrite warnings name the previous owner when known.
+Fix unreadable sources before retrying, not by resetting the lockfile. See
+[shared-skill behavior](https://microsoft.github.io/apm/reference/cli/install/#behavior).
+
 For `apm install -g --mcp`, mixed target selections warn and skip
 workspace-only runtimes. If no selected target supports user scope, the command
 exits `2` before creating or changing the user manifest, lockfile, or runtime
@@ -121,6 +128,17 @@ sidecar when their runtime requires it; see
 
 `apm publish --package OWNER/REPO` normalizes the owner and repository to
 lowercase before constructing the package-registry path.
+
+### Local single-file dependencies
+
+Local single files use `apm install ./ai/agents/xyz.agent.md` (also
+`.instructions.md` and `.prompt.md`), or a matching string/`path:` dependency in
+`apm.yml`. They follow the ordinary package lifecycle and are copied snapshots,
+not live links. Only the selected file is included; companion assets require a
+directory package. Normal reinstall accepts deliberate edits. Missing,
+unreadable, unsupported, or invalid sources fail without authorizing removal of
+prior owned output. Global installs require absolute or `~/...` references;
+file symlinks and arbitrary Markdown are unsupported.
 
 ### Install validation chain (virtual subdirectory packages)
 
