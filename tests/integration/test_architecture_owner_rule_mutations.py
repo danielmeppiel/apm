@@ -56,6 +56,211 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
 
 
 @pytest.mark.parametrize(
+    ("path", "original", "replacement", "refused"),
+    [
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except AgentPluginDeploymentBoundaryError as exc:",
+            False,
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except (AgentPluginDeploymentBoundaryError, Exception) as exc:",
+            True,
+        ),
+    ],
+)
+def test_native_typed_error_guard_retains_legacy_and_rejects_broad_handlers(
+    path: str, original: str, replacement: str, refused: bool
+) -> None:
+    """Adding the Codex error must not weaken the established portable error contract."""
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert original in source
+    rule = "marketplace-integrations-projection-boundary"
+    report = run_selected_rules(
+        ROOT, (rule,), source_overrides={path: source.replace(original, replacement)}
+    )
+    assert report.failures == ()
+    assert bool(report.violations) is refused
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/utils/content_hash.py",
+            "_package_files(package_path, native=True)",
+            "_package_files(package_path, native=False)",
+        ),
+        (
+            "src/apm_cli/utils/content_hash.py",
+            "path.stat().st_mode & stat.S_IXUSR",
+            "False",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "def owns_codex_dependency(",
+            "def duplicate_owns_codex_dependency(",
+        ),
+        (
+            "src/apm_cli/install/phases/codex_plugins.py",
+            "ctx.package_deployed_files.get(key)",
+            "False",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "owns_codex_dependency(",
+            "noncanonical_ownership(",
+        ),
+        (
+            "src/apm_cli/deps/package_validator.py",
+            'getattr(package, "codex_plugin", None) is not None',
+            "False",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "ownership_cache=native_ownership_cache",
+            "ownership_cache=None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "verify_codex_source_identity(modules_dir, records=records, **item.plugin.source_identity())",
+            "None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "record.source_commit == source_commit",
+            "False",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "codex_records = verify_codex_source_identity(",
+            "codex_records = noncanonical_source_check(",
+        ),
+        (
+            "src/apm_cli/install/drift.py",
+            "records=codex_records",
+            "records=None",
+        ),
+        (
+            "src/apm_cli/codex_plugins/admission.py",
+            'result["codex_source_identity"] = plugin.source_identity()',
+            "pass",
+        ),
+        (
+            "src/apm_cli/codex_plugins/registrar.py",
+            "record = replace(record, source_commit=item.plugin.source_commit)",
+            "pass",
+        ),
+        (
+            "src/apm_cli/policy/ci_checks.py",
+            "except (AgentPluginDeploymentBoundaryError, CodexNativeError) as exc:",
+            "except AgentPluginDeploymentBoundaryError as exc:",
+        ),
+    ],
+)
+def test_codex_native_content_and_ownership_gates_cannot_be_bypassed(
+    path: str, old: str, new: str
+) -> None:
+    """Native integrity and cold-cache identity use their canonical owners."""
+    rule_id = "marketplace-integrations-codex-native-lifecycle"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert old in source
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: source.replace(old, new)})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/package_selection.py",
+            "selected_dependency_identity(package, resolved_refs)",
+            "DependencyReference.parse(package).get_identity()",
+        ),
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "selected_dependency_identity(package, all_apm_dependencies)",
+            "DependencyReference.parse(package).get_identity()",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "selected_dependency_keys(ctx.only_packages, ctx.all_apm_deps)",
+            "selected_dependency_keys(ctx.only_packages)",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "for dependency in dependencies:",
+            "for dependency in ():",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "_selected_dependency_reference(spec, dependencies).get_unique_key()",
+            "DependencyReference.parse(spec).get_unique_key()",
+        ),
+        (
+            "src/apm_cli/install/package_selection.py",
+            "return _selected_dependency_reference(package, dependencies).get_identity()",
+            "return DependencyReference.parse(package).get_identity()",
+        ),
+    ],
+)
+def test_package_selector_identity_cannot_bypass_interpreted_references(
+    path: str, old: str, new: str
+) -> None:
+    """Install and preview cannot revert to lossy shorthand reparsing."""
+    rule_id = "install-deployment-prospective-dry-run-plan"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert old in source
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: source.replace(old, new)})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "read_only=True,",
+            "read_only=False,",
+        ),
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "graph.flattened_dependencies.get_installation_list()",
+            "apm_package.get_apm_dependencies()",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "ctx.deps_to_install = selected_subtree_dependencies(",
+            "ctx.deps_to_install = alternate_subtree_dependencies(",
+        ),
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "selected_subtree_dependencies(",
+            "alternate_subtree_dependencies(",
+        ),
+        (
+            "src/apm_cli/install/presentation/dry_run.py",
+            "and not plan.dependency_preview_errors:",
+            ":",
+        ),
+    ],
+)
+def test_preview_cannot_bypass_offline_graph_authority(path: str, old: str, new: str) -> None:
+    """An alternate root-only preview or incomplete-removal claim fails the guard."""
+    rule_id = "install-deployment-prospective-dry-run-plan"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert old in source
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: source.replace(old, new)})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
     ("path", "old", "new"),
     [
         (
@@ -605,6 +810,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Catalog-only marketplace manifest materialization loses its owner.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-codex-native-lifecycle",
+        rule_id="marketplace-integrations-codex-native-lifecycle",
+        path="src/apm_cli/codex_plugins/client.py",
+        old='"expectedVersion": version',
+        new='"unexpectedVersion": version',
+        intent="Codex native configuration loses its public compare-and-swap no-write control.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-copilot-ownership",
         rule_id="marketplace-integrations-copilot-ownership",
         path="src/apm_cli/copilot_plugins/registrar.py",
@@ -720,6 +933,17 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Discovery allows package admission to mutate the source it is inventorying.",
     ),
     MutationCase(
+        guard_id="registry-delegation-audit-target-selection",
+        rule_id="registry_delegation.audit_target_selection",
+        path="src/apm_cli/install/drift.py",
+        old="def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:",
+        new=(
+            "def resolve_audit_targets(project_root): return []\n\n"
+            "def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:"
+        ),
+        intent="Drift introduces a second audit target-selection owner.",
+    ),
+    MutationCase(
         guard_id="registry-delegation-bootstrap-project-name",
         rule_id="registry_delegation.bootstrap_project_name",
         path="src/apm_cli/core/project_name.py",
@@ -800,6 +1024,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def resolve_user_invocable(metadata: dict) -> bool:",
         new="def _resolve_user_invocable_removed(metadata: dict) -> bool:",
         intent="The user-invocable owner loses its single interpretation entry point.",
+    ),
+    MutationCase(
+        guard_id="registry-delegation-version-rendering",
+        rule_id="registry_delegation.version_rendering",
+        path="src/apm_cli/version_output.py",
+        old="def print_version(ctx: click.Context, param: click.Parameter | None, value: bool) -> None:",
+        new="def _print_version_removed(ctx: click.Context, param: click.Parameter | None, value: bool) -> None:",
+        intent="The version renderer loses its canonical print_version definition.",
     ),
     MutationCase(
         guard_id="transport-platform-ado-validation-bearer-fallback",
@@ -1521,6 +1753,68 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
     assert any(violation.rule_id == rule_id for violation in report.violations)
 
 
+@pytest.mark.parametrize(
+    ("path", "old", "new", "rule_id"),
+    [
+        (
+            "src/apm_cli/commands/install.py",
+            "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,",
+            "allow_pending_mcp=True,",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "if ctx.frozen and ctx.existing_lockfile is not None:",
+            "if False:",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "InstallService.enforce_hydrated_mcp(",
+            "InstallService.skip_hydrated_mcp(",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/service.py",
+            "allow_pending=False,",
+            "allow_pending=True,",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "require_locked=True,",
+            "require_locked=False,",
+            "mutation_writes.mcp_declaration_scope",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),",
+            "active_package_keys=frozenset(ctx.intended_dep_keys),",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "active_package_keys is not None and package_key not in active_package_keys",
+            "False",
+            "mutation_writes.mcp_declaration_scope",
+        ),
+    ],
+)
+def test_frozen_mcp_verification_cannot_bypass_owners(
+    path: str, old: str, new: str, rule_id: str
+) -> None:
+    """Cold restoration must retain acquisition evidence and pre-deployment verification."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 def test_frozen_preflight_uses_selected_lockfile_store() -> None:
     """Scoped frozen preflight must not substitute a source-side lockfile."""
     path = "src/apm_cli/install/service.py"
@@ -1528,6 +1822,73 @@ def test_frozen_preflight_uses_selected_lockfile_store() -> None:
     old = "project_dir = get_lockfile_dir(request.scope)"
     assert source.count(old) == 1
     mutated = source.replace(old, "project_dir = Path(manifest_path)", 1)
+    ast.parse(mutated, filename=path)
+    rule_id = "install-deployment-frozen-mutation-eligibility"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/commands/install.py",
+            "ctx.with_resource(InstallService.frozen_writes(frozen))",
+            "ctx.with_resource(contextlib.nullcontext())",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "InstallService.enforce_frozen_services(",
+            "InstallService.disabled_service_guard(",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "prepared=prepared_mcp,",
+            "prepared=None,",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "prepared=prepared_lsp,",
+            "prepared=None,",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "current_mcp=prepared_mcp.current_view,",
+            "current_mcp=None,",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "    return ServiceIntegrationResult(mcp_count, lsp_count, target_decision)",
+            "    raise FrozenInstallError('second frozen authority')",
+        ),
+        (
+            "src/apm_cli/install/outcome.py",
+            'complete_dep_keys = getattr(ctx, "update_plan_complete_dep_keys", None)',
+            'complete_dep_keys = getattr(ctx, "intended_dep_keys", None)',
+        ),
+        (
+            "src/apm_cli/commands/install.py",
+            "install_result.active_package_keys if install_result is not None else None",
+            "None",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "allow_pending=False,",
+            "allow_pending=None,",
+        ),
+        (
+            "src/apm_cli/install/mcp/integration.py",
+            "allow_pending=allow_pending,",
+            "allow_pending=None,",
+        ),
+    ],
+)
+def test_frozen_native_service_boundary_guards(path: str, old: str, new: str) -> None:
+    """Command lifetime, prepared evidence and eligibility retain one owner."""
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
     ast.parse(mutated, filename=path)
     rule_id = "install-deployment-frozen-mutation-eligibility"
     report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
@@ -1767,3 +2128,113 @@ def test_owner_rule_catches_its_guard_mutation(
         f"({case.intent}) -- the guard has no teeth for this owner. "
         f"failures={[(f.stage, f.message) for f in report.failures]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Targeted version-rendering / entrypoint guard mutations
+# ---------------------------------------------------------------------------
+
+_VR_RULE = "registry_delegation.version_rendering"
+
+
+def test_version_rendering_guard_rejects_eager_entrypoint_import() -> None:
+    """entrypoint.py must not eagerly import apm_cli.cli at top level."""
+    path = "src/apm_cli/entrypoint.py"
+    source = _source(path)
+    old = "import sys"
+    new = "import sys\nfrom apm_cli.cli import main as cli_main"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_forbidden_import_in_renderer() -> None:
+    """version_output.py must not import from apm_cli.commands."""
+    path = "src/apm_cli/version_output.py"
+    source = _source(path)
+    old = "from .version import get_build_sha, get_version"
+    new = "from .version import get_build_sha, get_version\nfrom .commands import install"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_gitpython_in_renderer() -> None:
+    """version_output.py must not import GitPython."""
+    path = "src/apm_cli/version_output.py"
+    source = _source(path)
+    old = "import click"
+    new = "import click\nimport git"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_dropped_helpers_reexport() -> None:
+    """_helpers.py must maintain its reexport from version_output."""
+    path = "src/apm_cli/commands/_helpers.py"
+    source = _source(path)
+    old = "from ..version_output import print_version  # noqa: F401 -- compatibility re-export"
+    new = "# print_version reexport removed"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_entrypoint_manifest_bypass() -> None:
+    """pyproject.toml must point apm to apm_cli.entrypoint:main."""
+    path = "pyproject.toml"
+    source = _source(path)
+    old = 'apm = "apm_cli.entrypoint:main"'
+    new = 'apm = "apm_cli.cli:main"'
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_dropped_lazy_delegation() -> None:
+    """entrypoint.py must preserve lazy delegation to apm_cli.cli.main."""
+    path = "src/apm_cli/entrypoint.py"
+    source = _source(path)
+    old = "from apm_cli.cli import main as cli_main\n\n    cli_main()"
+    new = "import apm_cli.commands.install  # bypass"
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
+
+
+def test_version_rendering_guard_rejects_second_renderer_in_helpers() -> None:
+    """A second print_version definition in _helpers.py must be caught."""
+    path = "src/apm_cli/commands/_helpers.py"
+    source = _source(path)
+    old = "from ..version_output import print_version  # noqa: F401 -- compatibility re-export"
+    new = (
+        "from ..version_output import print_version as _canonical_print_version"
+        "  # noqa: F401\n\n\n"
+        "def print_version(ctx, param, value):\n"
+        '    """Local override."""\n'
+        "    _canonical_print_version(ctx, param, value)\n"
+    )
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (_VR_RULE,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(v.rule_id == _VR_RULE for v in report.violations)
