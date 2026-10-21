@@ -63,6 +63,12 @@ from scripts.architecture_linter.checks.install_request_and_source import (
     check_request_defaults,
     check_source_plan,
 )
+from scripts.architecture_linter.checks.install_single_file import (
+    GUARD as _GUARD_SINGLE_FILE,
+)
+from scripts.architecture_linter.checks.install_single_file import (
+    check_single_file_materialization,
+)
 from scripts.architecture_linter.checks.install_skills_root_derivation import (
     _GUARD_SKILLS_ROOT,
     check_skills_root_derivation,
@@ -80,6 +86,11 @@ from scripts.architecture_linter.checks.install_uninstall_and_resolution import 
 from scripts.architecture_linter.models import Rule
 
 RULES: tuple[Rule, ...] = (
+    _rule(
+        _GUARD_SINGLE_FILE,
+        "Local and remote single-file dependencies share package materialization and admission.",
+        check_single_file_materialization,
+    ),
     _rule(
         _GUARD_ORPHAN_SELECTION,
         "Prune and orphan warnings share declaration-aware package selection.",

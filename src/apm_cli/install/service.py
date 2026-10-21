@@ -339,7 +339,17 @@ class InstallService:
                     parent_index=parent_index,
                     resolved_cache=resolved_cache,
                 )
-                observed_hash = compute_local_package_hash(source)
+                selected_source = source
+                if source.is_file():
+                    # Admission must see the selected leaf, not a resolved symlink.
+                    source_base = resolve_local_dep_dir(
+                        replace(dependency, local_path="."),
+                        lockfile,
+                        package_root,
+                        parent_index=parent_index,
+                    )
+                    selected_source = source_base / Path(dependency.local_path).expanduser()
+                observed_hash = compute_local_package_hash(selected_source)
                 expected_hash = dependency.content_hash
                 # v0.1 readers also accept the identical SHA-256 digest without its envelope.
                 if (

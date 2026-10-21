@@ -754,6 +754,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
     ),
     MutationCase(
+        guard_id="install-deployment-single-file-materialization",
+        rule_id="install-deployment-single-file-materialization",
+        path="src/apm_cli/install/phases/local_content.py",
+        old="source = read_local_package_source(dep_ref, base_dir)",
+        new="source = bypass_local_package_source(dep_ref, base_dir)",
+        intent="Local copying bypasses the canonical single-file admission authority.",
+    ),
+    MutationCase(
         guard_id="install-deployment-skills-root-derivation",
         rule_id="install-deployment-skills-root-derivation",
         path="src/apm_cli/integration/skill_integrator.py",
