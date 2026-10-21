@@ -341,7 +341,7 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
     @precondition(lambda self: self.declared and not self.materialized)
     def install(self) -> None:
         before, state = self._capture(), self._state()
-        self._run(
+        result = self._run(
             self.fixture.install_args,
             "install",
             expected_returncode=1 if self.retained_user_file else 0,
@@ -353,6 +353,7 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
             tree_prefixes=self.fixture.tree_prefixes,
         )
         if self.retained_user_file:
+            assert "conflicts with unmanaged file" in " ".join(result.stdout.split())
             assert self.skill_path.read_bytes() == _TAMPER_BYTES
             _assert_same_state(state, self._state())
             return
