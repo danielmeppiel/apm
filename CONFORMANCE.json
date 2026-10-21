@@ -323,7 +323,7 @@
       "keyword": "MUST",
       "section": "5.2",
       "status": "active",
-      "test_count": 8,
+      "test_count": 10,
       "tests": [
         "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_manifestless_optional_version",
         "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_resolver_version_precedence[git-semver]",
@@ -332,7 +332,9 @@
         "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_inventory_metadata_is_non_trust_anchor",
         "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_inventory_cannot_substitute_for_locked_selection[^1.0.0-1.2.3]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_inventory_cannot_substitute_for_locked_selection[bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]",
-        "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_inventory_cannot_substitute_for_locked_selection[main-main]"
+        "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_inventory_cannot_substitute_for_locked_selection[main-main]",
+        "tests/spec_conformance/test_mcp_omission_inventory.py::test_omission_evidence_never_uses_inventory_as_identity[name]",
+        "tests/spec_conformance/test_mcp_omission_inventory.py::test_omission_evidence_never_uses_inventory_as_identity[version]"
       ]
     },
     {

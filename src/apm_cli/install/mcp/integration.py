@@ -6,7 +6,7 @@ with runtime-neutral target selection.
 
 import builtins
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -21,10 +21,11 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PreparedMcpIntegration:
-    """One actual-source view and its executable-filtered declarations."""
+    """Selected comparison view, filtered declarations, and pre-write omission evidence."""
 
     dependencies: list["MCPDependency"]
     current_view: "CurrentMcpConfigView | None"
+    omissions: dict[str, dict[str, str]] | None
 
 
 def prepare_mcp_integration(
@@ -47,7 +48,8 @@ def prepare_mcp_integration(
     from apm_cli.security.executables import filter_mcp_by_allow_executables
 
     current_view = None
-    if should_install:
+    omissions = None
+    if should_install or mcp_deps or apm_modules_path.exists() or lock_path.exists():
         lockfile = LockFile.read(lock_path) if lock_path.exists() else None
         current_view = CurrentMcpConfigView.derive(
             apm_package,
@@ -59,7 +61,10 @@ def prepare_mcp_integration(
             trusted_transitive_configs=trusted_transitive_configs,
             allow_pending=allow_pending,
             active_package_keys=active_package_keys,
+            include_dependency_mcp=should_install,
         )
+        omissions = current_view.omission_evidence(lockfile or LockFile())
+    if should_install and current_view is not None:
         root_count = len(apm_package.get_all_mcp_dependencies())
         transitive_count = max(0, len(current_view.dependencies) - root_count)
         if transitive_count:
@@ -69,7 +74,8 @@ def prepare_mcp_integration(
         filter_mcp_by_allow_executables(
             mcp_deps, getattr(apm_package, "allow_executables", None), logger
         ),
-        current_view,
+        current_view if should_install else None,
+        omissions,
     )
 
 
@@ -255,6 +261,7 @@ def run_mcp_integration(  # noqa: PLR0913
             report the violation, and exit non-zero; already-installed APM
             packages are left in place.
     """
+    from apm_cli.deps.lockfile import LockFile
     from apm_cli.install.errors import MCPNativeConflictError
     from apm_cli.integration.mcp_integrator import MCPIntegrator
     from apm_cli.policy.install_preflight import run_policy_preflight
@@ -485,5 +492,12 @@ def run_mcp_integration(  # noqa: PLR0913
             logger=logger,
             fail_on_write_error=True,
         )
+
+    if prepared.omissions is not None and lock_path.exists():
+        lockfile = LockFile.read(lock_path)
+        if lockfile is not None and prepared.omissions != lockfile.mcp_omissions:
+            replace(lockfile, mcp_omissions=prepared.omissions).write(
+                lock_path, existing_lockfile=lockfile
+            )
 
     return mcp_count, mcp_apm_config

@@ -346,6 +346,63 @@ def test_replacement_local_file_children_keep_selected_anchor_and_frozen_baselin
 
 
 @pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
+@pytest.mark.parametrize("source_kind", ["local", "fork"])
+def test_replacement_only_apm_records_selected_source_omission(
+    tmp_path: Path, apm_binary_path: Path, source_kind: str
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    source_root = fixture.local.root if source_kind == "local" else fixture.fork.worktree
+    manifest_path = source_root / "apm.yml"
+    manifest = load_yaml(manifest_path)
+    manifest.setdefault("dependencies", {})["mcp"] = [
+        {
+            "name": "selected-service",
+            "registry": False,
+            "transport": "stdio",
+            "command": "inert-selected-command",
+        }
+    ]
+    dump_yaml(manifest, manifest_path)
+    if source_kind == "local":
+        fixture.replace({"path": "../local-base"})
+    else:
+        pin = fixture.repositories.commit(fixture.fork, message="Selected-source MCP declaration")
+        fixture.replace({"git": _FORK, "ref": pin.sha})
+
+    result = fixture.run(*_INSTALL, "--only", "apm")
+    assert result.returncode == 0, result.stdout + result.stderr
+    lock_path = fixture.consumer.root / "apm.lock.yaml"
+    locked = load_yaml(lock_path)
+    assert locked["dependencies"][0]["repo_url"] == "apm-replacement-fixture/base"
+    assert set(locked["mcp_omissions"]) == {"selected-service"}
+    assert locked["mcp_omissions"]["selected-service"]["reason"] == "only-apm"
+    assert not locked.get("mcp_configs")
+    assert not locked.get("mcp_servers")
+    before = _snapshot(fixture.consumer.root)
+    result = fixture.run("audit", "--ci", "--no-policy", "--format", "json")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout)["passed"] is True
+    assert _snapshot(fixture.consumer.root) == before
+
+    original_lock = lock_path.read_bytes()
+    locked["mcp_omissions"]["selected-service"]["declaration"] = "sha256:" + "0" * 64
+    dump_yaml(locked, lock_path)
+    damaged = _snapshot(fixture.consumer.root)
+    result = fixture.run("audit", "--ci", "--no-policy", "--format", "json")
+    assert result.returncode != 0, result.stdout + result.stderr
+    checks = json.loads(result.stdout)["checks"]
+    consistency = next(check for check in checks if check["name"] == "config-consistency")
+    assert consistency["passed"] is False
+    assert any("selection is unknown" in detail for detail in consistency["details"])
+    assert _snapshot(fixture.consumer.root) == damaged
+    lock_path.write_bytes(original_lock)
+
+    fixture.replace(None)
+    fixture.install()
+    fixture.assert_bytes("UPSTREAM")
+    assert not load_yaml(lock_path).get("mcp_omissions")
+
+
 def test_replacement_ignores_unused_original_http_transport(
     tmp_path: Path, apm_binary_path: Path, dry_run: bool
 ) -> None:
