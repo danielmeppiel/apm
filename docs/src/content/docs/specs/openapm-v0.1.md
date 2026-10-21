@@ -4066,24 +4066,33 @@ amendment's distinct resources.
 
 The schemas below define this specification's normative structural contract.
 
-> **Planned.** Amendment 0.1.41 selects an independent manifest resource;
+> **Planned.** Amendment 0.1.48 selects a corrected manifest resource;
 > amendment 0.1.46 selects an independent lockfile resource that adds manifest
 > extensions to the 0.1.41 lockfile contract. Both use distinct `$id` URLs.
-> The earlier 0.1.41 lockfile resource remains available with unchanged bytes.
+> The earlier v0.1 and 0.1.41 manifest resources and the 0.1.41 lockfile
+> resource remain available with unchanged IDs and bytes.
 > Human approval and the public comment period under
 > [Section 9.3](#93-amendment-process) remain pending; listing these URLs does
 > not establish approval or publication.
 
 | Schema                | Authoritative source (in-tree)                                                                       |
 |-----------------------|------------------------------------------------------------------------------------------------------|
-| Manifest (`apm.yml`)  | [`schemas/manifest-v0.1.41.schema.json`](/apm/specs/schemas/manifest-v0.1.41.schema.json) (JSON Schema 2020-12).    |
+| Manifest (`apm.yml`)  | [`schemas/manifest-v0.1.48.schema.json`](/apm/specs/schemas/manifest-v0.1.48.schema.json) (JSON Schema 2020-12; proposed). |
 | Lockfile (`apm.lock.yaml`) | [`schemas/lockfile-v0.1.46.schema.json`](/apm/specs/schemas/lockfile-v0.1.46.schema.json) (JSON Schema 2020-12). |
 | Policy (`apm-policy.yml`) | [`schemas/policy-v0.1.schema.json`](/apm/specs/schemas/policy-v0.1.schema.json) (JSON Schema 2020-12).   |
 | Claude-Code marketplace (informational, emitted output) | `tests/fixtures/schemas/claude-code-marketplace.schema.json`         |
 | Claude-Code plugin (informational, emitted output)      | `tests/fixtures/schemas/claude-code-plugin.schema.json`              |
 
 Consumers checking the structural constraints for [req-mf-025](#req-mf-025)
-can use the 0.1.41 resources. The selected 0.1.46 lockfile schema additionally
+can use the 0.1.41 resources or the corrected 0.1.48 manifest candidate.
+The latter checks Git subpaths, registry identities and the MCP forms already
+defined in Sections 4.3.2 and 4.3.6, including [req-mf-011](#req-mf-011) and
+[req-mf-012](#req-mf-012), in both dependency blocks. Older manifest schema
+URLs retain their erroneous rejections of these valid forms; changing prose
+or upgrading a CLI does not change a cached schema's bytes. Adopting the new
+explicit identity requires its publication and a supporting CLI.
+
+The selected 0.1.46 lockfile schema additionally
 checks the `extensions` mapping's key names for [req-ext-003](#req-ext-003);
 its values remain unconstrained. Validation against older structural schemas
 does not waive newer prose or runtime requirements.
@@ -4319,6 +4328,7 @@ renumbering of conformance classes.
 | 0.1.45 (proposed) | 2026-10-09 | Editorial fold for PR #3106 (closes #3083 Mode-B silent-extension gate; no new normative statement, count remains 128 (123 MUST, 5 SHOULD)). Section 4.2.1 and [req-tg-001] (Section 8.4): the explicit-only target enumeration now names `agent-skills`, `antigravity`, `hermes`, and `grok-bot`, reflecting the already-registered `hermes` target and the new stable explicit-only `grok-bot` target (skills deploy to `agent-data/workflows/`, per the OpenAPM Target Registry v0.1 companion). |
 | 0.1.46 (proposed) | 2026-10-13 | Spec-citation fold for manifest extension keys (closes #3219 Mode-B silent-extension gate). Added [req-ext-003] (Section 4.6.2, consumer MUST): top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions preserved on the parsed package in declaration order without validating or interpreting values; a dependency lock entry records them under optional `extensions` and omits that field when empty; any other unrecognised top-level key produces a non-failing warning without failing parse or install solely because it is unknown. Independent validation, policy, and security failures still apply. The warning does not relax [req-mf-006] (writers still preserve unknown top-level keys on rewrite). Additive optional lockfile field under Section 9.2: previously silent unknown keys now warn. `extensions` added to the Section 5.2 field table and selected through the distinct proposed `lockfile-v0.1.46.schema.json`; earlier schema bytes and `lockfile_version` are unchanged. Sections 1.3, 4.9, and 11.3.2, and Appendices A and C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. |
 | 0.1.47 (proposed) | 2026-10-15 | Amendment for accepted issue #3204. Revised [req-mf-022] to require a nonzero install result and preservation of previously deployed skill files and ownership records for an unmatched non-empty persisted selection. This intentionally replaces permitted warning-only success; it is not behavior-neutral errata. Section 9.3 review and public-comment requirements remain pending; issue-scope acceptance is not specification adoption. Statement count remains 129 (124 MUST, 5 SHOULD). |
+| 0.1.48 (proposed) | 2026-10-21 | Schema correction candidate for issue #3223, not an amendment to existing prose requirements. Selects a distinct manifest resource for Sections 4.3.2, 4.3.6 and 4.4. Compared with the old structural validators, Git plus subpath, registry ID plus registry/version, registry MCP objects and valid self-defined MCP objects can newly pass; incomplete registry identities, empty source fields, invalid MCP field types and missing transport/command/URL or whitespace-command violations can newly fail. Git/id conflicts remain rejected. These are observable validator changes, not behavior-neutral schema errata under Section 9.4. The old v0.1 and 0.1.41 URLs, IDs and bytes remain unchanged; no field or feature is removed from the prose contract. Existing requirements, statement count (129: 124 MUST, 5 SHOULD), working-draft behavior and runtime safeguards are unchanged. Section 9.3 non-author review and the subsequent 14-day public comment period remain pending; product scope acceptance is not ratification. In-tree selection proves neither public deployment nor released CLI support. |
 
 Errata (none at publication).
 
