@@ -169,6 +169,12 @@ unresolved required entries fail closed.
 | Kiro IDE | `.kiro/settings/mcp.json` (project, only if `.kiro/` exists) or `~/.kiro/settings/mcp.json` (`-g`) | both | JSON `mcpServers` |
 | JetBrains Copilot | `%LOCALAPPDATA%\github-copilot\intellij\mcp.json` (Windows) or `$XDG_CONFIG_HOME/github-copilot/intellij/mcp.json` (macOS/Linux; defaults to `~/.config/github-copilot/intellij/mcp.json`) | global | JSON `servers` |
 
+Export referenced variables in the environment that launches OpenCode. APM writes
+runtime references rather than their resolved values; authored static values remain
+literal. See [OpenCode variable handling](../../reference/manifest-schema/#424-variable-references-in-headers-and-env)
+for supported fields, registry overlays, and syntax, and
+[Repairing existing credentials](#repairing-existing-credentials) for older configs.
+
 For OpenCode, set the top-level `enabled` field on an MCP dependency to pass a
 value unchanged into that server's `opencode.json` entry. If omitted, APM keeps
 the existing `true` default. APM does not validate or coerce explicit values;

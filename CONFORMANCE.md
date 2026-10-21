@@ -80,7 +80,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-mf-010](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-010) | MUST | 4.3.2 | consumer | active | 1 | - |
 | [req-mf-011](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-011) | MUST | 4.3.2 | consumer | active | 2 | - |
 | [req-mf-012](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-012) | MUST | 4.3.6 | consumer | active | 16 | - |
-| [req-mf-013](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-013) | MUST | 4.5 | consumer | active | 1 | - |
+| [req-mf-013](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-013) | MUST | 4.5 | consumer | active | 3 | - |
 | [req-mf-014](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-014) | MUST | 4.2.3 | producer | active | 1 | - |
 | [req-mf-015](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-015) | MUST | 4.2.3 | producer | active | 1 | - |
 | [req-mf-016](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-016) | MUST | 4.3.5 | consumer | skipped | 1 | - |
