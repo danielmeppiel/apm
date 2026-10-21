@@ -23,7 +23,7 @@ from tests.integration.test_required_lifecycle_state_machine import (
 )
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
 from tests.utils.local_package import LocalPackage
-from tests.utils.resolution_failure_probe import hold_directory, release_directory
+from tests.utils.resolution_failure_probe import hold_path, release_directory
 
 pytestmark = [pytest.mark.e2e, pytest.mark.lifecycle_smoke]
 
@@ -186,7 +186,7 @@ def test_native_locked_destination_preserves_prior_install_and_recovers(
     old_lock = (consumer.root / "apm.lock.yaml").read_bytes()
     sha = _advance(scenario, source, consumer)
     manifest = consumer.manifest_path.read_bytes()
-    held = hold_directory(live)
+    held = hold_path(live)
     try:
         result = _run(scenario, consumer, source.environment)
         assert result.returncode == 1, result.stdout + result.stderr
@@ -272,7 +272,12 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
             assert (live / "apm.yml").read_bytes() == prior
     output = " ".join((result.stdout + result.stderr).split())
     if mode == "download-denied":
-        assert any(event["operation"] == "held-download-metadata" for event in events)
+        assert any(event["operation"] == "held-download-index" for event in events)
+        checkout_failure = next(
+            event for event in events if event["operation"] == "checkout-failed"
+        )
+        assert checkout_failure["returncode"] != 0
+        assert " ".join(checkout_failure["error"].split()) in output, output
         assert not any(event["operation"] == "held-candidate" for event in events)
         assert "Could not discard downloaded candidate" in output, output
     else:
@@ -280,7 +285,12 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
     assert failures[0]["error"] in output, output
     if mode != "transient":
         assert len(failures) >= 2, events
-        assert failures[-1]["error"] in output, output
+        cleanup_failure = next(
+            event
+            for event in failures
+            if event["operation"] in {"unlink", "rmdir"} and event["winerror"] in {5, 32}
+        )
+        assert cleanup_failure["error"] in output, output
         assert "recover" in output.lower(), output
     _success(_run(scenario, consumer, source.environment))
     _assert_pin(consumer, sha)

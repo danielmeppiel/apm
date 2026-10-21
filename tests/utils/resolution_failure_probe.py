@@ -6,11 +6,12 @@ import atexit
 import ctypes
 import json
 import os
+import subprocess
 from pathlib import Path
 
 
-def hold_directory(path: Path) -> tuple[ctypes.CDLL, int]:
-    """Open a real Windows directory handle without delete sharing."""
+def hold_path(path: Path) -> tuple[ctypes.CDLL, int]:
+    """Open a real Windows file or directory handle without delete sharing."""
     if os.name != "nt":
         raise RuntimeError("Directory sharing-denial proof requires native Windows")
     from ctypes import wintypes
@@ -47,6 +48,7 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
     report = Path(evidence)
     original_replace = Path.replace
     original_rmdir = os.rmdir
+    original_unlink = os.unlink
     handles: list[tuple[ctypes.CDLL, int]] = []
     activated = False
 
@@ -65,13 +67,13 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
         nonlocal activated
         if Path(target) == destination and path.parent.name == "replacements" and not activated:
             activated = True
-            handles.append(hold_directory(path))
+            handles.append(hold_path(path))
             record("held-candidate", path)
             if mode == "restore-denied":
                 backups = list((path.parent.parent / "backups").iterdir())
                 if len(backups) != 1:
                     raise RuntimeError("Expected exactly one preserved prior package")
-                handles.append(hold_directory(backups[0]))
+                handles.append(hold_path(backups[0]))
                 record("held-backup", backups[0])
         try:
             return original_replace(path, target)
@@ -83,22 +85,51 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
 
     def rmdir(path: str, *args: object, **kwargs: object) -> None:
         directory = Path(path)
-        if (
-            mode == "download-denied"
-            and directory.name == ".git"
-            and directory.parent.parent.name == "replacements"
-            and not handles
-        ):
-            if not (directory.parent / "apm.yml").is_file():
-                raise RuntimeError("Expected materialized package bytes before download denial")
-            handles.append(hold_directory(directory))
-            record("held-download-metadata", directory)
         try:
             return original_rmdir(path, *args, **kwargs)
         except OSError as error:
             record("rmdir", directory, error)
             raise
 
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        try:
+            return original_unlink(path, *args, **kwargs)
+        except OSError as error:
+            record("unlink", Path(path), error)
+            raise
+
+    if mode == "download-denied":
+        from apm_cli.deps import github_downloader
+
+        original_checkout = github_downloader.checkout_git_worktree
+
+        def checkout(worktree: Path, ref: str, **kwargs: object) -> None:
+            if worktree.parent.name == "replacements" and not handles:
+                if not (worktree / "apm.yml").is_file():
+                    raise RuntimeError("Expected cloned package bytes before checkout denial")
+                index = worktree / ".git" / "index"
+                handles.extend((hold_path(index), hold_path(worktree)))
+                record("held-download-index", index)
+            try:
+                original_checkout(worktree, ref, **kwargs)
+            except subprocess.CalledProcessError as error:
+                with report.open("a", encoding="utf-8") as stream:
+                    stream.write(
+                        json.dumps(
+                            {
+                                "operation": "checkout-failed",
+                                "path": str(worktree),
+                                "error": error.stderr.strip(),
+                                "returncode": error.returncode,
+                            }
+                        )
+                        + "\n"
+                    )
+                raise
+
+        github_downloader.checkout_git_worktree = checkout
+
     Path.replace = replace
     os.rmdir = rmdir
+    os.unlink = unlink
     atexit.register(close_handles)
