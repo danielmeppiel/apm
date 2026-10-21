@@ -600,6 +600,31 @@ def test_registry_partial_conflict_does_not_skip_managed_self_defined_update(
 
 
 @pytest.mark.parametrize("target", ["claude", "codex"])
+def test_metadata_only_replacement_write_retains_registry_receipt(
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario], apm_binary_path: Path, target: str
+) -> None:
+    """Compose replacement-only lock persistence with actual MCP write ownership."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
+    with _registry(scenario) as registry:
+        scenario.declare([{"name": "io.example/registered", "registry": registry.url}])
+        _success(scenario.install(targets=target))
+    receipts = DeploymentLedgerCodec.mcp_native_hashes(scenario.lock())
+    assert receipts[target]["io.example/registered"].startswith("sha256:")
+    native_before = scenario.path(target).read_bytes()
+    manifest = load_yaml(scenario.root / "apm.yml")
+    manifest["replace"] = []
+    dump_yaml(manifest, scenario.root / "apm.yml")
+    _success(scenario.install("--only", "apm", targets=target))
+    assert scenario.lock().replacements == []
+    assert not scenario.lock().dependencies
+    assert DeploymentLedgerCodec.mcp_native_hashes(scenario.lock()) == receipts
+    assert scenario.path(target).read_bytes() == native_before
+    scenario.declare([])
+    _success(scenario.install(targets=target))
+    assert scenario.servers(target) == {}
+
+
+@pytest.mark.parametrize("target", ["claude", "codex"])
 def test_registry_write_before_all_self_defined_conflicts_is_persisted(
     scenario_factory: Callable[[ApmLifecycleRunner], _Scenario],
     apm_binary_path: Path,
