@@ -38,6 +38,8 @@ def compare_native_mcp_connection(
     if key not in existing:
         return NativeMcpConnectionState.ABSENT
     native = existing[key]
+    requested = client.render_server_config(requested_info) if requested_info is not None else None
+    comparison = native
     matches_baseline = False
     if managed and isinstance(stored_config, dict):
         try:
@@ -46,12 +48,16 @@ def compare_native_mcp_connection(
                 expected = client.render_server_config(
                     MCPIntegrator._build_self_defined_info(dependency)
                 )
-                matches_baseline = client.matches_managed_server_config(native, expected)
+                if requested is not None:
+                    comparison = client.project_managed_server_config(
+                        native, baseline=expected, requested=requested
+                    )
+                matches_baseline = client.matches_managed_server_config(comparison, expected)
         except (TypeError, ValueError):
             logger.debug("Unusable MCP baseline for %s on %s", name, client.target_name)
-    if requested_info is not None:
-        requested = client.render_server_config(requested_info)
-        if client.matches_managed_server_config(native, requested):
+    if requested is not None:
+        requested_native = comparison if matches_baseline else native
+        if client.matches_managed_server_config(requested_native, requested):
             return (
                 NativeMcpConnectionState.MATCHING_MANAGED
                 if matches_baseline

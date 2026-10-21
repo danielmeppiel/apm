@@ -384,6 +384,12 @@ class MCPClientAdapter(ABC):
         """Compare the native connection with the adapter's rendered baseline."""
         return native == expected
 
+    def project_managed_server_config(
+        self, native: object, *, baseline: dict, requested: dict
+    ) -> object:
+        """Return a comparison-only view for an already recorded managed connection."""
+        return native
+
     @abstractmethod
     def get_config_path(self):
         """Get the path to the MCP configuration file."""

@@ -206,6 +206,31 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
             findings.append(
                 _summary(rule_id, _MCP_OWNERSHIP_OWNER, f"Missing canonical MCP owner: {name}")
             )
+    projection_calls = 0
+    for path in _python_paths(provider, _SRC_PREFIX):
+        facts = provider.file_facts(path)
+        for call in getattr(facts, "calls", ()):
+            if call.qualname.rsplit(".", 1)[-1] != "project_managed_server_config":
+                continue
+            if path == _MCP_OWNERSHIP_OWNER and call.scope == "compare_native_mcp_connection":
+                projection_calls += 1
+            else:
+                findings.append(
+                    violation(
+                        rule_id,
+                        path,
+                        "Managed MCP projection may only be called by the canonical comparator",
+                        line=call.line,
+                    )
+                )
+    if projection_calls != 1:
+        findings.append(
+            _summary(
+                rule_id,
+                _MCP_OWNERSHIP_OWNER,
+                "The canonical MCP comparator must route once through managed projection",
+            )
+        )
     for path, function, required_call in (
         (_MCP_INTEGRATOR, "_install_self_defined_deps", "compare_native_mcp_connection"),
         (_MCP_INTEGRATOR, "run_mcp_install", "compare_native_mcp_connection"),

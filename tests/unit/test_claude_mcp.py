@@ -5,6 +5,7 @@ import os
 import stat
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,65 @@ from apm_cli.adapters.client.claude import ClaudeClientAdapter
 from apm_cli.core.scope import InstallScope
 from apm_cli.factory import ClientFactory
 from apm_cli.utils.path_security import PathTraversalError
+
+
+@pytest.mark.parametrize("cwd", ["/fixture-cwd", "./relative", r"C:\fixture", "/with spaces"])
+def test_managed_projection_is_nonmutating(tmp_path: Path, cwd: str) -> None:
+    client = ClaudeClientAdapter(project_root=tmp_path)
+    baseline = {"type": "stdio", "command": "python", "env": {"KEEP": "value"}}
+    requested = {"type": "http", "url": "https://example.invalid/mcp"}
+    native = {**deepcopy(baseline), "cwd": cwd, "oauthAccount": {"accountUuid": "keep"}}
+    before = deepcopy((native, baseline, requested))
+
+    projected = client.project_managed_server_config(
+        native, baseline=baseline, requested=requested
+    )
+
+    assert projected == {key: value for key, value in native.items() if key != "cwd"}
+    assert projected is not native
+    assert (native, baseline, requested) == before
+
+
+@pytest.mark.parametrize(
+    "cwd",
+    [None, True, 1, [], {}, "", " \t", "bad\x00path", "../other", r"..\other", "%2e%2e/other"],
+)
+def test_managed_projection_keeps_invalid_cwd(tmp_path: Path, cwd: object) -> None:
+    client = ClaudeClientAdapter(project_root=tmp_path)
+    baseline = {"type": "stdio", "command": "python"}
+    native = {**baseline, "cwd": cwd}
+    assert client.project_managed_server_config(
+        native, baseline=baseline, requested=baseline
+    ) is native
+
+
+@pytest.mark.parametrize(
+    ("baseline", "requested", "native"),
+    [
+        ({"type": "stdio", "cwd": "/old"}, {"type": "http"}, {"type": "stdio", "cwd": "/new"}),
+        ({"type": "stdio"}, {"type": "stdio", "cwd": "/same"}, {"type": "stdio", "cwd": "/same"}),
+        ({"type": "http"}, {"type": "http"}, {"type": "http", "cwd": "/native"}),
+        ({"type": "stdio"}, {"type": "http"}, {"type": "http", "cwd": "/native"}),
+        ({"type": "stdio"}, {"type": "http"}, {"command": "python", "cwd": "/native"}),
+        ({"type": "stdio"}, {"type": "http"}, []),
+    ],
+)
+def test_managed_projection_does_not_expand_eligibility(
+    tmp_path: Path, baseline: dict, requested: dict, native: object
+) -> None:
+    client = ClaudeClientAdapter(project_root=tmp_path)
+    assert client.project_managed_server_config(
+        native, baseline=baseline, requested=requested
+    ) is native
+
+
+@pytest.mark.parametrize("target", ["copilot", "codex"])
+def test_other_clients_keep_identity_projection(tmp_path: Path, target: str) -> None:
+    client = ClientFactory.create_client(target, project_root=tmp_path)
+    native = {"command": "python", "cwd": "/native", "extra": {"keep": True}}
+    before = deepcopy(native)
+    assert client.project_managed_server_config(native, baseline={}, requested={}) is native
+    assert native == before
 
 
 class TestClaudeClientFactory(unittest.TestCase):

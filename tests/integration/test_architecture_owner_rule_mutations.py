@@ -1782,8 +1782,29 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
             "def compare_native_mcp_connection(*args, **kwargs):\n"
             "    return True\n\n\nclass MCPConflictDetector:",
         ),
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "comparison = client.project_managed_server_config(",
+            "comparison = client.bypass_managed_server_config(",
+        ),
+        (
+            "src/apm_cli/core/conflict_detector.py",
+            "class MCPConflictDetector:",
+            "def bypass_owner(client):\n"
+            "    return client.project_managed_server_config({}, baseline={}, requested={})\n"
+            "\n\nclass MCPConflictDetector:",
+        ),
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            '    """Refuse removal when recorded names do not prove unchanged native content."""',
+            '    """Refuse removal when recorded names do not prove unchanged native content."""\n'
+            "    client.project_managed_server_config({}, baseline={}, requested={})",
+        ),
     ],
-    ids=["legacy-resolver", "install-routing", "removal-routing", "removal-baseline", "second-owner"],
+    ids=[
+        "legacy-resolver", "install-routing", "removal-routing", "removal-baseline",
+        "second-owner", "projection-bypass", "projection-external", "projection-cleanup",
+    ],
 )
 def test_native_mcp_ownership_boundary_mutations(path: str, old: str, new: str) -> None:
     """Native collision and cleanup callers cannot bypass or duplicate the baseline owner."""

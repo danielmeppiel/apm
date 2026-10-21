@@ -94,6 +94,11 @@ unverifiable historical entries and asks for manual reconciliation; do not
 delete the lockfile or unrelated native settings to bypass it. This concerns
 connection settings, not data held by the MCP service.
 
+An already managed Claude stdio connection may retain a valid native-only `cwd`
+when both old and requested declarations omit it. This comparison exception
+allows managed updates, not foreign adoption or removal. Declared `cwd` edits
+remain conflicts; switching to HTTP removes the incompatible stdio fields.
+
 `apm install --dry-run` includes required indirect APM dependencies in its
 counts using local source metadata and unchanged installed remote metadata.
 The dependency graph pass is read-only and offline: unavailable metadata or
