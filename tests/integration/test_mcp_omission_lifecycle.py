@@ -223,7 +223,14 @@ def test_skills_only_preserves_admitted_baseline_and_real_drift(
         assert after.get(field) == baseline.get(field)
     assert native.read_bytes() == native_before
     frozen_lock = lock_path.read_bytes()
-    scenario.run("install", "--only", "apm", "--frozen")
+    refusal = scenario.runner.run(
+        ("install", "--only", "apm", "--frozen"), cwd=scenario.project, env=scenario.env
+    )
+    assert refusal.returncode == 1, refusal.stdout + refusal.stderr
+    assert "firebase" in refusal.stdout + refusal.stderr
+    assert lock_path.read_bytes() == frozen_lock
+    assert native.read_bytes() == native_before
+    scenario.run("install", "--only", "apm", "--frozen", "--trust-transitive-mcp")
     assert lock_path.read_bytes() == frozen_lock
     assert native.read_bytes() == native_before
     scenario.audit(passed=True)

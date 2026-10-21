@@ -444,6 +444,9 @@ Bare `apm audit` uses the warmed local cache and skips drift with an information
 
 `apm install --only apm --frozen` also preserves the admitted MCP baseline and
 exact lockfile and native-configuration bytes without selecting MCP integration.
+Existing frozen source and consent checks still apply: a baseline that already
+admitted transitive MCP requires the same explicit `--trust-transitive-mcp`.
+Omission evidence does not grant consent.
 
 For project-local content, replay uses the same package interpretation as install.
 A sibling `skills/<name>/SKILL.md` alongside `.apm/` is not promoted to a local
