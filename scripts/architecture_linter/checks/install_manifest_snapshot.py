@@ -42,9 +42,7 @@ def check_manifest_snapshot(provider: FactsProvider) -> tuple[Violation, ...]:
 
     required_snapshot_calls = {"load_yaml", "APMPackage.from_mapping"}
     snapshot_calls = {
-        call.qualname
-        for call in snapshot.calls
-        if call.scope == "materialized_manifest_snapshot"
+        call.qualname for call in snapshot.calls if call.scope == "materialized_manifest_snapshot"
     }
     required_consumers = {
         "LocalDependencySource",

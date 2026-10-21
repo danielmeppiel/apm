@@ -63,9 +63,7 @@ def test_snapshot_reads_acquired_bytes_without_mutating_path_cache(
         "name: [\n",
     ],
 )
-def test_snapshot_does_not_hide_invalid_required_metadata(
-    tmp_path: Path, invalid: str
-) -> None:
+def test_snapshot_does_not_hide_invalid_required_metadata(tmp_path: Path, invalid: str) -> None:
     """A cached valid descriptor cannot conceal invalid replacement metadata."""
     manifest = tmp_path / "apm.yml"
     manifest.write_text("name: demo\nversion: 1.0.0\n", encoding="utf-8")
@@ -119,9 +117,7 @@ def test_snapshot_preserves_legacy_synthesized_projection(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("authority", ["manifest", "git-semver", "registry"])
-def test_snapshot_preserves_resolver_version_precedence(
-    tmp_path: Path, authority: str
-) -> None:
+def test_snapshot_preserves_resolver_version_precedence(tmp_path: Path, authority: str) -> None:
     """Fresh metadata does not turn a manifest version into a resolver decision."""
     manifest = tmp_path / "apm.yml"
     dump_yaml({"name": "demo", "version": "1.0.0"}, manifest)

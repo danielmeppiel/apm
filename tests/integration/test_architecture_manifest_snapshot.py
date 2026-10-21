@@ -63,9 +63,7 @@ def test_materialized_version_guards_reject_bypasses(
     source = (ROOT / path).read_text(encoding="utf-8")
     assert old in source
 
-    report = run_selected_rules(
-        ROOT, (rule,), source_overrides={path: source.replace(old, new, 1)}
-    )
+    report = run_selected_rules(ROOT, (rule,), source_overrides={path: source.replace(old, new, 1)})
 
     assert report.failures == ()
     assert any(violation.rule_id == rule for violation in report.violations)
@@ -75,11 +73,11 @@ def test_snapshot_guard_rejects_a_second_metadata_owner() -> None:
     """A second source-specific implementation cannot silently acquire authority."""
     path = "src/apm_cli/install/sources.py"
     source = (ROOT / path).read_text(encoding="utf-8")
-    duplicate = "\n\ndef materialized_manifest_snapshot(package, install_path):\n    return package\n"
-
-    report = run_selected_rules(
-        ROOT, (SNAPSHOT_RULE,), source_overrides={path: source + duplicate}
+    duplicate = (
+        "\n\ndef materialized_manifest_snapshot(package, install_path):\n    return package\n"
     )
+
+    report = run_selected_rules(ROOT, (SNAPSHOT_RULE,), source_overrides={path: source + duplicate})
 
     assert report.failures == ()
     assert any(violation.rule_id == SNAPSHOT_RULE for violation in report.violations)
