@@ -21,6 +21,7 @@ import pytest
 import tomllib
 
 from apm_cli.adapters.client.base import MCPClientAdapter
+from apm_cli.adapters.client.opencode import OpenCodeClientAdapter
 from apm_cli.deps.plugin_parser import normalize_plugin_directory
 from apm_cli.install.phases.finalize import _hint_project_compile_needed
 from apm_cli.install.target_filter import resolve_effective_package_targets
@@ -147,6 +148,26 @@ def test_consumer_supports_local_path_source():
     schema = load_schema("manifest-v0.1.41.schema.json")
     entry_obj = next(s for s in schema["$defs"]["depEntry"]["oneOf"] if s.get("type") == "object")
     assert "path" in entry_obj["properties"]
+
+
+@pytest.mark.req("req-mf-013")
+@pytest.mark.parametrize("reference", ["${EXAMPLE_KEY}", "${env:EXAMPLE_KEY}"])
+def test_consumer_renders_opencode_native_environment_references(tmp_path: Path, reference: str):
+    """The dispatch matrix uses the active target's native environment syntax."""
+    adapter = OpenCodeClientAdapter(project_root=tmp_path)
+    rendered = adapter.render_server_config(
+        {
+            "name": "native-reference",
+            "_raw_stdio": {
+                "command": "echo",
+                "args": [reference],
+                "env": {"TOKEN": reference, "STATIC": "literal"},
+            },
+        }
+    )
+    assert rendered["command"] == ["echo", "{env:EXAMPLE_KEY}"]
+    assert rendered["environment"] == {"TOKEN": "{env:EXAMPLE_KEY}", "STATIC": "literal"}
+    assert_spec_contains("`{env:VAR}` for OpenCode")
 
 
 @pytest.mark.req("req-mf-014")
