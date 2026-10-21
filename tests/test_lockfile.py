@@ -10,11 +10,24 @@ import yaml
 from apm_cli.deps.lockfile import (
     LockedDependency,
     LockFile,
+    LockfileFormatError,
     get_lockfile_path,
     migrate_lockfile_if_needed,
     resolve_lockfile_path_for_read,
 )
 from apm_cli.models.apm_package import DependencyReference
+
+
+@pytest.mark.parametrize("name", ["", 42])
+def test_malformed_mcp_omission_keys_rejected(name: str | int) -> None:
+    """Invalid omission keys retain explicit, selection-safe recovery guidance."""
+    data = yaml.safe_load(LockFile().to_yaml())
+    data["mcp_omissions"] = {name: {"reason": "only-apm"}}
+    with pytest.raises(LockfileFormatError, match="invalid server names") as error:
+        LockFile.from_yaml(yaml.safe_dump(data))
+    assert "Restore a known-good lockfile and repeat the intended install selection" in str(
+        error.value
+    )
 
 
 class TestLockedDependency:

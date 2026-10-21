@@ -14,6 +14,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+import yaml
+
 from apm_cli.deps.path_anchoring import (
     LocalResolutionError,
     build_local_parent_index,
@@ -255,13 +257,8 @@ def _declaration_fingerprint(dependency: LockedDependency, declaration: MCPDepen
     return "sha256:" + hashlib.sha256(encoded.encode("ascii")).hexdigest()
 
 
-def _authored_mcp_declarations(manifest_path: Path) -> dict[str, MCPDependency]:
+def _authored_mcp_declarations(manifest: dict[str, Any]) -> dict[str, MCPDependency]:
     """Parse portable authored declarations through the canonical MCP model."""
-    from apm_cli.utils.yaml_io import load_yaml
-
-    manifest = load_yaml(manifest_path)
-    if not isinstance(manifest, dict):
-        raise ValueError("package manifest must be a mapping")
     dependencies = manifest.get("dependencies") or {}
     if not isinstance(dependencies, dict):
         raise ValueError("package dependencies must be a mapping")
@@ -556,12 +553,19 @@ def _collect_locked_dependencies(
             continue
 
         try:
-            package = APMPackage.from_apm_yml(
-                manifest_path,
+            from apm_cli.utils.yaml_io import load_yaml
+
+            manifest = load_yaml(manifest_path)
+            if not isinstance(manifest, dict):
+                raise ValueError("package manifest must be a mapping")
+            package = APMPackage.from_mapping(
+                manifest,
+                package_path=manifest_path.parent,
                 source_path=manifest_path.parent,
+                manifest_path=manifest_path,
             )
-            authored_declarations = _authored_mcp_declarations(manifest_path)
-        except (OSError, ValueError, UnicodeError) as exc:
+            authored_declarations = _authored_mcp_declarations(manifest)
+        except (OSError, ValueError, UnicodeError, yaml.YAMLError) as exc:
             problems.append(
                 McpSourceProblem(
                     package_key=package_key,

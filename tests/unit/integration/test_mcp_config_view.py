@@ -241,6 +241,33 @@ def test_pending_sources_preserve_known_omission_evidence(tmp_path: Path) -> Non
     assert selected.configs == {}
 
 
+def test_omission_declaration_and_config_share_one_manifest_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fingerprint and expanded config must describe the same manifest snapshot."""
+    from apm_cli.utils import yaml_io
+
+    root = _write_manifest(tmp_path, name="consumer")
+    source = tmp_path / "package"
+    _write_manifest(source, name="package", mcp=[_self_defined("service", "inert")])
+    lock = _lock(
+        LockedDependency(repo_url="_local/package", source="local", local_path=str(source))
+    )
+    reads: list[Path] = []
+    original = yaml_io.load_yaml
+
+    def counted_load(path: Path) -> object:
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(yaml_io, "load_yaml", counted_load)
+    view = _derive(root, lock, tmp_path / "apm_modules")
+    assert view.problems == ()
+    assert view.configs["service"]["command"] == "inert"
+    assert set(view.declaration_fingerprints) == {"service"}
+    assert reads == [source / "apm.yml"]
+
+
 def _write_manifest(
     directory: Path,
     *,
