@@ -150,7 +150,7 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 19,
+      "test_count": 22,
       "tests": [
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
@@ -159,6 +159,9 @@
         "tests/spec_conformance/test_frozen_service_lock_reqs.py::test_frozen_service_command_preserves_committed_lock_bytes[narrower]",
         "tests/spec_conformance/test_frozen_service_lock_reqs.py::test_frozen_service_command_preserves_committed_lock_bytes[recorded]",
         "tests/spec_conformance/test_frozen_service_lock_reqs.py::test_frozen_service_command_preserves_committed_lock_bytes[unrecorded]",
+        "tests/spec_conformance/test_local_file_frozen_contract.py::test_frozen_local_file_requires_lock_before_any_durable_mutation[agent]",
+        "tests/spec_conformance/test_local_file_frozen_contract.py::test_frozen_local_file_requires_lock_before_any_durable_mutation[instructions]",
+        "tests/spec_conformance/test_local_file_frozen_contract.py::test_frozen_local_file_requires_lock_before_any_durable_mutation[prompt]",
         "tests/spec_conformance/test_lockfile_reqs.py::TestFrozenInstallNeverWritesLockfile::test_frozen_install_withholds_the_write_and_fails_instead",
         "tests/spec_conformance/test_lockfile_reqs.py::test_cold_dependency_evidence_cannot_defer_direct_mcp_drift[False]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_cold_dependency_evidence_cannot_defer_direct_mcp_drift[True]",
@@ -225,8 +228,9 @@
       "keyword": "MUST",
       "section": "5.2",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_manifestless_optional_version",
         "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_round_trips_unknown_fields"
       ]
     },
@@ -319,8 +323,12 @@
       "keyword": "MUST",
       "section": "5.2",
       "status": "active",
-      "test_count": 4,
+      "test_count": 8,
       "tests": [
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_manifestless_optional_version",
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_resolver_version_precedence[git-semver]",
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_resolver_version_precedence[manifest]",
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_snapshot_preserves_resolver_version_precedence[registry]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_lockfile_inventory_metadata_is_non_trust_anchor",
         "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_inventory_cannot_substitute_for_locked_selection[^1.0.0-1.2.3]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_marketplace_inventory_cannot_substitute_for_locked_selection[bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]",
@@ -376,8 +384,11 @@
       "keyword": "MUST",
       "section": "4.1",
       "status": "active",
-      "test_count": 1,
+      "test_count": 4,
       "tests": [
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_acquired_nonmapping_manifest_is_rejected[- not-a-mapping\\n]",
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_acquired_nonmapping_manifest_is_rejected[null\\n]",
+        "tests/spec_conformance/test_acquired_manifest_reqs.py::test_acquired_nonmapping_manifest_is_rejected[scalar\\n]",
         "tests/spec_conformance/test_manifest_reqs.py::test_manifest_required_keys_enforced_by_schema"
       ]
     },

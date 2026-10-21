@@ -674,6 +674,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Claude LSP plugin writes bypass the canonical deployment-path gate.",
     ),
     MutationCase(
+        guard_id="install-deployment-manifest-snapshot",
+        rule_id="install-deployment-manifest-snapshot",
+        path="src/apm_cli/install/source_helpers.py",
+        old="snapshot = APMPackage.from_mapping(",
+        new="snapshot = APMPackage.from_apm_yml(",
+        intent="Acquired metadata reuses the process-lifetime manifest path cache.",
+    ),
+    MutationCase(
         guard_id="install-deployment-mcp-ownership-migration",
         rule_id="install-deployment-mcp-ownership-migration",
         path="src/apm_cli/install/mcp/ownership.py",
@@ -752,6 +760,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def prepare_replacement(",
         new="def prepare_replacement_disabled(",
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-single-file-materialization",
+        rule_id="install-deployment-single-file-materialization",
+        path="src/apm_cli/install/phases/local_content.py",
+        old="source = read_local_package_source(dep_ref, base_dir)",
+        new="source = bypass_local_package_source(dep_ref, base_dir)",
+        intent="Local copying bypasses the canonical single-file admission authority.",
     ),
     MutationCase(
         guard_id="install-deployment-skills-root-derivation",

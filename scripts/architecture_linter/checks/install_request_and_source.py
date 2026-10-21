@@ -381,6 +381,12 @@ def check_source_plan(provider: FactsProvider) -> tuple[Violation, ...]:
         or not _present(owner, "if native_plugin_root != source_root:")
         or not _present(owner, "if not _is_safe_source_path(path, source_root):")
         or not _present(owner, 'relative == MARKER_FILENAME or ".git" in Path(relative).parts')
+        or not _present(owner, "skill_discovery_complete: bool = False")
+        or not _present(owner, "BaseIntegrator.walk_source_tree(root)")
+        or not _present(owner, "BaseIntegrator.walk_source_tree(source_root)")
+        or not _present(owner, "skill_discovery_complete=discovery_complete")
+        or not _present(owner, "skill_source_roots=frozenset(skill_source_roots)")
+        or not _present(owner, "skill_source_files=frozenset(skill_source_files)")
         or bool(duplicates)
     )
     if block_failed:
