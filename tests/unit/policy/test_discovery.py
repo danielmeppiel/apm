@@ -756,6 +756,16 @@ class TestDiscoverPolicy(unittest.TestCase):
         self.assertTrue(found.found)
         self.assertEqual(missing.outcome, "absent")
         self.assertEqual(missing.error, "Policy file not found: ~/nope.yml")
+        # Unknown ~user: pathlib raises RuntimeError; the ref must still fail
+        # with the actionable not-found diagnostic instead of crashing.
+        with patch.object(
+            Path, "expanduser", side_effect=RuntimeError("Could not determine home directory.")
+        ):
+            unknown_user = discover_policy(
+                Path("/fake"), policy_override="~apm-no-such-user-3195/p.yml", no_cache=True
+            )
+        self.assertEqual(unknown_user.outcome, "absent")
+        self.assertEqual(unknown_user.error, "Policy file not found: ~apm-no-such-user-3195/p.yml")
         mock_fetch.assert_not_called()
 
     @patch("apm_cli.policy.discovery._fetch_github_contents")
