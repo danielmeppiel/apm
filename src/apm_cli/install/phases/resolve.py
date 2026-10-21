@@ -21,9 +21,11 @@ from apm_cli.install.helpers.ref_reuse import (
     requires_remote_ref_resolution as _requires_remote_ref_resolution,
 )
 from apm_cli.install.helpers.ref_seed import seed_ref_resolver_from_lockfile
+from apm_cli.install.presentation.resolution import report_resolved_dependencies
 from apm_cli.install.transaction import resolution_for_context
 from apm_cli.models.apm_package import GitReferenceType, ResolvedReference
 from apm_cli.models.dependency import materialization as _materialization
+from apm_cli.models.dependency.replacement import project_manifest_dependencies
 from apm_cli.utils.short_sha import format_short_sha
 
 if TYPE_CHECKING:
@@ -137,6 +139,22 @@ def _prepare_callback_materialization_path(
             reader=materialization_reader,
             on_migrate=_materialization_migration_logger(logger, modules_dir),
         )
+
+
+def _discard_failed_download(
+    staging_session: ResolutionStagingSession, replacement_path: Path, error: Exception
+) -> Exception:
+    """Keep the download failure visible if removing its partial candidate also fails."""
+    try:
+        staging_session.discard_replacement(replacement_path)
+    except (OSError, ValueError) as cleanup_error:
+        combined = RuntimeError(
+            f"{error}. Could not discard downloaded candidate {replacement_path}: "
+            f"{cleanup_error}. Inspect the retained staging path before retrying."
+        )
+        combined.__cause__ = error
+        return combined
+    return error
 
 
 def _activate_validated_candidate(
@@ -580,7 +598,9 @@ def _resolve_dependencies(
                 # affected by ``--root``.
                 base_dir = (
                     parent_pkg.source_path
-                    if parent_pkg is not None and parent_pkg.source_path is not None
+                    if dep_ref.replacement is None
+                    and parent_pkg is not None
+                    and parent_pkg.source_path is not None
                     else source_root
                 )
                 result_path = _copy_local_package(
@@ -646,7 +666,9 @@ def _resolve_dependencies(
                     ctx.expected_hash_change_deps.add(dep_ref.get_unique_key())
                 if logger:
                     _old = (
-                        _locked_dep.resolved_ref or _locked_dep.resolved_commit[:8]
+                        _locked_dep.resolved_ref
+                        or (_locked_dep.resolved_commit or "")[:8]
+                        or "unresolved"
                         if _locked_dep
                         else "?"
                     )
@@ -680,7 +702,7 @@ def _resolve_dependencies(
             return replacement_path
         except Exception as e:
             if replacement_path is not None:
-                staging_session.discard_replacement(replacement_path)
+                e = _discard_failed_download(staging_session, replacement_path, e)
             dep_display = dep_ref.get_display_name()
             dep_key = dep_ref.get_unique_key()
             is_direct = dep_key in direct_dep_keys
@@ -778,24 +800,6 @@ def _resolve_dependencies(
     if rejected_remote_local:
         callback_failures.update(rejected_remote_local)
 
-    # Verbose: show resolved tree summary
-    if ctx.logger:
-        tree = dependency_graph.dependency_tree
-        direct_count = len(tree.get_nodes_at_depth(1))
-        transitive_count = len(tree.nodes) - direct_count
-        if transitive_count > 0:
-            ctx.logger.verbose_detail(
-                f"Resolved dependency tree: {direct_count} direct + "
-                f"{transitive_count} transitive deps (max depth {tree.max_depth})"
-            )
-            for node in tree.nodes.values():
-                if node.depth > 1:
-                    ctx.logger.verbose_detail(f"    {node.get_ancestor_chain()}")
-        else:
-            ctx.logger.verbose_detail(
-                f"Resolved {direct_count} direct dependencies (no transitive)"
-            )
-
     # Check for circular dependencies
     if dependency_graph.circular_dependencies:
         if ctx.logger:
@@ -809,9 +813,10 @@ def _resolve_dependencies(
     # Get flattened dependencies for installation
     flat_deps = dependency_graph.flattened_dependencies
     deps_to_install = flat_deps.get_installation_list()
+    report_resolved_dependencies(ctx, resolver, deps_to_install, dependency_graph.dependency_tree)
 
     _check_insecure_dependencies(
-        ctx.all_apm_deps,
+        project_manifest_dependencies(ctx.apm_package),
         ctx.allow_insecure,
         ctx.logger,
     )
@@ -862,6 +867,9 @@ def _resolve_dependencies(
     try:
         tree = dependency_graph.dependency_tree
         for node in tree.nodes.values():
+            if node.dependency_ref.replacement is not None:
+                dep_base_dirs[node.dependency_ref.get_unique_key()] = source_root
+                continue
             parent_node = node.parent
             if parent_node is None or parent_node.package is None:
                 continue
@@ -919,43 +927,11 @@ def _resolve_dependencies(
 
 def _apply_only_filter(ctx: InstallContext) -> None:
     """Filter ``ctx.deps_to_install`` to the ``--only`` package(s) and their subtrees."""
-    # ------------------------------------------------------------------
-    # 7. --only filtering
-    # ------------------------------------------------------------------
-    from apm_cli.install.package_selection import selected_dependency_identity
+    from apm_cli.install.package_selection import selected_subtree_dependencies
 
-    # Build identity set from user-supplied package specs.
-    # Accepts any input form: git URLs, FQDN, shorthand.
-    tree = ctx.dependency_graph.dependency_tree
-    resolved_refs = [node.dependency_ref for node in tree.nodes.values()]
-    only_identities: builtins.set = builtins.set()
-    for p in ctx.only_packages:
-        try:
-            only_identities.add(selected_dependency_identity(p, resolved_refs))
-        except Exception:
-            only_identities.add(p)
-
-    # Expand the set to include transitive descendants of the
-    # requested packages so their MCP servers, primitives, etc.
-    # are correctly installed and written to the lockfile.
-    def _collect_descendants(node: object, visited: builtins.set | None = None) -> None:
-        """Walk the tree and add every child identity (cycle-safe)."""
-        if visited is None:
-            visited = builtins.set()
-        for child in node.children:  # type: ignore[attr-defined]
-            identity = child.dependency_ref.get_identity()
-            if identity not in visited:
-                visited.add(identity)
-                only_identities.add(identity)
-                _collect_descendants(child, visited)
-
-    for node in tree.nodes.values():
-        if node.dependency_ref.get_identity() in only_identities:
-            _collect_descendants(node)
-
-    ctx.deps_to_install = [
-        dep for dep in ctx.deps_to_install if dep.get_identity() in only_identities
-    ]
+    ctx.deps_to_install = selected_subtree_dependencies(
+        ctx.only_packages, ctx.dependency_graph.dependency_tree, ctx.deps_to_install
+    )
 
 
 def _record_update_plan_complete_dep_keys(ctx: InstallContext) -> None:
@@ -980,6 +956,17 @@ def run(ctx: InstallContext) -> None:
     :class:`~apm_cli.install.context.InstallContext` is populated.
     """
     _load_lockfile(ctx)
+    if ctx.only_packages and ctx.existing_lockfile is not None:
+        from apm_cli.install.plan import lockfile_satisfies_replacements
+
+        unchanged, _ = lockfile_satisfies_replacements(
+            ctx.existing_lockfile, getattr(ctx.apm_package, "replace_rules", None)
+        )
+        if not unchanged:
+            raise RuntimeError(
+                "Replacement rules changed during a partial install. Run 'apm install' "
+                "without package selectors to apply the complete replacement table."
+            )
     _ensure_modules_dir(ctx)
     staging_session = resolution_for_context(ctx)
     materialization_reader = _materialization.CachedMaterializationPathReader()

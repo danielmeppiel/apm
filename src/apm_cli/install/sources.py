@@ -43,6 +43,10 @@ from apm_cli.install.source_helpers import (
     format_package_type_label as _format_package_type_label,
 )
 from apm_cli.install.source_helpers import (
+    locked_parent_identity,
+    materialized_manifest_snapshot,
+)
+from apm_cli.install.source_helpers import (
     rebuild_cached_semver_resolution as _rebuild_cached_semver_resolution,
 )
 from apm_cli.install.source_helpers import (
@@ -170,7 +174,11 @@ class LocalDependencySource(DependencySource):
         # source directory was captured during resolve via
         # ``ctx.dep_base_dirs`` -- it is already absolute, so ``--root``
         # has nothing to do.
-        base_dir = getattr(ctx, "dep_base_dirs", {}).get(dep_key) or ctx.source_root
+        base_dir = (
+            ctx.source_root
+            if dep_ref.replacement is not None
+            else getattr(ctx, "dep_base_dirs", {}).get(dep_key) or ctx.source_root
+        )
         original_src = Path(dep_ref.local_path).expanduser()
         if not original_src.is_absolute():
             original_src = (base_dir / original_src).resolve()
@@ -209,6 +217,9 @@ class LocalDependencySource(DependencySource):
         if logger:
             logger.download_complete(dep_ref.local_path, ref_suffix="local")
 
+        # Capture the validated copy before manifest synthesis or integration
+        # transforms it. Frozen preflight hashes this same materialization.
+        local_content_hash = _compute_hash(install_path)
         materialize_marketplace_manifest(dep_ref, install_path)
         validation = validate_apm_package(
             install_path,
@@ -230,6 +241,7 @@ class LocalDependencySource(DependencySource):
         else:
             details = "; ".join(validation.errors) or "validator returned no package"
             raise DirectDependencyError(f"Local package is invalid: {details}")
+        local_pkg = materialized_manifest_snapshot(local_pkg, install_path, pkg_type)
         warn_unrecognized_plugin_schema(diagnostics, dep_key, install_path)
         if not local_pkg.source:
             local_pkg.source = dep_ref.local_path
@@ -252,7 +264,7 @@ class LocalDependencySource(DependencySource):
         # Record for lockfile
         node = ctx.dependency_graph.dependency_tree.get_node(dep_key)
         depth = node.depth if node else 1
-        resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+        resolved_by = locked_parent_identity(ctx, node)
         _is_dev = node.is_dev if node else False
         ctx.installed_packages.append(
             InstalledPackage(
@@ -268,8 +280,8 @@ class LocalDependencySource(DependencySource):
                 extensions=extensions_from_resolved_package(local_info.package),
             )
         )
-        if install_path.is_dir() and not dep_ref.is_local:
-            ctx.package_hashes[dep_key] = _compute_hash(install_path)
+        if install_path.is_dir():
+            ctx.package_hashes[dep_key] = local_content_hash
 
         if local_info.package_type:
             ctx.package_types[dep_key] = local_info.package_type.value
@@ -488,6 +500,7 @@ class CachedDependencySource(DependencySource):
                     package_path=install_path,
                     source=dep_ref.repo_url,
                 )
+        cached_package = materialized_manifest_snapshot(cached_package, install_path, pkg_type)
         if not cached_package.source:
             cached_package.source = dep_ref.repo_url
 
@@ -514,7 +527,7 @@ class CachedDependencySource(DependencySource):
         # Collect for lockfile
         node = ctx.dependency_graph.dependency_tree.get_node(dep_key)
         depth = node.depth if node else 1
-        resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+        resolved_by = locked_parent_identity(ctx, node)
         _is_dev = node.is_dev if node else False
 
         # Determine commit SHA for the cached path. See _resolve_cached_commit
@@ -733,6 +746,11 @@ class FreshDependencySource(DependencySource):
                     progress_obj=progress,
                 )
 
+            if package_info.package is not None:
+                package_info.package = materialized_manifest_snapshot(
+                    package_info.package, install_path, package_info.package_type
+                )
+
             # CRITICAL: hide progress BEFORE printing success to avoid overlap
             if progress is not None and task_id is not None:
                 progress.update(task_id, visible=False)
@@ -789,7 +807,7 @@ class FreshDependencySource(DependencySource):
                 resolved_commit = package_info.resolved_reference.resolved_commit
             node = ctx.dependency_graph.dependency_tree.get_node(dep_key)
             depth = node.depth if node else 1
-            resolved_by = node.parent.dependency_ref.repo_url if node and node.parent else None
+            resolved_by = locked_parent_identity(ctx, node)
             _is_dev = node.is_dev if node else False
             # Registry-sourced deps: pull the captured resolution out of
             # the resolver's per-graph map so the lockfile records

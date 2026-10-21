@@ -236,8 +236,17 @@ and `alias`.
 Local-path deps inside another local package resolve relative to that
 package's directory, not the project root.
 
+Local strings and `path:` objects can select one `.agent.md`, `.instructions.md`,
+or `.prompt.md` file as well as a directory package. The selected file goes
+through ordinary package materialization, validation, rendering, and ownership.
+It is copied, not linked; file symlinks are rejected. No sibling assets or
+dependencies mentioned in prose are collected. Use a directory package with
+`apm.yml` for companion files. `--root` does not change source anchors;
+`--global` still requires an absolute or expanded `~/...` path.
+
 ```yaml
 - path: ./packages/my-skills
+- path: ./ai/agents/xyz.agent.md
 
 - path: ./packages/local-review-kit
   alias: local-review-kit
@@ -246,7 +255,7 @@ package's directory, not the project root.
 ```
 
 After install, `apm deps list` presents a local dependency as
-`_local/<directory-name>`. For a direct declaration with matching
+`_local/<directory-or-file-name>`. For a direct declaration with matching
 `apm.lock.yaml` metadata, that portable key is accepted verbatim by
 `apm uninstall` and `apm uninstall -g`; user-scope automation does not need to
 discover or print the absolute declared path. Without a lockfile, use the exact
@@ -262,13 +271,52 @@ When three or more declarations share a slot, one exact-path uninstall must not
 leave multiple physical survivors. Pass enough exact paths in the same command
 that at most one declaration remains.
 
+### Root source replacement (candidate)
+
+Unratified development-build contract. Proposal 0.1.54 stages distinct
+manifest and lock schemas for review; no first supported release or adoption
+is claimed. Require this exact selector whenever root `replace` is present:
+
+```yaml
+$schema: https://microsoft.github.io/apm/specs/schemas/manifest-source-replacements-v1.schema.json
+replace:
+  - for:
+      git: https://github.com/example/catalog.git
+      path: packages/base
+    with:
+      path: ../catalog/packages/base
+```
+
+`for` matches normalized host, endpoint, repository and optional subdirectory
+exactly, at every graph depth. Only consumer-root rules apply. For a fork use
+`with: {git: https://github.com/my-org/catalog-fork.git, path: packages/base, ref: patched-base}`.
+`ref` is required; omitted fork `path` selects its repository root.
+Use an explicit HTTPS/SSH URL or SCP-style locator for the selected Git source,
+not `owner/repo` or scheme-free `host/repo` shorthand.
+Local `with.path` is anchored to the consumer manifest, not a transitive parent.
+The complete source/ref is substituted; original refs remain provenance.
+No chaining, wildcards, single-file selectors or dependency-owned overrides.
+Unknown fields, duplicate selectors, collisions and cycles fail.
+
+Original identity and selections still own one installed slot. Auth, policy,
+integrity and executable approval evaluate the selected source; upstream consent
+is not transferred. HTTP replacement sources are rejected, even with CLI consent.
+Missing/invalid selected sources never fall back upstream. Unused rules warn
+without accessing their sources. Removing a rule and running `apm install`
+restores upstream obligations and reconciles owned outputs.
+
+The complete table and incoming requests are recorded in candidate lock version
+`"3"`. Verified v0.25.0/v0.32.0/v0.33.0 readers reject the selector/version;
+v0.24.1 may ignore them and install upstream. Rejection is not feature support:
+do not recommend a minimum released client or use unqualified readers.
+
 ### Marketplace (`name` + `marketplace`)
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | REQUIRED | Plugin identifier within the marketplace (`^[a-zA-Z0-9._-]+$`). |
 | `marketplace` | REQUIRED | Registered marketplace name (`^[a-zA-Z0-9._-]+$`). |
-| `version` | OPTIONAL | Semver range or exact version (e.g. `~2.1.0`, `^2.0`, `>=1.4`, `2.1.0`). Resolved against git tags using the publisher's effective pattern: `packages[].tag_pattern`, then `marketplace.build.tagPattern`. Older metadata without `source.tag_pattern` uses the legacy `{name}--v{version}` fallback. |
+| `version` | OPTIONAL | Semver range or exact version (e.g. `~2.1.0`, `^2.0`, `>=1.4`, `2.1.0`), literal branch/tag ref (e.g. `main`, `v1.2.3`), or full commit SHA. Semver selections resolve against git tags using the publisher's effective pattern: `packages[].tag_pattern`, then `marketplace.build.tagPattern`. Older metadata without `source.tag_pattern` uses the legacy `{name}--v{version}` fallback. Literal refs and pins bypass semver tag selection. |
 
 During resolution, marketplace entries are looked up in the marketplace's
 `marketplace.json` and replaced with concrete git coordinates. When `version`
@@ -280,9 +328,20 @@ constraint and picks the highest matching tag. Old `marketplace.json` files
 that omit `source.tag_pattern` fall back to `{name}--v{version}`. Patterns
 must contain exactly one `{version}` placeholder, and a no-match does not
 silently become a raw ref or consult a different repository. Use
-`apm install pkg@catalog#v1.0.1` for a literal ref; CLI marketplace suffixes
-do not accept ranges. Raw refs bypass tag resolution. The lockfile records the resolved ref, not the marketplace
-placeholder. Unknown keys in a marketplace entry are rejected.
+object-form `version: v1.0.1` or `apm install pkg@catalog#v1.0.1` for a literal
+ref; CLI marketplace suffixes do not accept ranges. Raw refs bypass tag resolution. The lockfile records the resolved ref, not the marketplace
+placeholder. Semver selections also record the existing advisory `resolved_at`
+UTC timestamp; audit and replay do not use it to choose a version.
+Unknown keys in a marketplace entry are rejected.
+
+For object-form declarations, `apm audit --ci` uses recorded
+`discovered_via` + `marketplace_plugin_name` to find one locked coordinate.
+Semver selections also record `constraint`, `resolved_tag`, and the selected
+`version`; a package display version alone is not selection proof. Missing or
+ambiguous evidence fails. Audit does not fetch the catalog, so removing a local
+catalog registration does not invalidate otherwise valid installed evidence.
+Omitting `version` removes the selector comparison, not the unique-provenance
+and full locked-commit requirements.
 
 Producer-emitted `source: url` and `source: git-subdir` objects resolve
 through the same Git dependency parser as direct object-form dependencies.
@@ -513,7 +572,8 @@ dependencies:
         #                            and resolved at runtime.
         #                            Kiro: preserved as ${VAR} and resolved at runtime.
         #                            Cursor: translated to ${env:VAR} and resolved at runtime.
-        #                            Windsurf/OpenCode/Claude/Gemini: resolved at install time.
+        #                            OpenCode: translated to {env:VAR}; export variables at runtime.
+        #                            Windsurf/Claude/Gemini: resolved at install time.
         #                            Codex: env resolved at install time; a remote
         #                            server's headers are written as
         #                            bearer_token_env_var / env_http_headers and
@@ -574,10 +634,14 @@ See the [MCP
 Servers guide](../../../../../docs/src/content/docs/consumer/install-mcp-servers.md#token-injection-github-mcp-server)
 for token selection details.
 
+OpenCode requires referenced variables in its launch environment. See the
+[variable reference rules](../../../../../docs/src/content/docs/reference/manifest-schema.md#424-variable-references-in-headers-and-env)
+for supported fields and literal-value handling.
+
 For OpenCode, top-level `enabled` passes the supplied value and JSON type
 unchanged, including `false`, `null`, and non-boolean values. Only omission
 defaults to `true`; OpenCode interprets the value, not APM. Reinstall applies
-changes to this field. OpenCode remains project-only. See the
+changes to this field. See the
 [manifest schema](https://microsoft.github.io/apm/reference/manifest-schema/#422-dependenciesmcp)
 for the dependency contract.
 
@@ -774,6 +838,14 @@ upstream instead of using a persistent bare-cache ref as current-state evidence.
 transport against the lock, including transport changes under an unchanged
 semver range. It does not check whether an upstream branch moved. Review an
 intentional declaration change and run `apm install --update` to refresh the lock.
+
+For local `.agent.md`, `.instructions.md`, and `.prompt.md` dependencies, the
+locked content hash covers the ordinary materialized package, including its
+generated manifest. `--frozen` reconstructs that image from the declared source
+and rejects changed bytes without rewriting the lock or replacing deployment.
+Run normal `apm install` to accept deliberate source edits; sibling files are
+not included. `apm update` compares dependency refs; do not use it as a
+local-content refresh.
 
 Directory symlink aliases in `HOME` or `APM_HOME` work for global skill deployment.
 They do not relax package-descendant containment or destination-symlink checks,

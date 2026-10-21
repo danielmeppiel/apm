@@ -258,24 +258,41 @@ def test_alias_target_contracts_attributed_local_rows(
 def test_install_does_not_expand_unattributed_dependency_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The local provenance fix must not sweep ambiguous historical dependency rows."""
+    """Retire proven absent members without sweeping still-present historical skills."""
     _write_project(tmp_path, ("claude", "copilot"))
     _write_skill(tmp_path / "dep", "dep-extra")
+    obsolete_source = tmp_path / "dep/.apm/skills/dep-skill/obsolete.md"
+    obsolete_source.write_text("Old member.\n", encoding="ascii")
     _install(tmp_path, monkeypatch)
     _mark_shared_root_rows_unattributed(tmp_path, owner="./dep")
+    shared_skill = tmp_path / ".agents/skills/dep-extra/SKILL.md"
+    expected_bytes = shared_skill.read_bytes()
+    expected_hash = compute_file_hash(shared_skill)
 
     shutil.rmtree(tmp_path / "dep" / ".apm" / "skills" / "dep-extra")
+    obsolete_source.unlink()
+    obsolete = {
+        ".agents/skills/dep-skill/obsolete.md",
+        ".claude/skills/dep-skill/obsolete.md",
+    }
+    for path in obsolete:
+        (tmp_path / path).unlink()
     _install(tmp_path, monkeypatch)
 
     dependency = next(
         row for row in _lock(tmp_path)["dependencies"] if row["repo_url"] == "_local/dep"
     )
     assert ".agents/skills/dep-extra/SKILL.md" in dependency["deployed_files"]
-    # Dependency-native synchronization already removes this known package output;
-    # this project-local fix must not add a separate historical-row sweep.
-    assert not (tmp_path / ".agents" / "skills" / "dep-extra").exists()
+    # An unattributed surviving claim is not deletion authority, even when the
+    # current source no longer contains the file. The attributed twin can retire.
+    assert shared_skill.read_bytes() == expected_bytes
+    assert dependency["deployed_file_hashes"][".agents/skills/dep-extra/SKILL.md"] == expected_hash
     assert not (tmp_path / ".claude" / "skills" / "dep-extra").exists()
     assert _deployment_targets(_lock(tmp_path))[".agents/skills/dep-extra/SKILL.md"] == "legacy"
+    assert obsolete.isdisjoint(dependency["deployed_files"])
+    assert obsolete.isdisjoint(dependency["deployed_file_hashes"])
+    assert obsolete.isdisjoint(_deployment_targets(_lock(tmp_path)))
+    assert all(not (tmp_path / path).exists() for path in obsolete)
 
 
 def test_historical_bundle_without_owner_evidence_survives_install(
