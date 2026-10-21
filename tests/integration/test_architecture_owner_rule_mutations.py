@@ -674,6 +674,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Claude LSP plugin writes bypass the canonical deployment-path gate.",
     ),
     MutationCase(
+        guard_id="install-deployment-manifest-snapshot",
+        rule_id="install-deployment-manifest-snapshot",
+        path="src/apm_cli/install/source_helpers.py",
+        old="snapshot = APMPackage.from_mapping(",
+        new="snapshot = APMPackage.from_apm_yml(",
+        intent="Acquired metadata reuses the process-lifetime manifest path cache.",
+    ),
+    MutationCase(
         guard_id="install-deployment-mcp-ownership-migration",
         rule_id="install-deployment-mcp-ownership-migration",
         path="src/apm_cli/install/mcp/ownership.py",
@@ -752,6 +760,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def prepare_replacement(",
         new="def prepare_replacement_disabled(",
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-single-file-materialization",
+        rule_id="install-deployment-single-file-materialization",
+        path="src/apm_cli/install/phases/local_content.py",
+        old="source = read_local_package_source(dep_ref, base_dir)",
+        new="source = bypass_local_package_source(dep_ref, base_dir)",
+        intent="Local copying bypasses the canonical single-file admission authority.",
     ),
     MutationCase(
         guard_id="install-deployment-skill-preflight",
@@ -840,6 +856,28 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def normalized_plugin_skill_sources(",
         new="def normalized_plugin_skill_sources_X(",
         intent="Legacy plugin skill membership loses its normalization owner.",
+    ),
+    MutationCase(
+        guard_id="marketplace-integrations-locked-association",
+        rule_id="marketplace-integrations-locked-evidence",
+        path="src/apm_cli/policy/ci_checks.py",
+        old=(
+            "display = dep_ref.get_display_name() if dep_ref.is_marketplace else key\n"
+            "        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)"
+        ),
+        new=(
+            "display = dep_ref.get_display_name() if dep_ref.is_marketplace else key\n"
+            "        locked_dep = next((dep for dep in lock.dependencies if dep.get_unique_key() == key), None)"
+        ),
+        intent="Ref consistency bypasses canonical marketplace declaration-to-lock association.",
+    ),
+    MutationCase(
+        guard_id="marketplace-integrations-locked-evidence",
+        rule_id="marketplace-integrations-locked-evidence",
+        path="src/apm_cli/policy/ci_checks.py",
+        old="marketplace_ref_mismatch(dep_ref, locked_dep)",
+        new="None",
+        intent="Ref consistency accepts marketplace declarations without checking locked ref evidence.",
     ),
     MutationCase(
         guard_id="marketplace-integrations-metadata-enrichment",

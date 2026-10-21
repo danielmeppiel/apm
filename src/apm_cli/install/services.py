@@ -28,7 +28,6 @@ from apm_cli.agent_plugins.errors import enforce_agent_plugin_deployment_boundar
 
 from .deployed_paths import deployed_path_entry as _deployed_path_entry
 from .deployed_paths import format_target_collapse as _format_target_collapse
-from .deployed_paths import skill_bundle_file_entries as _skill_bundle_file_entries
 from .deployed_paths import skill_summary_paths as _skill_summary_paths
 from .deployment_plan import PackageDeploymentPlan, prepare_package_deployment
 from .exec_gate import plugin_bin_deployable, resolve_bin_skip
@@ -658,13 +657,9 @@ def integrate_package_primitives(  # noqa: PLR0913
         log_bin_status(skill_result, _skill_suffix, package_name, package_info, _log_integration)
     for tp in skill_result.target_paths:
         deployed.append(_deployed_path_entry(tp, project_root, targets))
-        # #1716: also record the bundle's contained files so per-file
-        # content hashes cover SKILL.md / assets / scripts. The directory
-        # entry above is retained (cleanup's directory-rejection gate and
-        # the manifest dir-exclusion contract depend on it); the file
-        # entries give ``content-integrity`` its per-file coverage so skill
-        # drift is caught under ``apm audit --ci --no-drift``.
-        deployed.extend(_skill_bundle_file_entries(tp, project_root, targets))
+    deployed.extend(
+        _deployed_path_entry(path, project_root, targets) for path in skill_result.deployed_files
+    )
 
     # A3: warm-cache visibility. If nothing was integrated for any kind AND
     # no skill was created, emit one annotation so the user knows the dep

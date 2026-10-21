@@ -1034,10 +1034,10 @@ class TestLocalPathValidationMessages:
 
         dep_ref = DependencyReference.parse(str(tmp_path / "does-not-exist-xyz-9999"))
         reason = _local_path_failure_reason(dep_ref)
-        assert reason == "path does not exist"
+        assert "path does not exist" in reason
 
     def test_local_path_failure_reason_file_not_dir(self, tmp_path):
-        """A file (not directory) returns 'path is not a directory'."""
+        """An unsupported file reports supported formats and the package alternative."""
         from apm_cli.commands.install import _local_path_failure_reason
         from apm_cli.models.apm_package import DependencyReference
 
@@ -1045,7 +1045,8 @@ class TestLocalPathValidationMessages:
         f.write_text("hello")
         dep_ref = DependencyReference.parse(str(f))
         reason = _local_path_failure_reason(dep_ref)
-        assert reason == "path is not a directory"
+        assert "Unsupported single-file dependency" in reason
+        assert "directory package" in reason
 
     def test_local_path_failure_reason_no_markers(self, tmp_path):
         """Directory without markers returns specific message."""
@@ -1056,15 +1057,10 @@ class TestLocalPathValidationMessages:
         empty_dir.mkdir()
         dep_ref = DependencyReference.parse(str(empty_dir))
         reason = _local_path_failure_reason(dep_ref)
-        assert reason == "no apm.yml, SKILL.md, or plugin.json found"
+        assert "no apm.yml, SKILL.md, or plugin.json" in reason
 
     def test_local_path_failure_reason_valid_apm_yml(self, tmp_path):
-        """Directory with apm.yml still returns 'no markers' message.
-
-        _local_path_failure_reason is only called when _validate_package_exists
-        already returned False, so it doesn't re-check markers. We verify it
-        returns a string (not None) and doesn't crash.
-        """
+        """A valid package has no fabricated missing-marker diagnosis."""
         from apm_cli.commands.install import _local_path_failure_reason
         from apm_cli.models.apm_package import DependencyReference
 
@@ -1073,7 +1069,7 @@ class TestLocalPathValidationMessages:
         (pkg / "apm.yml").write_text("name: test\nversion: 1.0.0\n")
         dep_ref = DependencyReference.parse(str(pkg))
         reason = _local_path_failure_reason(dep_ref)
-        assert reason == "no apm.yml, SKILL.md, or plugin.json found"
+        assert reason is None
 
     def test_local_path_failure_reason_remote_ref(self):
         """Remote refs return None (not a local path)."""

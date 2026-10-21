@@ -236,8 +236,17 @@ and `alias`.
 Local-path deps inside another local package resolve relative to that
 package's directory, not the project root.
 
+Local strings and `path:` objects can select one `.agent.md`, `.instructions.md`,
+or `.prompt.md` file as well as a directory package. The selected file goes
+through ordinary package materialization, validation, rendering, and ownership.
+It is copied, not linked; file symlinks are rejected. No sibling assets or
+dependencies mentioned in prose are collected. Use a directory package with
+`apm.yml` for companion files. `--root` does not change source anchors;
+`--global` still requires an absolute or expanded `~/...` path.
+
 ```yaml
 - path: ./packages/my-skills
+- path: ./ai/agents/xyz.agent.md
 
 - path: ./packages/local-review-kit
   alias: local-review-kit
@@ -246,7 +255,7 @@ package's directory, not the project root.
 ```
 
 After install, `apm deps list` presents a local dependency as
-`_local/<directory-name>`. For a direct declaration with matching
+`_local/<directory-or-file-name>`. For a direct declaration with matching
 `apm.lock.yaml` metadata, that portable key is accepted verbatim by
 `apm uninstall` and `apm uninstall -g`; user-scope automation does not need to
 discover or print the absolute declared path. Without a lockfile, use the exact
@@ -785,6 +794,14 @@ upstream instead of using a persistent bare-cache ref as current-state evidence.
 transport against the lock, including transport changes under an unchanged
 semver range. It does not check whether an upstream branch moved. Review an
 intentional declaration change and run `apm install --update` to refresh the lock.
+
+For local `.agent.md`, `.instructions.md`, and `.prompt.md` dependencies, the
+locked content hash covers the ordinary materialized package, including its
+generated manifest. `--frozen` reconstructs that image from the declared source
+and rejects changed bytes without rewriting the lock or replacing deployment.
+Run normal `apm install` to accept deliberate source edits; sibling files are
+not included. `apm update` compares dependency refs; do not use it as a
+local-content refresh.
 
 Directory symlink aliases in `HOME` or `APM_HOME` work for global skill deployment.
 They do not relax package-descendant containment or destination-symlink checks,
