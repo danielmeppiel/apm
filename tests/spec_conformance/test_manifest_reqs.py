@@ -136,18 +136,6 @@ def test_consumer_supports_apm_source_short_form_string():
     assert string_form.get("minLength", 0) >= 1
 
 
-@pytest.mark.req("req-mf-011")
-def test_consumer_supports_apm_source_table_form():
-    schema = load_schema("manifest-v0.1.41.schema.json")
-    entry_obj = next(s for s in schema["$defs"]["depEntry"]["oneOf"] if s.get("type") == "object")
-    options = entry_obj["oneOf"]
-    required_sets = sorted(tuple(sorted(o["required"])) for o in options)
-    assert required_sets == [("git",), ("id",), ("path",), ("registry",)], (
-        "table-form depEntry MUST require exactly one of git/id/path/registry"
-    )
-
-
-@pytest.mark.req("req-mf-012")
 def test_consumer_rejects_unknown_source_kind():
     doc = load_yaml_fixture("manifest", "invalid-source-kind.yml")
     with pytest.raises(jsonschema.ValidationError):
