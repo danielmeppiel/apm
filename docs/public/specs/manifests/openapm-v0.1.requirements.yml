@@ -79,6 +79,7 @@ requirements:
     keyword: MUST
     section: "4.5"
     conformance_class: consumer
+    notes: "Environment references use the target-native syntax, including {env:VAR} for OpenCode."
   - id: req-mf-014
     keyword: MUST
     section: "4.2.3"

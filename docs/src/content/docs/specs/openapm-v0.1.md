@@ -689,8 +689,8 @@ placeholder syntaxes:
 
 | Syntax            | Source                | Resolution                                                              |
 |-------------------|-----------------------|-------------------------------------------------------------------------|
-| `${VAR}`          | host environment      | Normalised to `${env:VAR}` for native interpolation; resolved at install for others. |
-| `${env:VAR}`      | host environment      | Passed through where natively supported; resolved at install otherwise. |
+| `${VAR}`          | host environment      | Normalised to `${env:VAR}` for native interpolation (`{env:VAR}` for OpenCode); resolved at install for others. |
+| `${env:VAR}`      | host environment      | Translated to `{env:VAR}` for OpenCode; passed through where natively supported; resolved at install otherwise. |
 | `${input:<id>}`   | interactive prompt    | Native where supported; otherwise the placeholder MUST NOT be silently rendered as literal text. |
 
 GitHub Actions templates (`${{ ... }}`) MUST be left untouched.
