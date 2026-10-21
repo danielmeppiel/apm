@@ -3,6 +3,7 @@
 The two functions in this module own the *integration template* for a single
 package -- looping over the resolved targets, dispatching primitives to their
 integrators, accumulating counters, and recording deployed file paths.
+Authorization preparation is shared through ``deployment_plan``.
 
 Moved here from ``apm_cli.commands.install`` so that the install engine
 package owns its own integration logic.  ``commands/install`` keeps thin
@@ -29,9 +30,8 @@ from .deployed_paths import deployed_path_entry as _deployed_path_entry
 from .deployed_paths import format_target_collapse as _format_target_collapse
 from .deployed_paths import skill_bundle_file_entries as _skill_bundle_file_entries
 from .deployed_paths import skill_summary_paths as _skill_summary_paths
-from .exec_gate import check_executable_approval
-from .exec_gate import plugin_bin_deployable as _plugin_bin_deployable
-from .exec_gate import resolve_bin_skip as _resolve_bin_skip
+from .deployment_plan import PackageDeploymentPlan, prepare_package_deployment
+from .exec_gate import resolve_bin_skip
 from .local_bundle_paths import bundle_deploy_relative_path as _bundle_rel
 from .local_bundle_paths import bundle_deploy_skip_warning as _bundle_skip_warning
 from .local_bundle_paths import bundle_pack_files as _bundle_pack_files
@@ -39,17 +39,8 @@ from .local_bundle_paths import bundle_slug_validation_error as _bundle_slug_err
 from .local_bundle_paths import known_bundle_deploy_prefixes as _known_bundle_prefixes
 from .local_bundle_paths import target_bundle_deploy_prefixes as _target_bundle_prefixes
 from .project_package import build_project_local_package_info
-from .target_filter import (
-    log_package_target_restriction as _log_package_target_restriction,
-)
-from .target_filter import resolve_effective_package_targets
 
 if TYPE_CHECKING:
-    from apm_cli.codex_plugins.admission import CodexNativePlugin
-    from apm_cli.install.deployable_source_plan import DeployableSourcePlan
-    from apm_cli.install.target_filter import EffectivePackageTargets
-    from apm_cli.integration.targets import TargetProfile
-
     from ..core.command_logger import InstallLogger
     from ..core.scope import InstallScope
     from ..install.context import InstallContext
@@ -85,100 +76,6 @@ class IntegratorBundle:
     # keep working. Production sites (template.py, integrate_local_content,
     # drift.py) pass a real CanvasIntegrator; when None the loop skips canvas.
     canvas: BaseIntegrator | None = None
-
-
-@dataclass(frozen=True)
-class PackageDeploymentPlan:
-    """Authorized package selection shared by batch preflight and deployment."""
-
-    target_selection: EffectivePackageTargets
-    approvals: tuple[bool, bool, bool, bool, bool] = (False, False, False, False, False)
-    skip_bin: bool = False
-    bin_skip_reason: str | None = None
-    codex_native: CodexNativePlugin | None = None
-    source_plan: DeployableSourcePlan | None = None
-
-    @property
-    def projection_targets(self) -> list[TargetProfile]:
-        """Keep native Codex bundles opaque to loose primitive adapters."""
-        return [] if self.codex_native is not None else list(self.target_selection.targets)
-
-
-def prepare_package_deployment(  # noqa: PLR0913
-    package_info: Any,
-    project_root: Path,
-    *,
-    targets: Any,
-    diagnostics: DiagnosticCollector | None,
-    package_name: str = "",
-    logger: InstallLogger | None = None,
-    scope: InstallScope | None = None,
-    skill_subset: tuple | None = None,
-    ctx: InstallContext | None = None,
-    policy: Any = None,
-    is_first_party: bool = False,
-    allow_executables: builtins.dict[str, builtins.dict[str, bool]] | None = None,
-    dep_target_subset: list[str] | None = None,
-    trust_bin: bool | None = None,
-    bin_skip_reason_override: str | None = None,
-    read_only: bool = False,
-) -> PackageDeploymentPlan:
-    """Resolve deployment authorization without writing native target content."""
-    import sys
-
-    from apm_cli.codex_plugins.admission import plan_native_codex_plugin
-    from apm_cli.install.deployable_source_plan import DeployableSourcePlan
-
-    selection = resolve_effective_package_targets(
-        targets, dep_target_subset, package_info, diagnostics, package_name
-    )
-    _log_package_target_restriction(logger, selection)
-    if not selection.targets:
-        return PackageDeploymentPlan(selection)
-    approvals = check_executable_approval(package_name, package_info, allow_executables, ctx=ctx)
-    hooks, bin_approved, mcp, canvas, lsp = approvals
-    skip_bin, reason = _resolve_bin_skip(
-        bin_approved, trust_bin, non_interactive=not sys.stdout.isatty()
-    )
-    if skip_bin and bin_skip_reason_override is not None:
-        reason = bin_skip_reason_override
-    codex_native = plan_native_codex_plugin(
-        package_info,
-        package_name,
-        list(selection.targets),
-        scope=scope,
-        skill_subset=skill_subset,
-        approvals={
-            "hooks": hooks,
-            "mcp": mcp,
-            "bin": bin_approved and not skip_bin,
-            "canvas": canvas,
-            "lsp": lsp,
-        },
-        ctx=ctx,
-        read_only=read_only,
-    )
-    projection_targets = [] if codex_native is not None else list(selection.targets)
-    source_plan = DeployableSourcePlan.create(
-        package_info,
-        projection_targets,
-        skill_subset=skill_subset,
-        hooks_approved=hooks,
-        canvas_approved=canvas or is_first_party,
-        skip_bin=skip_bin,
-        diagnostics=diagnostics,
-        package_name=package_name,
-        native_plugin_root=codex_native.source_root if codex_native else None,
-        plugin_bin_deployable=_plugin_bin_deployable(
-            package_info,
-            projection_targets,
-            project_root=project_root,
-            scope=scope,
-            policy=policy,
-            skip_bin=skip_bin,
-        ),
-    )
-    return PackageDeploymentPlan(selection, approvals, skip_bin, reason, codex_native, source_plan)
 
 
 def _log_hook_display_payloads(
@@ -860,6 +757,7 @@ def integrate_local_content(  # noqa: PLR0913
 # imports/patches in tests and elsewhere that use the old names.
 _integrate_package_primitives = integrate_package_primitives
 _integrate_local_content = integrate_local_content
+_resolve_bin_skip = resolve_bin_skip
 
 
 # ---------------------------------------------------------------------------

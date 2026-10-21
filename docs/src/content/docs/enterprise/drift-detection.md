@@ -69,7 +69,9 @@ Source: `src/apm_cli/commands/audit.py`, `src/apm_cli/policy/ci_checks.py`.
 
 Scans every deployed primitive for hidden Unicode (zero-width characters,
 bidi overrides, tag characters) and runs the drift replay as advisory
-output. Exits 0 even when findings exist. Add `--strip` to remove hidden
+output. Drift alone is advisory by default; content findings and configured
+drift failures can return nonzero. See [exit codes](../../reference/cli/audit/#exit-codes).
+Add `--strip` to remove hidden
 characters in place; add `--file <path>` to scan a single file outside
 the lockfile.
 

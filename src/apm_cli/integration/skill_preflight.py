@@ -121,6 +121,7 @@ def find_unmanaged_conflicts(
     conflicts: list[SkillConflict] = []
     collision_diagnostics = DiagnosticCollector()
     affected = tuple(target.name for target in targets if target.supports("skills"))
+    allowed_prefixes = BaseIntegrator._get_integration_prefixes(targets=targets)
     # The source plan already traversed and authorized the files. Do not walk
     # the package again or infer authority from a shared destination directory.
     files_by_root: dict[Path, list[Path]] = {root: [] for root in roots}
@@ -158,7 +159,7 @@ def find_unmanaged_conflicts(
                     path = destination / suffix
                     relative_target = deployed_path_entry(path, project_root, [target])
                     if not BaseIntegrator.validate_deploy_path(
-                        relative_target, project_root, targets=targets
+                        relative_target, project_root, allowed_prefixes=allowed_prefixes
                     ):
                         from apm_cli.utils.path_security import PathTraversalError
 

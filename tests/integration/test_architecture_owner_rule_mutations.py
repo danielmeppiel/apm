@@ -772,10 +772,10 @@ MUTATIONS: tuple[MutationCase, ...] = (
     MutationCase(
         guard_id="install-deployment-source-plan",
         rule_id="install-deployment-source-plan",
-        path="src/apm_cli/install/services.py",
+        path="src/apm_cli/install/deployment_plan.py",
         old="source_plan = DeployableSourcePlan.create(",
         new="source_plan_x = DeployableSourcePlan.create(",
-        intent="Install services stop binding the shared deployable source plan.",
+        intent="Deployment preparation stops binding the shared deployable source plan.",
     ),
     MutationCase(
         guard_id="install-deployment-target-file-contraction",

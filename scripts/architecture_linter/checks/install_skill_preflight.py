@@ -40,10 +40,8 @@ def check_skill_preflight(provider: FactsProvider) -> tuple[Violation, ...]:
             "skill.find_unmanaged_conflicts(",
             "deployment_plan=deployment_plan",
         ),
-        "src/apm_cli/install/services.py": (
-            "source_plan = deployment_plan.source_plan",
-            "source_plan = DeployableSourcePlan.create(",
-        ),
+        "src/apm_cli/install/services.py": ("source_plan = deployment_plan.source_plan",),
+        "src/apm_cli/install/deployment_plan.py": ("source_plan = DeployableSourcePlan.create(",),
     }
     failures: list[Violation] = []
     for path, fragments in required.items():

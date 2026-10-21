@@ -36,6 +36,7 @@ from apm_cli.install.template import (
 
 if TYPE_CHECKING:
     from apm_cli.install.context import InstallContext
+    from apm_cli.install.deployment_plan import PackageDeploymentPlan
 
 
 # ======================================================================
@@ -297,7 +298,7 @@ def _resolve_download_strategy(
 def _integrate_root_project(
     ctx: InstallContext,
     *,
-    deployment_plan=None,
+    deployment_plan: PackageDeploymentPlan | None = None,
 ) -> dict[str, int] | None:
     """Integrate root project's own .apm/ primitives (#714).
 

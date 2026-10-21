@@ -57,6 +57,7 @@ _TARGET_FILTER_OWNER = "src/apm_cli/install/target_filter.py"
 
 
 _PACKAGE_SERVICES = "src/apm_cli/install/services.py"
+_PACKAGE_PLAN = "src/apm_cli/install/deployment_plan.py"
 
 
 _PACKAGE_HOOK = "src/apm_cli/integration/hook_integrator.py"
@@ -774,7 +775,7 @@ def _uninstall_collection_drives_dispatch(
 
 
 def _prepared_selector_binding(
-    index: TreeIndex, function: ast.AST, assignment: NameAssignment
+    provider: FactsProvider, index: TreeIndex, function: ast.AST, assignment: NameAssignment
 ) -> bool:
     """Follow the prepared plan back to the same canonical target selection."""
     if _attribute_chain(assignment.value) != ("deployment_plan", "target_selection"):
@@ -808,6 +809,13 @@ def _prepared_selector_binding(
         and not binding_nodes(index, "prepare_package_deployment", nodes=index.own_scope(function))
     ):
         return False
+    if not has_exclusive_import(
+        index, name="prepare_package_deployment", module="deployment_plan", level=1
+    ):
+        return False
+    index = provider.tree_index(_PACKAGE_PLAN)
+    if index is None:
+        return False
     prepare = _find_named_function(index, "prepare_package_deployment")
     if prepare is None or not _resolver_import_is_canonical(index, prepare, "package"):
         return False
@@ -836,13 +844,14 @@ def _prepared_selector_binding(
 
 
 def _consumer_routes_through_selector(
+    provider: FactsProvider,
     index: TreeIndex,
     function_name: str,
     dispatch_kind: str,
 ) -> bool:
     """Return whether live own-scope selector output drives a dispatch loop."""
     function = _find_named_function(index, function_name)
-    if function is None or not _resolver_import_is_canonical(index, function, dispatch_kind):
+    if function is None:
         return False
     selection_assignments = tuple(
         assignment
@@ -850,10 +859,13 @@ def _consumer_routes_through_selector(
         if not is_statically_dead(index, assignment.node)
     )
     if len(selection_assignments) != 1 or not (
-        _direct_selector_call(selection_assignments[0].value)
+        (
+            _direct_selector_call(selection_assignments[0].value)
+            and _resolver_import_is_canonical(index, function, dispatch_kind)
+        )
         or (
             dispatch_kind == "package"
-            and _prepared_selector_binding(index, function, selection_assignments[0])
+            and _prepared_selector_binding(provider, index, function, selection_assignments[0])
         )
     ):
         return False
@@ -961,7 +973,13 @@ def _consumer_routes_through_selector(
 def check_package_target_authorization(provider: FactsProvider) -> tuple[Violation, ...]:
     """Restriction-only package target authorization must have one owner."""
     rule_id = _GUARD_PACKAGE_TARGET
-    required = (_TARGET_FILTER_OWNER, _PACKAGE_SERVICES, _PACKAGE_HOOK, _UNINSTALL_ENGINE)
+    required = (
+        _TARGET_FILTER_OWNER,
+        _PACKAGE_SERVICES,
+        _PACKAGE_PLAN,
+        _PACKAGE_HOOK,
+        _UNINSTALL_ENGINE,
+    )
     missing = [path for path in required if not provider.file_facts(path).exists]
     if missing:
         return tuple(
@@ -999,7 +1017,7 @@ def check_package_target_authorization(provider: FactsProvider) -> tuple[Violati
     ):
         consumer_index = provider.tree_index(consumer_path)
         if consumer_index is None or not _consumer_routes_through_selector(
-            consumer_index, function_name, dispatch_kind
+            provider, consumer_index, function_name, dispatch_kind
         ):
             findings.append(_summary(rule_id, consumer_path, message))
 

@@ -85,8 +85,9 @@
     {
       "id": "unmanaged-skill-preflight",
       "decision": "Whole-plan unmanaged skill refusal before native deployment",
-      "owner": "integration/skill_preflight.py via SkillIntegrator; install/template.py applies the batch gate using services.prepare_package_deployment",
+      "owner": "integration/skill_preflight.py via SkillIntegrator; install/template.py applies the batch gate using deployment_plan.prepare_package_deployment",
       "selectors": [
+        "src/apm_cli/install/deployment_plan.py",
         "src/apm_cli/integration/skill_preflight.py"
       ],
       "guards": ["install-deployment-skill-preflight"]

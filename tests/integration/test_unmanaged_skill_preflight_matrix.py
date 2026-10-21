@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from apm_cli.copilot_plugins.registrar import catalog_path_for
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
 from tests.integration.test_unmanaged_skill_preflight_lifecycle import (
     _CHILD_PROVENANCE,
@@ -15,6 +16,7 @@ from tests.integration.test_unmanaged_skill_preflight_lifecycle import (
     _native_bytes,
     _tree_bytes,
 )
+from tests.unit.copilot_plugins._builders import write_agent_plugin
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_package import LocalPackageFactory
@@ -51,7 +53,7 @@ def _forget_legacy_conflict_claim(lock_path: Path, prefix: str) -> None:
 @pytest.mark.parametrize("scope", ["project", "user"])
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("prior_partial", [False, True])
-@pytest.mark.parametrize("layout", ["subskills", "bundle"])
+@pytest.mark.parametrize("layout", ["subskills", "bundle", "native"])
 def test_refusal_preserves_plan_then_narrowing_and_correction_converge(
     tmp_path: Path,
     apm_binary_path: Path,
@@ -63,7 +65,7 @@ def test_refusal_preserves_plan_then_narrowing_and_correction_converge(
     isolated = IsolatedApmEnvironment.create(tmp_path / "isolated", base_env=os.environ)
     factory = LocalPackageFactory(isolated.work_root)
     earlier = factory.create("a-before-conflict")
-    source = factory.create("z-review-lint")
+    source = factory.create("review" if layout == "native" else "z-review-lint")
     for package, names in ((earlier, ("prepare",)), (source, ("review", "lint"))):
         for name in names:
             factory.add_skill(
@@ -71,9 +73,13 @@ def test_refusal_preserves_plan_then_narrowing_and_correction_converge(
                 name,
                 f"---\nname: {name}\ndescription: Fixture {name}\n---\n{name} from {package.name}.\n",
             )
-        if layout == "subskills":
+        if layout in {"subskills", "native"}:
             (package.root / ".apm").mkdir()
             (package.root / "skills").rename(package.root / ".apm/skills")
+    if layout == "native":
+        native_skill = source.root / ".apm/skills/review/SKILL.md"
+        native_skill.rename(source.root / "SKILL.md")
+        native_skill.parent.rmdir()
     targets = ["claude", "codex"] if scope == "user" else ["claude", "copilot", "codex"]
     if reverse:
         targets.reverse()
@@ -133,7 +139,7 @@ def test_refusal_preserves_plan_then_narrowing_and_correction_converge(
         assert refused.returncode != 0, refused
         if not extra or prior_partial:
             output = refused.stdout + refused.stderr
-            assert "review" in output and "z-review-lint" in output
+            assert "review" in output and source.name in output
             assert ".claude/skills/review/SKILL.md" in output
             assert "rename" in output.lower() and "[x]" in output
         assert _native_bytes(deploy_root) == native_before
@@ -163,7 +169,10 @@ def test_refusal_preserves_plan_then_narrowing_and_correction_converge(
         managed_lint.write_bytes(lint_before)
 
     manifest = load_yaml(manifest_path)
-    manifest["dependencies"]["apm"][1]["skills"] = ["lint"]
+    selection_key = "targets" if layout == "native" else "skills"
+    manifest["dependencies"]["apm"][1][selection_key] = (
+        ["codex"] if layout == "native" else ["lint"]
+    )
     dump_yaml(manifest, manifest_path)
     narrowed = install()
     assert narrowed.returncode == 0, narrowed
@@ -172,12 +181,14 @@ def test_refusal_preserves_plan_then_narrowing_and_correction_converge(
     assert (deploy_root / ".claude/skills/prepare/SKILL.md").exists()
     personal = local.parent.with_name("personal-review")
     local.parent.rename(personal)
-    del manifest["dependencies"]["apm"][1]["skills"]
+    del manifest["dependencies"]["apm"][1][selection_key]
     dump_yaml(manifest, manifest_path)
     corrected = install()
     assert corrected.returncode == 0, corrected
     skill_source = (
-        source.root / (".apm" if layout == "subskills" else "") / "skills/review/SKILL.md"
+        source.root / "SKILL.md"
+        if layout == "native"
+        else (source.root / (".apm" if layout == "subskills" else "") / "skills/review/SKILL.md")
     )
     for root in (".claude", ".agents"):
         assert (
@@ -229,3 +240,42 @@ def test_standalone_skill_refuses_before_earlier_dependency_and_force_is_explici
     forced = runner.run(("install", "--no-policy", "--force"), cwd=consumer.root, env=env)
     assert forced.returncode == 0, forced
     assert conflict.read_bytes() == (source.root / "SKILL.md").read_bytes()
+
+
+def test_native_plugin_registration_preserves_same_named_unmanaged_loose_skill(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """Native registration does not turn plugin members into loose-skill claims."""
+    isolated = IsolatedApmEnvironment.create(tmp_path / "isolated", base_env=os.environ)
+    source = write_agent_plugin(isolated.work_root / "native", name="review", with_mcp=False)
+    consumer = LocalPackageFactory(isolated.work_root).create(
+        "consumer", targets=["copilot"], dependencies=({"path": str(source)},)
+    )
+    local = consumer.root / ".agents/skills/review-skill/SKILL.md"
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"Personal loose skill, not a native plugin member.\n")
+    before = _native_bytes(consumer.root)
+    source_before = _tree_bytes(source)
+    env = isolated.subprocess_env()
+    guard = Path(env["PYTHONPATH"]) / "sitecustomize.py"
+    guard.write_text(guard.read_text(encoding="utf-8") + _CHILD_PROVENANCE, encoding="utf-8")
+    env["APM_TEST_CHILD_RECEIPT"] = str(tmp_path / "child-native.json")
+    installed = ApmLifecycleRunner((str(apm_binary_path),)).run(
+        ("install", "--no-policy"), cwd=consumer.root, env=env
+    )
+    assert installed.returncode == 0, installed
+    assert local.read_bytes() == before[".agents/skills/review-skill/SKILL.md"]
+    assert _tree_bytes(source) == source_before
+    modules = consumer.root / "apm_modules"
+    catalog = json.loads(catalog_path_for(modules).read_text(encoding="utf-8"))
+    (entry,) = catalog["plugins"]
+    assert entry["name"] == "review"
+    materialized = modules / entry["source"]
+    assert (materialized / "skills/review-skill/SKILL.md").read_bytes() == (
+        source / "skills/review-skill/SKILL.md"
+    ).read_bytes()
+    lock = load_yaml(consumer.root / "apm.lock.yaml")
+    assert not any(
+        record["value"].startswith(".agents/skills/review-skill")
+        for record in lock.get("deployments", [])
+    )

@@ -41,13 +41,25 @@ def test_skill_preflight_boundary(mutation: str) -> None:
         ("PackageDeploymentPlan(selection)", "PackageDeploymentPlan(rogue)"),
         ("PackageDeploymentPlan(selection, approvals", "PackageDeploymentPlan(rogue, approvals"),
         (
+            "    return PackageDeploymentPlan(selection, approvals",
+            "    selection.targets.append(rogue)\n    return PackageDeploymentPlan(selection, approvals",
+        ),
+        (
+            "from .deployment_plan import PackageDeploymentPlan, prepare_package_deployment",
+            "from .rogue import PackageDeploymentPlan, prepare_package_deployment",
+        ),
+        (
             "    target_selection = deployment_plan.target_selection",
             "    deployment_plan = rogue\n    target_selection = deployment_plan.target_selection",
         ),
     ],
 )
 def test_prepared_plan_cannot_bypass_canonical_target_authorization(old: str, new: str) -> None:
-    path = "src/apm_cli/install/services.py"
+    path = (
+        "src/apm_cli/install/deployment_plan.py"
+        if old.startswith(("selection =", "PackageDeploymentPlan(", "    return "))
+        else "src/apm_cli/install/services.py"
+    )
     source = (ROOT / path).read_text()
     assert old in source
     rule = "install-deployment-package-target-authorization"

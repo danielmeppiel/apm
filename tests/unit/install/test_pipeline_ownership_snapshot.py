@@ -19,6 +19,7 @@ from apm_cli.core.scope import InstallScope
 from apm_cli.deps.lockfile import LockFile, get_lockfile_path
 from apm_cli.install import pipeline
 from apm_cli.install.context import InstallContext
+from apm_cli.install.deployment_plan import PackageDeploymentPlan
 from apm_cli.install.phases import integrate
 from apm_cli.install.phases.lockfile import LockfileBuilder
 from apm_cli.integration.skill_integrator import SkillIntegrator
@@ -181,13 +182,15 @@ def _observe_pipeline(
             assert ctx.integrators["skill"]._ownership_snapshots is None
         return run_phase(name, phase, ctx)
 
-    def observed_root(ctx: InstallContext) -> dict[str, int] | None:
+    def observed_root(
+        ctx: InstallContext, *, deployment_plan: PackageDeploymentPlan | None = None
+    ) -> dict[str, int] | None:
         if lockfile_only:
-            return root_project(ctx)
+            return root_project(ctx, deployment_plan=deployment_plan)
         assert ctx.integrators["skill"]._ownership_snapshots is not None
         assert lock_bytes() == phase_lock_bytes
         if not expect_skill_deployment:
-            result = root_project(ctx)
+            result = root_project(ctx, deployment_plan=deployment_plan)
             assert ctx.integrators["skill"]._ownership_snapshots == {}
             assert lock_bytes() == phase_lock_bytes
             assert not fixture.deployed.exists()
@@ -198,7 +201,7 @@ def _observe_pipeline(
             assert dep_key not in ctx.package_deployed_files
             assert ctx.diagnostics.error_count == 1
             assert not fixture.deployed.exists()
-            result = root_project(ctx)
+            result = root_project(ctx, deployment_plan=deployment_plan)
             assert fixture.deployed.read_bytes() == fixture.local_skill.read_bytes()
             assert lock_bytes() == phase_lock_bytes
             evidence.root_checks += 1
@@ -207,7 +210,7 @@ def _observe_pipeline(
         dep_key = fixture.package.get_apm_dependencies()[0].get_unique_key()
         assert ".agents/skills/shared" in ctx.package_deployed_files[dep_key]
         assert ctx.local_deployed_files == []
-        result = root_project(ctx)
+        result = root_project(ctx, deployment_plan=deployment_plan)
         assert lock_bytes() == phase_lock_bytes
         assert fixture.deployed.read_bytes() == fixture.local_skill.read_bytes()
         assert ".agents/skills/shared" in ctx.local_deployed_files
