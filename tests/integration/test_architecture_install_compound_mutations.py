@@ -41,6 +41,60 @@ REQUEST_DEFAULTS_RULE = "install-deployment-request-defaults"
 
 MUTATIONS: tuple[CompoundMutation, ...] = (
     CompoundMutation(
+        "absent-claim-canonical-decision",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace(
+            "or prior.locator.value in obsolete_absent",
+            "or False",
+        ),
+    ),
+    CompoundMutation(
+        "absent-claim-owner-protection",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace("record.owners != (completed.owner,)", "False"),
+    ),
+    CompoundMutation(
+        "absent-claim-processed-target-proof",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace("or not completed.targets <= intent.active_targets", "or False"),
+    ),
+    CompoundMutation(
+        "absent-claim-no-disk-authority",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace("dropped -= verified_absent", "dropped -= frozenset()"),
+    ),
+    CompoundMutation(
+        "absent-claim-skill-domain",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace("candidates & proven_skill_values", "candidates"),
+    ),
+    CompoundMutation(
+        "absent-claim-source-backed-members",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace(
+            "completed.skill_values & completed.current_values & successful_by_value.keys()",
+            "completed.current_values & successful_by_value.keys()",
+        ),
+    ),
+    CompoundMutation(
+        "absent-claim-other-primitive-overlap",
+        CONTRACTION_RULE,
+        "src/apm_cli/core/deployment_state.py",
+        _replace('if surface.kind != "skills"', "if False"),
+    ),
+    CompoundMutation(
+        "absent-claim-intent-routing-scope",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace("intent.active_targets != active_names", "False"),
+    ),
+    CompoundMutation(
         "target-owner-ignores-nested-mask",
         TARGET_RULE,
         "src/apm_cli/install/target_filter.py",
@@ -396,7 +450,10 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
         "contraction-implicit-historical-sweep",
         CONTRACTION_RULE,
         "src/apm_cli/install/manifest_reconcile.py",
-        _replace("    sweep = generic_governed_values\n", "    sweep = frozenset(prior_values)\n"),
+        _replace(
+            "    sweep = intent.generic_governed_values\n",
+            "    sweep = frozenset(prior_values)\n",
+        ),
     ),
     CompoundMutation(
         "contraction-missing-unprocessed-claims",

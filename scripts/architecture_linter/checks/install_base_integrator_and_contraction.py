@@ -282,8 +282,10 @@ def _local_preservation_messages(provider: FactsProvider, rule_id: str) -> list[
         and any(isinstance(target, ast.Name) and target.id == "sweep" for target in node.targets)
     ]
     if len(assignments) != 1 or not (
-        isinstance(assignments[0].value, ast.Name)
-        and assignments[0].value.id == "generic_governed_values"
+        isinstance(assignments[0].value, ast.Attribute)
+        and isinstance(assignments[0].value.value, ast.Name)
+        and assignments[0].value.value.id == "intent"
+        and assignments[0].value.attr == "generic_governed_values"
     ):
         findings.append(
             _summary(
@@ -297,7 +299,10 @@ def _local_preservation_messages(provider: FactsProvider, rule_id: str) -> list[
         for node in index.walk(function)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "DeploymentIntent"
+        and node.func.id == "replace"
+        and node.args
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "intent"
         for keyword in node.keywords
         if keyword.arg == "unprocessed_claims"
     ]
@@ -329,6 +334,97 @@ def _reconciler_reconcile_call(node: ast.AST) -> bool:
         and isinstance(node.func.value.func, ast.Name)
         and node.func.value.func.id == "DeploymentReconciler"
     )
+
+
+def _absent_dependency_claim_messages(provider: FactsProvider, rule_id: str) -> list[Violation]:
+    """Keep absent-claim decisions canonical and separate from disk deletion."""
+    state_path = "src/apm_cli/core/deployment_state.py"
+    state, failures = _facts_for(provider, state_path, rule_id)
+    findings = list(failures)
+    if not failures:
+        for required in (
+            "obsolete_absent = self._obsolete_absent_values(",
+            "or prior.locator.value in obsolete_absent",
+            "record.owners != (completed.owner,)",
+            "or not completed.targets <= intent.active_targets",
+            "- intent.unprocessed_claims",
+            "proven_skill_values = self._proven_skill_values(",
+            "return frozenset(candidates & proven_skill_values)",
+            "from apm_cli.security.primitive_discovery import primitive_surfaces",
+            "completed.skill_values & completed.current_values & successful_by_value.keys()",
+            'if surface.kind != "skills"',
+            "roots.intersection((self.project_root / value).parents)",
+            "proof.locator.target in completed.targets",
+        ):
+            if not _present(state, required):
+                findings.append(
+                    _summary(
+                        rule_id,
+                        state_path,
+                        "absent dependency claims require the canonical owner-scoped completion guard",
+                    )
+                )
+                break
+
+    _, failures = _facts_for(provider, _CONTRACTION_MANIFEST, rule_id)
+    findings.extend(failures)
+    if failures:
+        return findings
+    index = provider.tree_index(_CONTRACTION_MANIFEST)
+    block = index.function("reconcile_deployed_block") if index is not None else None
+    if block is None:
+        return findings
+    union = index.function("union_preserving")
+    scope_comparisons = {
+        (node.left.attr, node.comparators[0].id)
+        for node in (index.walk(union) if union is not None else ())
+        if isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.NotEq)
+        and isinstance(node.left, ast.Attribute)
+        and isinstance(node.left.value, ast.Name)
+        and node.left.value.id == "intent"
+        and isinstance(node.comparators[0], ast.Name)
+    }
+    if not {
+        ("active_targets", "active_names"),
+        ("declared_targets", "declared_names"),
+    } <= scope_comparisons:
+        findings.append(
+            _summary(
+                rule_id,
+                _CONTRACTION_MANIFEST,
+                "reconciliation intent must agree with the supplied target profiles",
+            )
+        )
+    excludes_absent = any(
+        isinstance(node, ast.AugAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "dropped"
+        and isinstance(node.op, ast.Sub)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "verified_absent"
+        for node in index.walk(block)
+    )
+    probe = index.function("_verified_absent_dependency_values")
+    probe_calls = (
+        {_call_name(node) for node in index.walk(probe) if isinstance(node, ast.Call)}
+        if probe is not None
+        else set()
+    )
+    if not excludes_absent or not {"validate_deploy_path", "lstat"} <= probe_calls:
+        findings.append(
+            _summary(
+                rule_id,
+                _CONTRACTION_MANIFEST,
+                "safe absence observations may retire metadata but must not authorize disk deletion",
+            )
+        )
+    if probe_calls.intersection({"unlink", "rmtree", "remove_stale_deployed_files"}):
+        findings.append(
+            _summary(rule_id, _CONTRACTION_MANIFEST, "absence probing must remain read-only")
+        )
+    return findings
 
 
 def _records_values_call(node: ast.AST) -> bool:
@@ -394,6 +490,7 @@ def check_target_file_contraction(provider: FactsProvider) -> tuple[Violation, .
     findings.extend(_shared_contraction_messages(provider, rule_id))
     findings.extend(_local_persistence_messages(provider, rule_id))
     findings.extend(_local_preservation_messages(provider, rule_id))
+    findings.extend(_absent_dependency_claim_messages(provider, rule_id))
     return tuple(findings)
 
 

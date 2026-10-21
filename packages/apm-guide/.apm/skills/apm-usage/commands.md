@@ -149,6 +149,13 @@ The local-source check is APM-specific frozen-install behavior, not a new
 lockfile schema requirement. Legacy bare SHA-256 digests are accepted without
 rewriting the lock. Normal non-frozen installs can establish missing baselines.
 
+Normal `apm install` can retain historical dependency claims for missing files;
+automatic repair of obsolete claims is not yet available. Missing bytes, a
+saved hash, or a directory prefix alone do not establish obsolescence.
+Review the current dependency source, selection, and ownership when investigating
+an audit report. Audit is read-only, and `--frozen` does not repair these claims.
+Unclear ownership does not authorize deleting or adopting still-present content.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching

@@ -452,6 +452,11 @@ def _integrate_materialization(
         if int_result.get("native_plugin"):
             deltas["installed"] = 1
         ctx.package_deployed_files[dep_key] = int_result["deployed_files"]
+        from apm_cli.core.deployment_state import CompletedReintegration
+
+        completed = int_result.get("completed_reintegration")
+        if isinstance(completed, CompletedReintegration) and completed.owner == dep_key:
+            ctx.package_completed_reintegrations[dep_key] = completed
     except Exception as e:
         # Per-source error wording: each DependencySource subclass
         # declares its own INTEGRATE_ERROR_PREFIX (Strategy pattern).

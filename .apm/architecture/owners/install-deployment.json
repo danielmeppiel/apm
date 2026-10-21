@@ -43,8 +43,11 @@
     {
       "id": "target-scoped-deployed-file-contraction",
       "decision": "Target-scoped deployed-file contraction",
-      "owner": "install/manifest_reconcile.py (reconcile_target_deployed_files)",
-      "selectors": ["src/apm_cli/install/manifest_reconcile.py"],
+      "owner": "install/manifest_reconcile.py routes target contraction and absent dependency claims through core/deployment_state.py (DeploymentReconciler)",
+      "selectors": [
+        "src/apm_cli/install/manifest_reconcile.py",
+        "src/apm_cli/core/deployment_state.py"
+      ],
       "guards": ["install-deployment-target-file-contraction"]
     },
     {
