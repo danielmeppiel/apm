@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -31,6 +32,10 @@ pytestmark = [pytest.mark.e2e, pytest.mark.lifecycle_smoke]
 def scenario(tmp_path: Path, apm_engine_command: tuple[str, ...]) -> _Scenario:
     """Use the installed module entry point with the existing hermetic factories."""
     initial = _new_scenario(tmp_path / "staging", Path(apm_engine_command[0]))
+    # Match the report's Git setting only in this scenario's owned config files.
+    for config in (initial.isolated.root / "gitconfig", initial.isolated.home / ".gitconfig"):
+        with config.open("a", encoding="utf-8") as handle:
+            handle.write("[core]\n\tlongpaths = true\n")
     return replace(initial, runner=ApmLifecycleRunner(apm_engine_command))
 
 
@@ -58,8 +63,10 @@ def _publish_staging(scenario: _Scenario) -> _PublishedPackage:
 
 def _advance(scenario: _Scenario, source: _PublishedPackage, consumer: LocalPackage) -> str:
     (source.repository.worktree / "revision.txt").write_bytes(b"replacement revision\n")
-    (source.repository.worktree / ("long-" + "x" * 110 + ".txt")).write_bytes(b"long path payload")
-    commit = scenario.repositories.commit(source.repository, message="replacement revision")
+    try:
+        commit = scenario.repositories.commit(source.repository, message="replacement revision")
+    except subprocess.CalledProcessError as error:
+        pytest.fail(f"Fixture commit failed: {error.stderr}")
     manifest = load_yaml(consumer.manifest_path)
     manifest["dependencies"]["apm"][0]["ref"] = commit.sha
     dump_yaml(manifest, consumer.manifest_path)
@@ -93,11 +100,13 @@ def test_module_first_install_and_pinned_replacement(
     _success(_run(scenario, consumer, source.environment))
     _assert_pin(consumer, source.commit.sha)
     assert (live / "apm.yml").read_bytes() == source.package.manifest_path.read_bytes()
+    long_leaf = "long-" + "x" * 110 + ".txt"
+    (source.repository.worktree / long_leaf).write_bytes(b"long path payload")
     sha = _advance(scenario, source, consumer)
     _success(_run(scenario, consumer, source.environment))
     _assert_pin(consumer, sha)
     assert (live / "revision.txt").read_bytes() == b"replacement revision\n"
-    long_path = live / ("long-" + "x" * 110 + ".txt")
+    long_path = live / long_leaf
     assert long_path.read_bytes() == b"long path payload"
     if os.name == "nt":
         assert len(str(long_path)) > 260
@@ -242,6 +251,7 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
         result = _run(scenario, consumer, {**source.environment, "APM_NO_CACHE": "1"})
     finally:
         guard.write_text(original_guard, encoding="utf-8")
+    assert evidence.exists(), result.stdout + result.stderr
     events = [json.loads(line) for line in evidence.read_text(encoding="utf-8").splitlines()]
     record_property("native_operations", json.dumps(events, sort_keys=True))
     failures = [event for event in events if "winerror" in event]
