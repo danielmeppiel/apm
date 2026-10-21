@@ -142,6 +142,21 @@ still cleans up its managed files, subject to the usual user-edit protections.
 
 ## Behavior
 
+- **Unmanaged skill conflicts fail by default.** A differing user-owned file
+  at any selected skill destination refuses the complete selected deployment
+  plan before native writes, success-shaped manifest/lock updates, or cleanup.
+  This replaces warning-only success that could leave Claude and the shared
+  Copilot/Codex root with different skills. The error names the skill,
+  dependency, source file, local path, and affected targets. Rename the local
+  skill, or edit an existing `skills:`/`targets:` selection to exclude the
+  conflict. A skill allow-list does not automatically include future skills.
+  Matching names or shared directories alone are not conflicts; identical
+  files and exact managed paths retain their existing handling. Preparation
+  may populate caches; refusal does not delete an older partial installation
+  or promise rollback for later races, scripts, or unrelated failures.
+  `--force` remains explicitly destructive and also bypasses the critical
+  security-scan block; it is not the routine remedy.
+
 - **Stale-file cleanup.** `Cleaned N stale deployed files for DEPENDENCY` names
   the affected dependency, not a deletion location. Cleanup removes deployed
   files; a local dependency's source directory is not cleaned.

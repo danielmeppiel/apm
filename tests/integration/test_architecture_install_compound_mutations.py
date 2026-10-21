@@ -119,10 +119,10 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
         TARGET_RULE,
         "src/apm_cli/install/services.py",
         _replace(
-            "    target_selection = resolve_effective_package_targets(\n",
-            "    target_selection = rogue_resolve_effective_package_targets()\n"
+            "    selection = resolve_effective_package_targets(\n",
+            "    selection = rogue_resolve_effective_package_targets()\n"
             "    if False:\n"
-            "        target_selection = resolve_effective_package_targets(\n",
+            "        selection = resolve_effective_package_targets(\n",
         ),
     ),
     CompoundMutation(

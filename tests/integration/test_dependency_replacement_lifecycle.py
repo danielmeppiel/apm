@@ -14,6 +14,7 @@ from apm_cli.copilot_plugins.registrar import catalog_path_for
 from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.dependency.replacement import parse_replace_block
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
+from tests.integration.test_unmanaged_skill_preflight_lifecycle import _native_bytes
 from tests.unit.copilot_plugins._builders import write_agent_plugin
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
@@ -400,6 +401,62 @@ def test_replacement_only_apm_records_selected_source_omission(
     fixture.install()
     fixture.assert_bytes("UPSTREAM")
     assert not load_yaml(lock_path).get("mcp_omissions")
+
+
+@pytest.mark.parametrize("source_kind", ["local", "fork"])
+def test_replacement_selected_skill_preflight_preserves_prior_install(
+    tmp_path: Path, apm_binary_path: Path, source_kind: str
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    fixture.install()
+    source_root = fixture.local.root if source_kind == "local" else fixture.fork.worktree
+    selected_skill = source_root / ".apm/skills/review/SKILL.md"
+    selected_skill.parent.mkdir(parents=True)
+    selected_content = b"---\nname: review\ndescription: Selected source\n---\nSelected review.\n"
+    selected_skill.write_bytes(selected_content)
+    if source_kind == "local":
+        selected_source = {"path": "../local-base"}
+    else:
+        pin = fixture.repositories.commit(fixture.fork, message="Selected-source review skill")
+        selected_source = {"git": _FORK, "ref": pin.sha}
+    fixture.replace(selected_source)
+
+    user_skill = fixture.consumer.root / ".agents/skills/review/SKILL.md"
+    user_skill.parent.mkdir(parents=True)
+    user_content = b"---\nname: review\ndescription: Personal review\n---\nKeep my review.\n"
+    user_skill.write_bytes(user_content)
+    native_before = _native_bytes(fixture.consumer.root)
+    state_before = {
+        path: path.read_bytes()
+        for path in (fixture.consumer.manifest_path, fixture.consumer.root / "apm.lock.yaml")
+    }
+    for _ in range(2):
+        result = fixture.run()
+        assert result.returncode != 0, result.stdout + result.stderr
+        output = " ".join((result.stdout + result.stderr).split())
+        assert "Installation refused" in output
+        assert ".agents/skills/review/SKILL.md" in output
+        assert "apm-replacement-fixture/base" in output
+        assert "copilot" in output and "Rename" in output
+        assert _native_bytes(fixture.consumer.root) == native_before
+        assert {path: path.read_bytes() for path in state_before} == state_before
+        assert selected_skill.read_bytes() == selected_content
+        fixture.assert_bytes("UPSTREAM")
+
+    personal = user_skill.parent.with_name("personal-review")
+    user_skill.parent.rename(personal)
+    fixture.install()
+    fixture.assert_bytes("LOCAL" if source_kind == "local" else "FORK")
+    assert user_skill.read_bytes() == selected_content
+    assert (personal / "SKILL.md").read_bytes() == user_content
+    assert fixture.locked_entry()["replacement"]["source"] == selected_source
+    frozen = fixture.run(*_INSTALL, "--frozen")
+    assert frozen.returncode == 0, frozen.stdout + frozen.stderr
+    fixture.replace(None)
+    fixture.install()
+    fixture.assert_bytes("UPSTREAM")
+    assert not user_skill.exists()
+    assert (personal / "SKILL.md").read_bytes() == user_content
 
 
 @pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
