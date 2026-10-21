@@ -149,6 +149,22 @@ The local-source check is APM-specific frozen-install behavior, not a new
 lockfile schema requirement. Legacy bare SHA-256 digests are accepted without
 rewriting the lock. Normal non-frozen installs can establish missing baselines.
 
+Frozen native MCP/LSP integration also preserves exact manifest and lockfile
+bytes. It refuses a selected target/server without recorded ownership before
+writing or removing either service's native configs. For example, adding
+`intellij` to a Copilot/Claude baseline requires an ordinary install with the
+intended `--target` first; frozen mode does not create an unrecorded personal
+deployment. Retain `--only`, `--root DIR` or `--global` during recovery.
+Reordered, repeated and narrower selections work. Downloads may precede the
+check; package deployment and lifecycle scripts are not generally rolled back.
+Late MCP checks use the complete resolved package graph, not just the packages
+selected for installation.
+
+`--only mcp` does not hydrate package sources, even without `--frozen`.
+Restore the package sources and declarations matching the lock using
+`apm install` without `--only mcp` in the same deployment store (retain `--root DIR`
+or `--global`, if used) before retrying.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching

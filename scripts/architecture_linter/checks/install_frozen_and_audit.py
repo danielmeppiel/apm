@@ -72,11 +72,22 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     rule_id = _GUARD_FROZEN
     owner, owner_fail = _facts_for(provider, _FROZEN_OWNER, rule_id)
     adapter, adapter_fail = _facts_for(provider, _INSTALL_ADAPTER, rule_id)
+    services, services_fail = _facts_for(
+        provider, "src/apm_cli/install/service_integration.py", rule_id
+    )
     integration, integration_fail = _facts_for(
         provider, "src/apm_cli/install/phases/integrate.py", rule_id
     )
-    if owner_fail or adapter_fail or integration_fail:
-        return tuple(list(owner_fail) + list(adapter_fail) + list(integration_fail))
+    outcome, outcome_fail = _facts_for(provider, "src/apm_cli/install/outcome.py", rule_id)
+    mcp, mcp_fail = _facts_for(provider, "src/apm_cli/install/mcp/integration.py", rule_id)
+    failures = (
+        owner_fail + adapter_fail + services_fail + integration_fail + outcome_fail + mcp_fail
+    )
+    if failures:
+        return tuple(failures)
+    mcp_prepare_body = _awk_body(
+        mcp, re.compile(r"^def prepare_mcp_integration\("), re.compile(r"^def ")
+    )
 
     preflight = _first_line(adapter, "InstallService.enforce_frozen(")
     migration = _first_line(adapter, "migrate_lockfile_if_needed(ctx.apm_dir)")
@@ -102,6 +113,9 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         _present_re(owner, re.compile(r"^    def enforce_frozen\("))
         and _present_re(owner, re.compile(r"^    def reject_frozen_mutation\("))
         and _present_re(owner, re.compile(r"^    def reject_missing_frozen_root\("))
+        and _present_re(owner, re.compile(r"^    def frozen_writes\("))
+        and _present_re(owner, re.compile(r"^    def enforce_frozen_services\("))
+        and _present(owner, "current_mcp.diff(lockfile.mcp_configs)")
         and _present_re(owner, re.compile(r"^    def enforce_hydrated_mcp\("))
         and _present(owner, "current.pending_servers(lockfile)")
         and _present(owner, "current.diff(lockfile.mcp_configs)")
@@ -126,6 +140,42 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or local_bundle is None
         or not _before(add_guard, dedicated_mcp)
         or not _before(add_guard, local_bundle)
+        or not _before(
+            _first_line(adapter, "ctx.with_resource(InstallService.frozen_writes(frozen))"),
+            root_redirect,
+        )
+        or not _before(
+            _first_line(services, "prepared_mcp = prepare_mcp_integration("),
+            _first_line(services, "InstallService.enforce_frozen_services("),
+        )
+        or not _before(
+            _first_line(services, "prepared_lsp = prepare_lsp_integration("),
+            _first_line(services, "InstallService.enforce_frozen_services("),
+        )
+        or not _before(
+            _first_line(services, "InstallService.enforce_frozen_services("),
+            _first_line(services, "mcp_count, mcp_apm_config = run_mcp_integration("),
+        )
+        or not _before(
+            _first_line(services, "InstallService.enforce_frozen_services("),
+            _first_line(services, "lsp_count = run_lsp_integration("),
+        )
+        or not _present(services, "prepared=prepared_mcp,")
+        or not _present(services, "prepared=prepared_lsp,")
+        or not _present(services, "current_mcp=prepared_mcp.current_view,")
+        or not _present(
+            outcome, 'complete_dep_keys = getattr(ctx, "update_plan_complete_dep_keys", None)'
+        )
+        or not _present(
+            outcome, "frozenset(complete_dep_keys) if complete_dep_keys is not None else None"
+        )
+        or not _present(
+            adapter, "install_result.active_package_keys if install_result is not None else None"
+        )
+        or not _present(services, "active_package_keys=active_package_keys,")
+        or not _present(services, "allow_pending=False,")
+        or not _body_has(mcp_prepare_body, "active_package_keys=active_package_keys,")
+        or not _body_has(mcp_prepare_body, "allow_pending=allow_pending,")
         or not _present(adapter, "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,")
         or not _present(integration, "if ctx.frozen and ctx.existing_lockfile is not None:")
         or not _present(
