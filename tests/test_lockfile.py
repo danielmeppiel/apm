@@ -572,15 +572,7 @@ class TestLockFile:
         assert loaded is None
 
     def test_from_installed_packages(self):
-        dep_ref = Mock()
-        dep_ref.repo_url = "owner/repo"
-        dep_ref.host = "github.com"
-        dep_ref.reference = "main"
-        dep_ref.virtual_path = None
-        dep_ref.is_virtual = False
-        dep_ref.is_local = False
-        dep_ref.local_path = None
-        dep_ref.alias = None
+        dep_ref = DependencyReference(repo_url="owner/repo", host="github.com", reference="main")
         installed = [(dep_ref, "commit123", 1, None)]
         lock = LockFile.from_installed_packages(installed, Mock())
         assert lock.has_dependency("owner/repo")

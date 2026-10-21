@@ -155,6 +155,31 @@ sidecar when their runtime requires it; see
 `apm publish --package OWNER/REPO` normalizes the owner and repository to
 lowercase before constructing the package-registry path.
 
+### Root replacement lifecycle (candidate)
+
+For the unratified development-build syntax and old-reader limits, see
+[Root source replacement](dependencies.md#root-source-replacement-candidate).
+No new command or flag is added: edit root `replace`, then run `apm install`.
+Original identities remain selectors and ownership keys.
+
+`apm install --dry-run` resolves locally available replacement dependencies
+without deployment writes. Selected local paths stay consumer-root-relative
+at every depth; missing source evidence makes the preview incomplete.
+
+Ordinary install replays matching fork pins; `apm update` refreshes mutable fork
+refs and local content but retains explicit replacement SHAs. Partial updates
+refuse a changed rule table: run a full install/update to apply it.
+`--frozen` compares the entire normalized table, including unused rules, and
+refuses missing or changed selected-local content and missing baseline hashes
+before deployment. Use normal install after reviewing an intentional change.
+`apm outdated` checks selected Git sources and marks local sources not remotely
+comparable. Its table shows original and selected sources; `--verbose` adds
+per-dependency replacement details. `apm deps list`/`why` show selected-source provenance; tree/why retain
+shared original parents. `apm audit --ci` replays selected sources read-only.
+Uninstall preserves shared dependencies until their last parent is removed,
+repairs incoming requests and retains dormant root rules. Missing source
+evidence that prevents safe reachability verification blocks removal and names
+the affected dependencies whose manifests must be restored.
 ### Local single-file dependencies
 
 Local single files use `apm install ./ai/agents/xyz.agent.md` (also

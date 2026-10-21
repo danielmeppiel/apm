@@ -21,9 +21,11 @@ from apm_cli.install.helpers.ref_reuse import (
     requires_remote_ref_resolution as _requires_remote_ref_resolution,
 )
 from apm_cli.install.helpers.ref_seed import seed_ref_resolver_from_lockfile
+from apm_cli.install.presentation.resolution import report_resolved_dependencies
 from apm_cli.install.transaction import resolution_for_context
 from apm_cli.models.apm_package import GitReferenceType, ResolvedReference
 from apm_cli.models.dependency import materialization as _materialization
+from apm_cli.models.dependency.replacement import project_manifest_dependencies
 from apm_cli.utils.short_sha import format_short_sha
 
 if TYPE_CHECKING:
@@ -596,7 +598,9 @@ def _resolve_dependencies(
                 # affected by ``--root``.
                 base_dir = (
                     parent_pkg.source_path
-                    if parent_pkg is not None and parent_pkg.source_path is not None
+                    if dep_ref.replacement is None
+                    and parent_pkg is not None
+                    and parent_pkg.source_path is not None
                     else source_root
                 )
                 result_path = _copy_local_package(
@@ -662,7 +666,9 @@ def _resolve_dependencies(
                     ctx.expected_hash_change_deps.add(dep_ref.get_unique_key())
                 if logger:
                     _old = (
-                        _locked_dep.resolved_ref or _locked_dep.resolved_commit[:8]
+                        _locked_dep.resolved_ref
+                        or (_locked_dep.resolved_commit or "")[:8]
+                        or "unresolved"
                         if _locked_dep
                         else "?"
                     )
@@ -794,24 +800,6 @@ def _resolve_dependencies(
     if rejected_remote_local:
         callback_failures.update(rejected_remote_local)
 
-    # Verbose: show resolved tree summary
-    if ctx.logger:
-        tree = dependency_graph.dependency_tree
-        direct_count = len(tree.get_nodes_at_depth(1))
-        transitive_count = len(tree.nodes) - direct_count
-        if transitive_count > 0:
-            ctx.logger.verbose_detail(
-                f"Resolved dependency tree: {direct_count} direct + "
-                f"{transitive_count} transitive deps (max depth {tree.max_depth})"
-            )
-            for node in tree.nodes.values():
-                if node.depth > 1:
-                    ctx.logger.verbose_detail(f"    {node.get_ancestor_chain()}")
-        else:
-            ctx.logger.verbose_detail(
-                f"Resolved {direct_count} direct dependencies (no transitive)"
-            )
-
     # Check for circular dependencies
     if dependency_graph.circular_dependencies:
         if ctx.logger:
@@ -825,9 +813,10 @@ def _resolve_dependencies(
     # Get flattened dependencies for installation
     flat_deps = dependency_graph.flattened_dependencies
     deps_to_install = flat_deps.get_installation_list()
+    report_resolved_dependencies(ctx, resolver, deps_to_install, dependency_graph.dependency_tree)
 
     _check_insecure_dependencies(
-        ctx.all_apm_deps,
+        project_manifest_dependencies(ctx.apm_package),
         ctx.allow_insecure,
         ctx.logger,
     )
@@ -878,6 +867,9 @@ def _resolve_dependencies(
     try:
         tree = dependency_graph.dependency_tree
         for node in tree.nodes.values():
+            if node.dependency_ref.replacement is not None:
+                dep_base_dirs[node.dependency_ref.get_unique_key()] = source_root
+                continue
             parent_node = node.parent
             if parent_node is None or parent_node.package is None:
                 continue
@@ -964,6 +956,17 @@ def run(ctx: InstallContext) -> None:
     :class:`~apm_cli.install.context.InstallContext` is populated.
     """
     _load_lockfile(ctx)
+    if ctx.only_packages and ctx.existing_lockfile is not None:
+        from apm_cli.install.plan import lockfile_satisfies_replacements
+
+        unchanged, _ = lockfile_satisfies_replacements(
+            ctx.existing_lockfile, getattr(ctx.apm_package, "replace_rules", None)
+        )
+        if not unchanged:
+            raise RuntimeError(
+                "Replacement rules changed during a partial install. Run 'apm install' "
+                "without package selectors to apply the complete replacement table."
+            )
     _ensure_modules_dir(ctx)
     staging_session = resolution_for_context(ctx)
     materialization_reader = _materialization.CachedMaterializationPathReader()

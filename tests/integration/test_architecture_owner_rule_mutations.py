@@ -56,6 +56,42 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
 
 
 @pytest.mark.parametrize(
+    ("path", "original", "replacement"),
+    [
+        pytest.param(
+            "src/apm_cli/install/drift.py",
+            "replay_modules_root(scratch_root, user_scope=config.user_scope)",
+            "private_modules_root(scratch_root, user_scope=config.user_scope)",
+            id="replay-call",
+        ),
+        pytest.param(
+            "src/apm_cli/install/audit_target_roots.py",
+            "InstallScope.USER if user_scope else InstallScope.PROJECT",
+            "InstallScope.PROJECT",
+            id="user-scope",
+        ),
+        pytest.param(
+            "src/apm_cli/install/audit_target_roots.py",
+            "get_modules_dir(scope).relative_to(get_deploy_root(scope))",
+            'Path("apm_modules")',
+            id="canonical-layout",
+        ),
+    ],
+)
+def test_audit_replay_scope_projection_cannot_bypass_owner(
+    path: str, original: str, replacement: str
+) -> None:
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert source.count(original) == 1
+    rule = "install-deployment-audit-replay"
+    report = run_selected_rules(
+        ROOT, (rule,), source_overrides={path: source.replace(original, replacement)}
+    )
+    assert report.failures == ()
+    assert any(item.rule_id == rule for item in report.violations)
+
+
+@pytest.mark.parametrize(
     ("path", "original", "replacement", "refused"),
     [
         (
@@ -496,6 +532,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def _hand_authored_root_context_blocks_write(",
         new="def _hand_authored_root_context_blocks_write_disabled(",
         intent="Root context writes lose the canonical hand-authored ownership gate.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-source-replacements",
+        rule_id="contracts-tooling-source-replacements",
+        path="src/apm_cli/models/dependency/replacement.py",
+        old="return (self.host, self.port, self.repo_url, self.subpath)",
+        new="return ('github.com', None, self.repo_url, self.subpath)",
+        intent="Root replacement matching becomes host- and endpoint-blind.",
     ),
     MutationCase(
         guard_id="hooks-integrations-claude-mcp-paths",

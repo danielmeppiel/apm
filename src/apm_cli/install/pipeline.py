@@ -45,6 +45,8 @@ import contextlib
 import time
 from typing import TYPE_CHECKING
 
+from apm_cli.install.helpers.plan_inputs import build_resolved_update_plan
+
 from ..agent_plugins.errors import AgentPluginError
 from ..codex_plugins.client import CodexNativeError
 from ..copilot_plugins.settings import CopilotSettingsCollisionError
@@ -161,6 +163,7 @@ def _preflight_auth_check(ctx, auth_resolver, verbose: bool) -> None:
 
     seen: builtins.set = builtins.set()
     for dep in ctx.deps_to_install:
+        dep = dep.source_reference
         host = dep.host
         if not host or is_github_hostname(host):
             continue  # github.com uses API probe with unauth fallback
@@ -564,14 +567,7 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     # collision.
     # ------------------------------------------------------------------
     if plan_callback is not None:
-        from .plan import build_update_plan
-
-        complete_dep_keys = ctx.update_plan_complete_dep_keys if ctx.only_packages else None
-        plan = build_update_plan(
-            _early_lockfile,
-            ctx.deps_to_install,
-            complete_resolved_dep_keys=complete_dep_keys,
-        )
+        plan = build_resolved_update_plan(ctx, _early_lockfile)
         proceed = plan_callback(plan)
         if not proceed:
             transaction.rollback()
