@@ -122,6 +122,17 @@ sidecar when their runtime requires it; see
 `apm publish --package OWNER/REPO` normalizes the owner and repository to
 lowercase before constructing the package-registry path.
 
+### Local single-file dependencies
+
+Local single files use `apm install ./ai/agents/xyz.agent.md` (also
+`.instructions.md` and `.prompt.md`), or a matching string/`path:` dependency in
+`apm.yml`. They follow the ordinary package lifecycle and are copied snapshots,
+not live links. Only the selected file is included; companion assets require a
+directory package. Normal reinstall accepts deliberate edits. Missing,
+unreadable, unsupported, or invalid sources fail without authorizing removal of
+prior owned output. Global installs require absolute or `~/...` references;
+file symlinks and arbitrary Markdown are unsupported.
+
 ### Install validation chain (virtual subdirectory packages)
 
 Marketplace installation supports versioned directories produced by `apm pack`,

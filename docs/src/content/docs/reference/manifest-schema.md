@@ -506,7 +506,14 @@ Local path dependency (development only):
 
 ```yaml
 - path: ./packages/my-shared-skills
+- path: ./ai/agents/xyz.agent.md
 ```
+
+Local `path:` and string entries accept directory packages or one file ending
+in `.agent.md`, `.instructions.md`, or `.prompt.md`. Single-file packages contain
+only that file; companion assets require a directory package. Relative paths
+resolve against the declaring local package. User-scope installs require
+absolute or expanded `~/...` paths, and single-file symlinks are rejected.
 
 When the declaring package came from a remote repo, `path:` remains scoped to
 that same repo only. The resolved path must stay inside the parent's cloned repo
