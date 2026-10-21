@@ -158,7 +158,7 @@ class CommandLogger:
         if count <= 0:
             return
         noun = "file" if count == 1 else "files"
-        _rich_info(f"Cleaned {count} stale {noun} from {dep_key}", symbol="info")
+        _rich_info(f"Cleaned {count} stale deployed {noun} for {dep_key}", symbol="info")
 
     def cleanup_skipped_user_edit(self, rel_path: str, dep_key: str):
         """Explain that a user-edited managed file was retained."""
@@ -241,6 +241,7 @@ class InstallLogger(CommandLogger):
         self.partial = partial  # True when specific packages are passed to `apm install`
         self._stale_cleaned_total = 0  # Accumulated by stale_cleanup / orphan_cleanup
         self._dry_run_apm_update_count = 0
+        self._dry_run_incomplete = False
 
     def revision_pins_retained(self, skips: Sequence[RevisionPinSkip]) -> None:
         """Report retained revision pins once, with per-pin verbose detail."""
@@ -349,6 +350,10 @@ class InstallLogger(CommandLogger):
     def record_dry_run_apm_updates(self, count: int) -> None:
         """Record how many selected APM refs the preview would update."""
         self._dry_run_apm_update_count = count
+
+    def record_dry_run_incomplete(self, incomplete: bool) -> None:
+        """Record whether offline metadata can support a complete preview."""
+        self._dry_run_incomplete = incomplete
 
     def nothing_to_install(
         self,
@@ -558,7 +563,7 @@ class InstallLogger(CommandLogger):
             return
         self._stale_cleaned_total += count
         noun = "file" if count == 1 else "files"
-        _rich_info(f"Cleaned {count} stale {noun} from {dep_key}", symbol="info")
+        _rich_info(f"Cleaned {count} stale deployed {noun} for {dep_key}", symbol="info")
 
     def orphan_cleanup(self, count: int):
         """Log post-install orphan-file cleanup outcome at default verbosity.
@@ -887,6 +892,14 @@ class InstallLogger(CommandLogger):
             timing_suffix = f" in {elapsed_seconds:.1f}s"
 
         if disposition is InstallDisposition.DRY_RUN:
+            if self._dry_run_incomplete:
+                noun = "dependency" if apm_count == 1 else "dependencies"
+                _rich_warning(
+                    f"Dry run incomplete: {apm_count} locally known APM {noun}. "
+                    "Run 'apm install' without --dry-run to resolve the full plan.",
+                    symbol="warning",
+                )
+                return
             dry_parts = []
             if apm_count > 0:
                 noun = "dependency" if apm_count == 1 else "dependencies"
@@ -952,6 +965,12 @@ class InstallLogger(CommandLogger):
             _rich_error(
                 f"Installation failed with {errors} error(s){timing_suffix}.",
                 symbol="error",
+            )
+        elif stale_cleaned > 0:
+            file_noun = "file" if stale_cleaned == 1 else "files"
+            _rich_success(
+                f"Cleaned {stale_cleaned} stale {file_noun}{timing_suffix}.",
+                symbol="sparkles",
             )
         else:
             _rich_info(
