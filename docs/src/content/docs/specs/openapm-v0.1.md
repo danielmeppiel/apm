@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **135 normative statements (130 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **136 normative statements (131 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -1589,6 +1589,22 @@ registered **discovery provider** invoked in the configured order
 substituted for this order. When no provider yields a policy, no
 policy is applied.
 
+<a id="req-pl-021"></a>
+**[req-pl-021]** A conforming **governance** implementation MUST,
+when an explicit `--policy <ref>` argument names a concrete policy
+source (rather than requesting discovery) and that source cannot be
+resolved, fetched, or parsed into a valid policy, terminate the
+governance operation non-zero with a diagnostic that names the ref
+and the cause. It MUST NOT fall back to discovery or proceed as
+though no policy applies, and the effective `fetch_failure` default
+MUST NOT relax this outcome. A previously fetched valid policy that
+the implementation serves from cache under its documented
+stale-cache rules counts as resolved. An operator-level switch that
+disables policy enforcement for the whole invocation is outside this
+requirement, because the ref is never loaded; an implementation that
+honours such a switch MUST state in its diagnostics that the explicit
+ref was not enforced.
+
 #### 6.1.1 Discovery providers
 
 OpenAPM v0.1 defines discovery as a **pluggable extension point**.
@@ -2104,7 +2120,8 @@ This section's normative statements are:
   [req-pl-013](#req-pl-013), [req-pl-014](#req-pl-014),
   [req-pl-015](#req-pl-015), [req-pl-016](#req-pl-016),
   [req-pl-017](#req-pl-017), [req-pl-018](#req-pl-018),
-  [req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020).
+  [req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020),
+  [req-pl-021](#req-pl-021).
 
 ---
 
@@ -4139,7 +4156,8 @@ v0.2 will formalise the surrounding HTTP wire envelope.
 [req-pl-013](#req-pl-013), [req-pl-014](#req-pl-014),
 [req-pl-015](#req-pl-015), [req-pl-016](#req-pl-016),
 [req-pl-017](#req-pl-017), [req-pl-018](#req-pl-018),
-[req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020).
+[req-pl-019](#req-pl-019), [req-pl-020](#req-pl-020),
+[req-pl-021](#req-pl-021).
 
 ### 11.4 Worked conformance examples (informative)
 
@@ -4557,6 +4575,7 @@ staged-replacement capability, not every consumer implementation.
 | [req-pl-018](#req-pl-018)                | MUST    | 6.3.1   | governance  |
 | [req-pl-019](#req-pl-019)                | MUST    | 6.8.1   | governance  |
 | [req-pl-020](#req-pl-020)                | MUST    | 6.8.1   | governance  |
+| [req-pl-021](#req-pl-021)                | MUST    | 6.1     | governance  |
 | [req-rs-001](#req-rs-001)                | MUST    | 7.2     | consumer    |
 | [req-rs-002](#req-rs-002)                | MUST    | 7.3     | consumer    |
 | [req-rs-003](#req-rs-003)                | MUST    | 7.3     | consumer    |
@@ -4622,7 +4641,7 @@ staged-replacement capability, not every consumer implementation.
 | [req-rpl-003](#req-rpl-003)              | MUST    | 4.8.1   | consumer    |
 | [req-rpl-004](#req-rpl-004)              | MUST    | 4.8.1   | consumer    |
 
-**Total normative statements: 135** (130 MUST, 5 SHOULD).
+**Total normative statements: 136** (131 MUST, 5 SHOULD).
 
 ---
 
@@ -4683,10 +4702,11 @@ staged-replacement capability, not every consumer implementation.
 | 0.1.52 (proposed) | 2026-10-21 | Accepted Windows staging-recovery behavior for issue #3293 / PR #3318. Adds conditional consumer [req-lk-023](#req-lk-023), Section 5.2.1: retain original and secondary failures, recover prior state where permitted, preserve residual prior data under denied restoration, protect active/unknown staging and retry with a fresh candidate, and never undo a committed replacement because backup disposal failed. This is a new recovery obligation under Section 9.2, not behavior-neutral errata. No schema, lockfile version, privilege, or arbitrary lifecycle-script rollback change. Section 9.3 review and public comment remain pending; source landing and conformance tests do not establish adoption or release. Statement count: 129 -> 130 (125 MUST, 5 SHOULD). |
 | 0.1.53 (proposed) | 2026-10-21 | Amendment for accepted issue #3202 in PR #3314. Added [req-pr-008](#req-pr-008) (Section 8.3.1, consumer MUST): default refusal of a differing unmanaged skill file checks the complete effective selected plan before native deployment, success-state persistence or cleanup; preserves prior bytes and ownership; and provides truthful read-only audit and nondestructive correction. Warning/success becomes refusal, a new hard conformance obligation rather than errata. Identical-content recovery, existing explicit destructive replacement, managed-source priority, native-plugin and non-skill/MCP policies remain outside this change. No schema or lockfile-version change. Section 9.3 review/public comment and applicable Section 9.5 migration remain pending, not waived; no ratification or release is claimed. Sections 1.3, 8.7, 10.11, 11.3.2, Appendix C, requirements manifest and conformance test binding updated. Statement count: 129 -> 130 (125 MUST, 5 SHOULD). |
 | 0.1.54 (proposed) | 2026-10-21 | Opt-in root source-replacement proposal for #3180 / PR #3309. Added four conditional consumer requirements [req-rpl-001] through [req-rpl-004] for exact root-owned graph binding, original ownership with selected-source lifecycle/security, proposed lock version 3 evidence, and frozen full-table/content verification. Distinct candidate schema identities preserve earlier published bytes; version 1/2 semantics remain unchanged. This is a new opt-in capability and explicit versioned lock extension, not behavior-neutral errata. Section 9.3 review/public comment and first supporting release remain pending; source staging is not adoption. Statement count: 130 -> 134 (129 MUST, 5 SHOULD). |
+| 0.1.55 (proposed) | 2026-10-21 | Spec-citation fold for PR #3230 (closes #3195 Mode-B silent-extension gate on policy discovery). Added [req-pl-021](#req-pl-021) (Section 6.1, governance MUST): when an explicit `--policy <ref>` names a concrete policy source that cannot be resolved, fetched, or parsed into a valid policy, the governance operation terminates non-zero with a diagnostic naming the ref and cause; it does not fall back to discovery, proceed without policy, or honour a relaxing `fetch_failure` default. A valid stale-cache policy still counts as resolved; an operator-level enforcement-disable switch is out of scope but must be disclosed in diagnostics. Under Section 9.2 this defines previously unspecified failure behaviour for the existing [req-pl-001](#req-pl-001) explicit-ref path: explicit refs that previously passed with enforcement skipped now fail; discovery, `fetch_failure` semantics for discovered policy, and install behaviour are unchanged. Sections 6.1, 6.9, 11.3.2 and Appendix C are updated. Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. Adds one MUST. |
 
-The independently drafted 0.1.52 and 0.1.53 proposals each add one MUST;
-0.1.54 adds four. Together, this working draft contains 135 statements
-(130 MUST, 5 SHOULD). Combining the proposals does not establish
+The independently drafted 0.1.52, 0.1.53 and 0.1.55 proposals each add one
+MUST; 0.1.54 adds four. Together, this working draft contains 136 statements
+(131 MUST, 5 SHOULD). Combining the proposals does not establish
 Section 9.3 adoption or CLI release.
 
 Errata (none at publication).
