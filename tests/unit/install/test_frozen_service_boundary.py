@@ -1,16 +1,20 @@
 """Cross-platform lifetime and recorded-only native-service eligibility."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
+from apm_cli.constants import InstallMode
+from apm_cli.core.scope import InstallScope
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.install.context import InstallContext
 from apm_cli.install.errors import FrozenInstallError
 from apm_cli.install.mcp.integration import prepare_mcp_integration
 from apm_cli.install.outcome import result_from_install_context
 from apm_cli.install.service import InstallService
+from apm_cli.install.service_integration import run_service_integrations
 from apm_cli.integration.mcp_config_view import CurrentMcpConfigView, McpSourceProblem
 from apm_cli.models.apm_package import APMPackage
 from apm_cli.models.results import InstallResult
@@ -94,6 +98,63 @@ def test_prepared_frozen_view_preserves_membership_and_actual_source_requirement
         assert {problem.package_key for problem in prepared.current_view.problems} == expected_problems
         assert set(prepared.current_view.configs) == {"root-service"}
         assert not prepared.current_view.pending_packages
+
+
+@pytest.mark.parametrize("mode", [InstallMode.ALL, InstallMode.APM], ids=["selected", "mcp-off"])
+def test_late_service_boundary_requires_actual_selected_source_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: InstallMode
+) -> None:
+    """Strict late verification is selected independently from package integration."""
+    monkeypatch.chdir(tmp_path)
+    root = APMPackage(name="root", version="1.0.0", package_path=tmp_path)
+    dependency = LockedDependency(repo_url="owner/missing", package_type="apm_package", depth=1)
+    lock = LockFile(dependencies={dependency.get_unique_key(): dependency})
+    lock_path = tmp_path / "apm.lock.yaml"
+    lock.write(lock_path)
+    mcp_writer = Mock(return_value=(0, {}))
+    lsp_writer = Mock(return_value=0)
+    monkeypatch.setattr("apm_cli.install.mcp.run_mcp_integration", mcp_writer)
+    monkeypatch.setattr("apm_cli.install.lsp.run_lsp_integration", lsp_writer)
+    context = SimpleNamespace(
+        project_root=tmp_path,
+        scope=InstallScope.PROJECT,
+        install_mode=mode,
+        logger=Mock(),
+        frozen=True,
+        trust_transitive_mcp=False,
+        exec_allow_map=None,
+        exec_allow_resolved=False,
+        no_policy=True,
+        runtime=None,
+        exclude=None,
+        verbose=False,
+        force=False,
+    )
+    arguments = {
+        "apm_package": root,
+        "mcp_deps": [],
+        "lock_path": lock_path,
+        "existing_lock": lock,
+        "old_mcp_servers": set(),
+        "old_mcp_configs": {},
+        "old_mcp_provenance": {},
+        "old_mcp_target_servers": {},
+        "old_mcp_target_servers_present": True,
+        "diagnostics": None,
+        "explicit_target": None,
+        "target_decision": None,
+        "active_package_keys": frozenset({dependency.get_unique_key()}),
+    }
+    if mode is InstallMode.ALL:
+        with pytest.raises(FrozenInstallError, match="cannot replay") as failure:
+            run_service_integrations(context, **arguments)
+        assert any("owner/missing" in reason for reason in failure.value.reasons)
+        mcp_writer.assert_not_called()
+        lsp_writer.assert_not_called()
+    else:
+        run_service_integrations(context, **arguments)
+        assert mcp_writer.call_args.kwargs["prepared"].current_view is None
+        assert mcp_writer.call_args.kwargs["should_install"] is False
 
 
 @pytest.mark.windows_compat
