@@ -98,6 +98,8 @@ def check_source_replacements(provider: FactsProvider) -> tuple[Violation, ...]:
         ),
         "src/apm_cli/install/pipeline.py": (
             "dep = dep.source_reference",
+            "local_cleanup_pending=(\n            not lockfile_only\n"
+            "            and local_rows_need_reconciling(",
             "from apm_cli.install.helpers.plan_inputs import build_resolved_update_plan",
             "plan = build_resolved_update_plan(ctx, _early_lockfile)",
             "apm_package=apm_package,\n        logger=logger,\n    ):",

@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
 from apm_cli.core.deployment_state import (
     DeploymentLedger,
     DeploymentLocator,
@@ -92,6 +93,38 @@ def test_table_only_writer_preserves_receipts_and_service_metadata(tmp_path: Pat
     after.replacements = before.replacements
     assert after.is_semantically_equivalent(before)
     assert after.deployment_ledger.records == before.deployment_ledger.records
+
+
+@pytest.mark.parametrize("target", [None, "claude"], ids=["no-target", "explicit-target"])
+def test_bundle_only_pipeline_persists_intent_without_running_phases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str | None
+) -> None:
+    for name in ("get_deploy_root", "get_source_root", "get_apm_dir"):
+        monkeypatch.setattr(f"apm_cli.core.scope.{name}", lambda scope: tmp_path)
+    unexpected = Mock(side_effect=AssertionError("Bundle receipts are not install cleanup work"))
+    monkeypatch.setattr("apm_cli.install.pipeline._run_phase", unexpected)
+    monkeypatch.setattr(
+        "apm_cli.core.target_detection.resolve_effective_target_decision", unexpected
+    )
+    lock_path = tmp_path / "apm.lock.yaml"
+    lockfile = LockFile(replacements=[])
+    bundled = ".agents/skills/bundled/SKILL.md"
+    DeploymentLedgerCodec.record_local_bundle_files(
+        lockfile, [bundled], {bundled: "sha256:" + "b" * 64}
+    )
+    lockfile.save(lock_path)
+    before = LockFile.read(lock_path)
+    package = APMPackage(name="empty", version="1.0.0", replace_rules=parse_replace_block([_RULE]))
+
+    run_install_pipeline(package, target=target)
+
+    after = LockFile.read(lock_path)
+    assert before is not None and after is not None
+    assert after.replacements == [_RULE]
+    after.replacements = before.replacements
+    assert after.is_semantically_equivalent(before)
+    unexpected.assert_not_called()
+    assert not (tmp_path / "apm_modules").exists()
 
 
 def test_table_write_failure_propagates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

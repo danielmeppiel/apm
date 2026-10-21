@@ -140,9 +140,8 @@ def _replacement_fixture(tmp_path: Path, apm_binary_path: Path) -> ReplacementFi
     )
 
 
-@pytest.mark.parametrize("keep_targets", [True, False], ids=["declared-targets", "no-target"])
-def test_empty_graph_persists_dormant_replacement_table(
-    tmp_path: Path, apm_binary_path: Path, keep_targets: bool
+def _assert_empty_graph_replacement_lifecycle(
+    tmp_path: Path, runner: ApmLifecycleRunner, keep_targets: bool
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "empty-graph", base_env=dict(os.environ))
     environment = isolated.subprocess_env()
@@ -155,7 +154,6 @@ def test_empty_graph_persists_dormant_replacement_table(
     consumer = consumers.create(
         "consumer", dependencies=({"path": str(dependency.root)},), targets=("claude", "codex")
     )
-    runner = ApmLifecycleRunner((str(apm_binary_path),))
     manifest = load_yaml(consumer.manifest_path)
     manifest.update({"$schema": _SCHEMA, "replace": []})
     lock_path = consumer.root / "apm.lock.yaml"
@@ -219,6 +217,15 @@ def test_empty_graph_persists_dormant_replacement_table(
         assert "already up to date" in unchanged.stdout
         install("--frozen")
         assert _snapshot(consumer.root) == stable
+
+
+@pytest.mark.parametrize("keep_targets", [True, False], ids=["declared-targets", "no-target"])
+def test_empty_graph_persists_dormant_replacement_table(
+    tmp_path: Path, apm_binary_path: Path, keep_targets: bool
+) -> None:
+    _assert_empty_graph_replacement_lifecycle(
+        tmp_path, ApmLifecycleRunner((str(apm_binary_path),)), keep_targets
+    )
 
 
 def test_replacement_upstream_local_fork_upstream_owns_one_slot(

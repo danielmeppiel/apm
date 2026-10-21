@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from apm_cli.core.command_logger import InstallLogger
+    from apm_cli.core.target_detection import EffectiveTargetDecision
     from apm_cli.deps.lockfile import LockFile
     from apm_cli.install.context import InstallContext
     from apm_cli.models.apm_package import APMPackage
@@ -53,6 +54,7 @@ def local_rows_need_reconciling(
     *,
     target: str | list[str] | None,
     scope: object,
+    target_decision: EffectiveTargetDecision | None = None,
 ) -> bool:
     """Return whether *lockfile*'s retained project rows give an install work.
 
@@ -68,6 +70,8 @@ def local_rows_need_reconciling(
 
     if not _has_authored_rows(lockfile):
         return False
+    if target_decision is not None:
+        return target_decision.value is not None
     try:
         decision = resolve_package_target_decision(
             project_root,
@@ -101,7 +105,7 @@ def is_no_work_install(
     *,
     all_apm_deps: Collection[object],
     root_has_local_primitives: bool,
-    old_local_deployed: Collection[object],
+    local_cleanup_pending: bool,
     has_orphan_deps: bool,
     lockfile_only: bool,
     apm_dir: Path | None,
@@ -109,7 +113,7 @@ def is_no_work_install(
     logger: InstallLogger | None = None,
 ) -> bool:
     """Return whether an install has no deployment, cleanup, or lock work."""
-    if all_apm_deps or root_has_local_primitives or old_local_deployed or has_orphan_deps:
+    if all_apm_deps or root_has_local_primitives or local_cleanup_pending or has_orphan_deps:
         return False
     if apm_dir is not None:
         write_empty_lockfile(

@@ -28,6 +28,11 @@ FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
         ),
         (
             "src/apm_cli/install/pipeline.py",
+            "local_cleanup_pending=(",
+            "local_cleanup_pending=bool(_old_local_deployed) or (",
+        ),
+        (
+            "src/apm_cli/install/pipeline.py",
             "apm_package=apm_package,\n        logger=logger,\n    ):",
             "apm_package=None,\n        logger=logger,\n    ):",
         ),
