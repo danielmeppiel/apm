@@ -80,7 +80,9 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     )
     outcome, outcome_fail = _facts_for(provider, "src/apm_cli/install/outcome.py", rule_id)
     mcp, mcp_fail = _facts_for(provider, "src/apm_cli/install/mcp/integration.py", rule_id)
-    failures = owner_fail + adapter_fail + services_fail + integration_fail + outcome_fail + mcp_fail
+    failures = (
+        owner_fail + adapter_fail + services_fail + integration_fail + outcome_fail + mcp_fail
+    )
     if failures:
         return tuple(failures)
     mcp_prepare_body = _awk_body(

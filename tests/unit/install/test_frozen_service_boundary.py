@@ -95,7 +95,9 @@ def test_prepared_frozen_view_preserves_membership_and_actual_source_requirement
         assert prepared.current_view is None
     else:
         assert prepared.current_view is not None
-        assert {problem.package_key for problem in prepared.current_view.problems} == expected_problems
+        assert {
+            problem.package_key for problem in prepared.current_view.problems
+        } == expected_problems
         assert set(prepared.current_view.configs) == {"root-service"}
         assert not prepared.current_view.pending_packages
 
