@@ -154,7 +154,7 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 22,
+      "test_count": 24,
       "tests": [
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
@@ -176,6 +176,8 @@
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[absent-user]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[missing-pin-project]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_selected_store_rejects_source_decoy_without_writes[missing-pin-user]",
+        "tests/spec_conformance/test_mcp_collision_lock_reqs.py::test_actual_write_receipt_respects_lock_write_suppression[frozen-context]",
+        "tests/spec_conformance/test_mcp_collision_lock_reqs.py::test_actual_write_receipt_respects_lock_write_suppression[ordinary]",
         "tests/spec_conformance/test_mcp_collision_lock_reqs.py::test_partial_mcp_conflict_persistence_respects_lock_write_suppression[frozen-context]",
         "tests/spec_conformance/test_mcp_collision_lock_reqs.py::test_partial_mcp_conflict_persistence_respects_lock_write_suppression[ordinary]"
       ]

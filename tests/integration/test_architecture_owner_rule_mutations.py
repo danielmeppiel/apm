@@ -817,8 +817,16 @@ MUTATIONS: tuple[MutationCase, ...] = (
         guard_id="install-deployment-single-file-materialization",
         rule_id="install-deployment-single-file-materialization",
         path="src/apm_cli/install/phases/local_content.py",
-        old="source = read_local_package_source(dep_ref, base_dir)",
-        new="source = bypass_local_package_source(dep_ref, base_dir)",
+        old=(
+            "    try:\n"
+            "        source = read_local_package_source(dep_ref, base_dir)\n"
+            "    except LocalPackageError as exc:"
+        ),
+        new=(
+            "    try:\n"
+            "        source = bypass_local_package_source(dep_ref, base_dir)\n"
+            "    except LocalPackageError as exc:"
+        ),
         intent="Local copying bypasses the canonical single-file admission authority.",
     ),
     MutationCase(
@@ -1861,13 +1869,15 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
         ),
         (
             "src/apm_cli/integration/mcp_integrator_install.py",
-            "state = compare_native_mcp_connection(",
-            "state = noncanonical_comparison(",
+            "state = compare_native_mcp_connection(\n                    client,\n"
+            "                    dep.name,",
+            "state = noncanonical_comparison(\n                    client,\n"
+            "                    dep.name,",
         ),
         (
             "src/apm_cli/integration/mcp_integrator.py",
-            "require_removable_mcp_connections(codex_client, stale_names, stored_configs or {})",
-            "None",
+            "verified_keys = require_removable_mcp_connections(\n                codex_client,",
+            "verified_keys = bypass_removal_owner(\n                codex_client,",
         ),
         (
             "src/apm_cli/commands/uninstall/engine.py",
@@ -1898,6 +1908,38 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
             '    """Refuse removal when recorded names do not prove unchanged native content."""\n'
             "    client.project_managed_server_config({}, baseline={}, requested={})",
         ),
+        (
+            "src/apm_cli/core/conflict_detector.py",
+            "class MCPConflictDetector:",
+            "def mcp_native_hash(native):\n    return 'unverified'\n\n\nclass MCPConflictDetector:",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator.py",
+            "                codex_cfg,\n                verified_keys,",
+            "                codex_cfg,\n                expanded_stale,",
+        ),
+        (
+            "src/apm_cli/adapters/client/claude.py",
+            "fingerprint = mcp_native_hash(",
+            "fingerprint = unverified_hash(",
+        ),
+        (
+            "src/apm_cli/install/mcp/integration.py",
+            "retain_deferred_mcp_claims(managed_targets, previous_targets, new_names)",
+            "bypass_deferred_claims(managed_targets, previous_targets, new_names)",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator_install.py",
+            "state = compare_native_mcp_connection(\n                            client,\n"
+            "                            dep,",
+            "state = noncanonical_comparison(\n                            client,\n"
+            "                            dep,",
+        ),
+        (
+            "src/apm_cli/install/phases/lockfile.py",
+            "native_hashes=DeploymentLedgerCodec.mcp_native_hashes(",
+            "native_hashes=DeploymentLedgerCodec.unverified_mcp_native_hashes(",
+        ),
     ],
     ids=[
         "legacy-resolver",
@@ -1908,6 +1950,12 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
         "projection-bypass",
         "projection-external",
         "projection-cleanup",
+        "second-fingerprint-owner",
+        "cleanup-expanded-alias",
+        "actual-write-fingerprint",
+        "bundle-deferred-claims",
+        "registry-install-routing",
+        "rebuild-receipt-routing",
     ],
 )
 def test_native_mcp_ownership_boundary_mutations(path: str, old: str, new: str) -> None:
