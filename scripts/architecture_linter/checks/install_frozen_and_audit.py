@@ -11,6 +11,7 @@ Ports four owner guards recorded in
 
 from __future__ import annotations
 
+import ast
 import re
 
 from scripts.architecture_linter.checks.install_deployment_shared import (
@@ -142,7 +143,7 @@ _MCP_OWNERSHIP_CONSUMERS = (
 
 
 def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, ...]:
-    """Legacy MCP ownership migration and adoption stay owned by one module."""
+    """MCP ownership comparison, removal, migration and adoption share one owner."""
     rule_id = _GUARD_MCP_OWNERSHIP
     owner, owner_fail = _facts_for(provider, _MCP_OWNERSHIP_OWNER, rule_id)
     consumer, consumer_fail = _facts_for(provider, _MCP_INTEGRATOR, rule_id)
@@ -168,6 +169,45 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
         respect_exempt=False,
     )
     findings = list(duplicates)
+    findings.extend(
+        _duplicate_definition_lines(
+            provider,
+            rule_id=rule_id,
+            prefix=_SRC_PREFIX,
+            pattern=re.compile(
+                r"^[ \t]*(?:def (?:compare_native_mcp_connection|"
+                r"require_removable_mcp_connections)\(|class NativeMcpConnectionState\b)"
+            ),
+            owner=_MCP_OWNERSHIP_OWNER,
+            message="Native MCP connection ownership must stay owned by install/mcp/ownership.py",
+            respect_exempt=False,
+        )
+    )
+    for name in ("compare_native_mcp_connection", "require_removable_mcp_connections"):
+        if not _present_re(owner, re.compile(rf"^def {name}\(")):
+            findings.append(
+                _summary(rule_id, _MCP_OWNERSHIP_OWNER, f"Missing canonical MCP owner: {name}")
+            )
+    for path, function, required_call in (
+        (_MCP_INTEGRATOR, "_install_self_defined_deps", "compare_native_mcp_connection"),
+        (_MCP_INTEGRATOR, "run_mcp_install", "compare_native_mcp_connection"),
+        (_MCP_OWNERSHIP_OWNER, "require_removable_mcp_connections", "compare_native_mcp_connection"),
+        (
+            "src/apm_cli/integration/mcp_integrator.py",
+            "remove_stale",
+            "require_removable_mcp_connections",
+        ),
+    ):
+        facts, failures = _facts_for(provider, path, rule_id)
+        findings.extend(failures)
+        if not failures and required_call not in _name_calls_in(facts, function):
+            findings.append(
+                _summary(
+                    rule_id,
+                    path,
+                    f"{function} must route native MCP ownership through {required_call}",
+                )
+            )
     if not _present_re(
         owner, re.compile(r"^def migrate_legacy_project_target_servers\(")
     ) or not _present(consumer, "migrate_legacy_project_target_servers("):
@@ -190,7 +230,8 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
         consumer, consumer_fail = _facts_for(provider, path, rule_id)
         if consumer_fail:
             findings.extend(consumer_fail)
-        elif not _present(consumer, "resolve_mcp_target_servers("):
+            continue
+        if not _present(consumer, "resolve_mcp_target_servers("):
             findings.append(
                 _summary(
                     rule_id,
@@ -198,6 +239,30 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
                     "MCP ownership consumers must route legacy adoption through install/mcp/ownership.py",
                 )
             )
+        index = provider.tree_index(path)
+        if index is None:
+            continue
+        for node in index.nodes:
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "remove_stale"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id in {"MCPIntegrator", "_OwnedMCPIntegrator"}
+                and not any(
+                    keyword.arg == "stored_configs"
+                    and isinstance(keyword.value, (ast.Name, ast.Attribute))
+                    for keyword in node.keywords
+                )
+            ):
+                findings.append(
+                    violation(
+                        rule_id,
+                        path,
+                        "MCP cleanup must pass its recorded configuration baseline to the owner",
+                        line=node.lineno,
+                    )
+                )
     return tuple(findings)
 
 

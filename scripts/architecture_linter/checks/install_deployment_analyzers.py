@@ -97,7 +97,7 @@ RULES: tuple[Rule, ...] = (
     ),
     _rule(
         _GUARD_MCP_OWNERSHIP,
-        "Legacy MCP runtime ownership-key migration stays owned by install/mcp/ownership.py.",
+        "Native MCP baselines, safe removal and legacy migration share install/mcp/ownership.py.",
         check_mcp_ownership_migration,
     ),
     _rule(

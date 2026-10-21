@@ -134,16 +134,13 @@ never enter `mcp.json`. A required variable without a collected value or
 default declines that target configuration; VS Code treats `workspaceFolder`
 as its built-in `${workspaceFolder}` token.
 
-Claude Code is the one target whose entries are merged key by key rather
-than replaced, so keys APM does not manage (a hand-authored OAuth block, for
-example) survive a reinstall. The keys describing a transport are not among
-them: an entry is rewritten to carry only the transport its declaration names,
-so redeclaring a server from `http` to `stdio` drops the previous `url` and
-`headers` instead of leaving both transports on one entry. This cleanup also
-repairs older mixed entries, but only when APM writes that server. An unchanged
-self-defined declaration with matching lock state can skip the write; repeating
-that install does not automatically repair a mixed entry. Rewriting an unchanged,
-valid entry preserves its field order.
+Claude Code merges approved updates key by key and retains runtime-owned
+`oauthAccount` metadata. A self-defined connection is updated only when its
+native configuration still matches its recorded APM baseline. Switching an
+unchanged managed server from `http` to `stdio` removes the previous `url` and
+`headers`; a user-modified or ambiguous historical entry instead requires
+[manual reconciliation](#resolve-a-connection-name-conflict). Matching entries
+are left byte-identical.
 
 For VS Code and Copilot-family adapters, non-container `npm`, `pypi`,
 and generic packages preserve typed v0.1 `runtimeArguments` and
@@ -188,6 +185,37 @@ uses a symlink below the home directory, APM warns and fails without rewriting
 it, even on a no-op reinstall. Fix the reported config and rerun the original
 command with `--global` and the same `--target` selection. A home-directory
 alias itself remains supported.
+
+## Resolve a connection name conflict
+
+For self-defined Claude and Codex connections, APM distinguishes an unchanged
+managed connection from a same-name user connection. A normal package update
+or root override updates the unchanged managed connection. A differing user
+connection is preserved, the affected target is named, and install exits
+nonzero. Other targets may already have been configured; their successful
+writes remain recorded. This is not a whole-command rollback.
+
+For example, Claude may already have a personal `notes` connection while a
+company package requests a different `notes` connection for Claude and Codex.
+APM preserves the personal connection and reports the Claude conflict, even
+if it successfully configures Codex. Choose which connection to keep:
+
+1. To keep both, rename your personal connection in the affected runtime's
+   native config, leaving unrelated settings intact.
+2. To replace the personal connection, remove only that native entry yourself.
+3. Rerun the original install command with the same scope and targets, such as
+   `apm install --global --target claude,codex`.
+
+An identical foreign connection needs no write and does not become APM-owned.
+`--force` grants no takeover permission; `--frozen` does not turn a conflicting
+connection into a successful install or repair lock intent. Prune, target
+narrowing, and uninstall likewise preserve entries that differ from a
+trustworthy managed baseline. If an older ownership record cannot be verified,
+review and rename or remove the affected native entry, then retry; do not
+delete the lockfile or the entire native config as a workaround.
+
+These operations change connection settings, not notes or other data stored
+by the MCP service.
 
 ## How `targets:` gates which configs get written
 

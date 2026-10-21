@@ -82,6 +82,18 @@ For Cursor credential repair, edit `.cursor/mcp.json` at project scope or
 `~/.cursor/mcp.json` with `--global`; replace only the affected values with
 native `${env:NAME}` references and preserve other fields and servers.
 
+For self-defined Claude/Codex MCP connections, a same-name native entry must
+match the requested config or an unchanged APM-managed baseline. Otherwise
+install preserves it, identifies the conflicting target, and exits nonzero;
+successful writes to other targets remain managed. An identical foreign
+connection is left unowned. `--force` does not authorize takeover, and
+`--frozen` does not certify a conflicting connection. Rename or remove only
+the conflicting native entry you intend to replace, then rerun the original
+command with the same scope and targets. Cleanup also preserves modified or
+unverifiable historical entries and asks for manual reconciliation; do not
+delete the lockfile or unrelated native settings to bypass it. This concerns
+connection settings, not data held by the MCP service.
+
 Positional-package dry-runs retain any bootstrapped manifest for inspection.
 `apm install -g --mcp ... --dry-run` does not create a user manifest, lockfile,
 or runtime configuration.

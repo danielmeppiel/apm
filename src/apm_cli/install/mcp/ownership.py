@@ -1,4 +1,4 @@
-"""Forward migration for per-target MCP deployment ownership."""
+"""Native MCP ownership baselines, safe cleanup, and legacy migration."""
 
 from __future__ import annotations
 

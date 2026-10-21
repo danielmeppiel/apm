@@ -24,7 +24,7 @@
     },
     {
       "id": "legacy-mcp-ownership-key-migration",
-      "decision": "Legacy MCP target ownership migration and adoption",
+      "decision": "MCP native connection baseline comparison and safe removal, plus legacy target ownership migration and adoption",
       "owner": "install/mcp/ownership.py",
       "selectors": ["src/apm_cli/install/mcp/ownership.py"],
       "guards": ["install-deployment-mcp-ownership-migration"]
