@@ -538,6 +538,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="MCP config view stops deriving scope from the aggregated declaration owner.",
     ),
     MutationCase(
+        guard_id="hooks-integrations-mcp-omission-evidence",
+        rule_id="mutation_writes.mcp_omission_evidence",
+        path="src/apm_cli/integration/mcp_config_view.py",
+        old='"dependency": dependency.get_unique_key(),',
+        new='"dependency": dependency.name,',
+        intent="Omission evidence binds only a display name instead of canonical dependency identity.",
+    ),
+    MutationCase(
         guard_id="hooks-integrations-mcp-package-launcher",
         rule_id="mutation_writes.mcp_package_launcher",
         path="src/apm_cli/adapters/client/base.py",
@@ -770,6 +778,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Local copying bypasses the canonical single-file admission authority.",
     ),
     MutationCase(
+        guard_id="install-deployment-skill-preflight",
+        rule_id="install-deployment-skill-preflight",
+        path="src/apm_cli/install/phases/integrate.py",
+        old="deployment_plans, local_plan = preflight_skill_materializations(ctx, materialized)",
+        new="deployment_plans, local_plan = {}, None",
+        intent="Integration bypasses whole-plan unmanaged skill preflight before native writes.",
+    ),
+    MutationCase(
         guard_id="install-deployment-skills-root-derivation",
         rule_id="install-deployment-skills-root-derivation",
         path="src/apm_cli/integration/skill_integrator.py",
@@ -780,10 +796,10 @@ MUTATIONS: tuple[MutationCase, ...] = (
     MutationCase(
         guard_id="install-deployment-source-plan",
         rule_id="install-deployment-source-plan",
-        path="src/apm_cli/install/services.py",
+        path="src/apm_cli/install/deployment_plan.py",
         old="source_plan = DeployableSourcePlan.create(",
         new="source_plan_x = DeployableSourcePlan.create(",
-        intent="Install services stop binding the shared deployable source plan.",
+        intent="Deployment preparation stops binding the shared deployable source plan.",
     ),
     MutationCase(
         guard_id="install-deployment-target-file-contraction",

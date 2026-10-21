@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **130 normative statements (125 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **131 normative statements (126 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -2611,6 +2611,76 @@ When two dependencies provide primitives with the same name and
 same type, the **first declared** dependency wins; later
 dependencies' versions MUST NOT replace the resolved primitive.
 
+#### 8.3.1 Unmanaged skill-file preflight (proposed)
+
+<a id="req-pr-008"></a>
+**[req-pr-008]** A conforming **consumer** that deploys skills as files
+MUST, by default and without requiring an opt-in flag, refuse an install
+with a nonzero result per clause (b) when its complete effective selected
+skill-deployment plan (all skill files the consumer would write during
+this install, computed by clause (a)) contains a differing unmanaged
+destination file. A differing unmanaged destination
+file is an existing file that the consumer's deployment-ownership rules
+do not establish as managed and whose raw bytes differ from the exact
+bytes the consumer would write at deployment after applying the same
+target-specific rendering transforms used for that destination.
+A shared directory or skill name alone MUST NOT establish either file
+ownership or this conflict.
+
+(a) The consumer MUST inspect the complete selected plan at its
+preparation/selection boundary (source selection and effective-target
+resolution are complete but native deployment has not begun), including
+standalone skills, package
+subskills and selected project-local skills, every selected physical
+destination, and every supported selected scope. Source selection,
+effective targets and authorization decisions MUST be the same for
+inspection and deployment. The result MUST NOT depend on target order;
+targets sharing one physical destination do not create independent
+ownership. Excluded or withheld sources MUST NOT enter the inspected
+deployment plan.
+
+(b) A known conflict MUST cause a nonzero result before any native
+deployment from the plan, any manifest or lockfile write representing
+successful installation of that plan, or collateral cleanup attributable
+to the rejected install operation, including retirement of selected or
+obsolete dependencies' deployed files. This
+preserves the conflicting user file, earlier native bytes, manifest
+intent and existing ownership/hash records, including prior partial
+installations and repeated attempts. Acquisition and cache/materialization
+preparation MAY remain; this requirement does not promise rollback for
+arbitrary scripts, later races or unrelated failures. Frozen operations
+remain subject to [req-lk-006](#req-lk-006).
+
+(c) The ordinary diagnostic MUST identify the skill, dependency or local
+source, conflicting path and affected targets, state refusal and offer
+a viable nondestructive correction: for example, renaming the local skill
+or an existing valid selection that excludes the conflict. A consumer
+auditing this condition MUST distinguish unresolved ownership conflict
+from modification of a managed file, preserve native bytes and recorded
+state, and MUST NOT recommend an ordinary reinstall as if it could resolve
+the unchanged conflict. When the consumer emits machine-readable findings,
+they MUST retain that distinction using a distinguishing category or type
+in its existing structured output.
+
+This requirement does not prohibit existing identical-content recovery,
+grant ownership over ambiguous legacy state, or redefine managed
+primitive priority under [req-pr-002](#req-pr-002) and
+[req-pr-003](#req-pr-003). Existing explicit destructive replacement
+remains an operator choice, not default recovery advice; this amendment
+adds no replacement permission or security-scan bypass. It does not
+change native-plugin registration, MCP policy, or collision policy for
+agents, prompts or instructions.
+
+> **Proposal and migration status.** PR #3314 records the behavior accepted
+> in issue #3202. Warning/success on a known differing unmanaged skill file
+> becomes whole-plan refusal; this is a new hard conformance obligation,
+> not behavior-neutral errata or an interpretation of the audit-only
+> [req-pl-015](#req-pl-015). Valid narrowing or renaming the local skill is
+> the nondestructive migration path. The Section 9.3 review and public
+> comment process remains pending; issue acceptance, implementation tests
+> and this proposed text do not constitute ratification, publication or a
+> release commitment. Section 9.5 migration obligations are not waived.
+
 #### Proposed shared-skill preservation amendment (informative)
 
 PR #3313 implements the accepted repair in issue #3288: reinstalling
@@ -3213,7 +3283,8 @@ without a spec revision. The current matrix is in the companion
   [req-tg-012](#req-tg-012), [req-tg-013](#req-tg-013),
   [req-tg-014](#req-tg-014), [req-tg-015](#req-tg-015),
   [req-pr-006](#req-pr-006),
-  [req-pr-007](#req-pr-007), [req-tg-016](#req-tg-016),
+  [req-pr-007](#req-pr-007), [req-pr-008](#req-pr-008),
+  [req-tg-016](#req-tg-016),
   [req-tg-017](#req-tg-017).
 
 ---
@@ -3599,6 +3670,7 @@ every stored hash, foreclosing algorithm-ambiguity attacks.
 | 20| Source-only or symlinked package content materialization | [req-sc-015](#req-sc-015)                                      | Consumer-default  |
 | 21| Native plugin namespace collision or ownership-ledger loss | [req-tg-013](#req-tg-013)                                      | Consumer-default  |
 | 22| Silent hook passthrough or double-activation via native-format conversion | [req-tg-016](#req-tg-016), [req-tg-017](#req-tg-017) | Consumer-default |
+| 23| Partial native deployment with false successful-state persistence | [req-pr-008](#req-pr-008) | Consumer-default |
 
 For Codex conversion metadata diagnostics, [req-tg-015](#req-tg-015)
 separately constrains field-name display and excludes dropped values.
@@ -3856,6 +3928,7 @@ conformance statement identifying:
 [req-pr-001](#req-pr-001), [req-pr-002](#req-pr-002),
 [req-pr-003](#req-pr-003), [req-tg-001](#req-tg-001),
 [req-pr-006](#req-pr-006), [req-pr-007](#req-pr-007),
+[req-pr-008](#req-pr-008),
 [req-tg-002](#req-tg-002), [req-tg-003](#req-tg-003),
 [req-tg-004](#req-tg-004), [req-tg-005](#req-tg-005),
 [req-tg-006](#req-tg-006), [req-tg-007](#req-tg-007),
@@ -4336,6 +4409,7 @@ staged-replacement capability, not every consumer implementation.
 | [req-pr-005](#req-pr-005)                | SHOULD  | 7.8     | producer    |
 | [req-pr-006](#req-pr-006)                | MUST    | 8.1     | consumer    |
 | [req-pr-007](#req-pr-007)                | MUST    | 8.1     | consumer    |
+| [req-pr-008](#req-pr-008)                | MUST    | 8.3.1   | consumer    |
 | [req-tg-001](#req-tg-001)                | MUST    | 8.4     | consumer    |
 | [req-tg-002](#req-tg-002)                | MUST    | 8.5     | consumer    |
 | [req-tg-003](#req-tg-003)                | MUST    | 8.5     | consumer    |
@@ -4372,7 +4446,7 @@ staged-replacement capability, not every consumer implementation.
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
 
-**Total normative statements: 130** (125 MUST, 5 SHOULD).
+**Total normative statements: 131** (126 MUST, 5 SHOULD).
 
 ---
 
@@ -4431,6 +4505,11 @@ staged-replacement capability, not every consumer implementation.
 | 0.1.47 (proposed) | 2026-10-15 | Amendment for accepted issue #3204. Revised [req-mf-022] to require a nonzero install result and preservation of previously deployed skill files and ownership records for an unmatched non-empty persisted selection. This intentionally replaces permitted warning-only success; it is not behavior-neutral errata. Section 9.3 review and public-comment requirements remain pending; issue-scope acceptance is not specification adoption. Statement count remains 129 (124 MUST, 5 SHOULD). |
 | 0.1.48 (proposed) | 2026-10-21 | Schema correction candidate for issue #3223; existing prose requirement text (req-mf-011, req-mf-012) and statement count are unchanged. The structural validator validation outcomes change as described below. Selects a distinct manifest resource for Sections 4.3.2, 4.3.6 and 4.4. Compared with the old structural validators, Git plus subpath, registry ID plus registry/version, registry MCP objects and valid self-defined MCP objects can newly pass; incomplete registry identities, empty source fields, invalid MCP field types and missing transport/command/URL or whitespace-command violations can newly fail. Git/id conflicts remain rejected. These are observable validator changes, not behavior-neutral schema errata under Section 9.4. The old v0.1 and 0.1.41 URLs, IDs and bytes remain unchanged; no field or feature is removed from the prose contract. Existing requirements, statement count (129: 124 MUST, 5 SHOULD), working-draft behavior and runtime safeguards are unchanged. Section 9.3 non-author review and the subsequent 14-day public comment period remain pending; product scope acceptance is not ratification. Section 9.2 classification of this correction is pending human determination under the Section 9.3 amendment process. In-tree selection proves neither public deployment nor released CLI support. |
 | 0.1.52 (proposed) | 2026-10-21 | Accepted Windows staging-recovery behavior for issue #3293 / PR #3318. Adds conditional consumer [req-lk-023](#req-lk-023), Section 5.2.1: retain original and secondary failures, recover prior state where permitted, preserve residual prior data under denied restoration, protect active/unknown staging and retry with a fresh candidate, and never undo a committed replacement because backup disposal failed. This is a new recovery obligation under Section 9.2, not behavior-neutral errata. No schema, lockfile version, privilege, or arbitrary lifecycle-script rollback change. Section 9.3 review and public comment remain pending; source landing and conformance tests do not establish adoption or release. Statement count: 129 -> 130 (125 MUST, 5 SHOULD). |
+| 0.1.53 (proposed) | 2026-10-21 | Amendment for accepted issue #3202 in PR #3314. Added [req-pr-008](#req-pr-008) (Section 8.3.1, consumer MUST): default refusal of a differing unmanaged skill file checks the complete effective selected plan before native deployment, success-state persistence or cleanup; preserves prior bytes and ownership; and provides truthful read-only audit and nondestructive correction. Warning/success becomes refusal, a new hard conformance obligation rather than errata. Identical-content recovery, existing explicit destructive replacement, managed-source priority, native-plugin and non-skill/MCP policies remain outside this change. No schema or lockfile-version change. Section 9.3 review/public comment and applicable Section 9.5 migration remain pending, not waived; no ratification or release is claimed. Sections 1.3, 8.7, 10.11, 11.3.2, Appendix C, requirements manifest and conformance test binding updated. Statement count: 129 -> 130 (125 MUST, 5 SHOULD). |
+
+The independently drafted 0.1.52 and 0.1.53 proposals each add one MUST.
+Together, this working draft contains 131 statements (126 MUST, 5 SHOULD).
+Combining the proposals does not establish Section 9.3 adoption or CLI release.
 
 Errata (none at publication).
 

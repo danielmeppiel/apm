@@ -493,6 +493,15 @@ Deployed as slash commands to targets that support them:
 - Cursor: `.cursor/commands/*.md` (Cursor 1.6+; Cursor is de-emphasizing commands in favor of rules/skills)
 - OpenCode: `.opencode/commands/*.md` (normalized to supported command frontmatter)
 - Gemini CLI: `.gemini/commands/*.toml` (converted to TOML command format)
+- Kiro CLI: `.kiro/prompts/<name>.md` or `~/.kiro/prompts/<name>.md`
+  with `--global` (body-only Markdown, qualified with CLI 2.33.0 V3).
+  APM removes `.prompt` from the filename and strips YAML frontmatter;
+  `/name` comes from the filename, not `name:`. Use native `${1}` through
+  `${10}`, `$ARGUMENTS`, or `${@}` in the body. `${input:name}` is not
+  translated and produces a warning. Tool/model and other unsupported
+  metadata also produce warnings rather than becoming Kiro execution
+  settings. Project prompts override same-name user prompts; file prompts
+  override MCP prompts. This is CLI prompt support, not an IDE parity claim.
 
 ```yaml
 ---
@@ -683,6 +692,12 @@ my-skill/
 ```
 
 ### 7. Marketplace Plugin (`plugin.json`)
+
+For loose skill deployment, a differing unmanaged destination file refuses the
+whole selected install plan before native writes. Use distinct skill directory
+names or an existing consumer skill/target selection; there is no new namespace
+or collision flag. This does not change native plugin identities or decide
+precedence between managed packages.
 
 Packaged distribution format created with `apm pack` (the default, no-flag
 Claude plugin bundle). This is the Claude-compatible `plugin.json` layout,
