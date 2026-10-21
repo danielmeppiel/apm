@@ -57,6 +57,7 @@ def run_service_integrations(
     diagnostics: Any,
     explicit_target: str | list[str] | None,
     target_decision: EffectiveTargetDecision | None,
+    active_package_keys: frozenset[str] | None = None,
 ) -> ServiceIntegrationResult:
     """Resolve once, then reconcile package-declared MCP and LSP services."""
     from apm_cli.core.scope import InstallScope, get_modules_dir
@@ -104,6 +105,8 @@ def run_service_integrations(
             trust_transitive_mcp=ctx.trust_transitive_mcp,
             logger=ctx.logger,
             diagnostics=diagnostics,
+            allow_pending=False,
+            active_package_keys=active_package_keys,
         )
         apm_config = {
             "scripts": apm_package.scripts or {},
@@ -180,6 +183,7 @@ def run_service_integrations(
         target_decision=target_decision,
         scope=ctx.scope,
         prepared=prepared_mcp,
+        active_package_keys=active_package_keys,
     )
     lsp_count = run_lsp_integration(
         apm_package=apm_package,

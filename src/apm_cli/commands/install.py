@@ -1993,6 +1993,9 @@ def _install_apm_packages(ctx, outcome):
             diagnostics=apm_diagnostics,
             explicit_target=ctx.target or ctx.runtime,
             target_decision=ctx.target_decision,
+            active_package_keys=(
+                install_result.active_package_keys if install_result is not None else None
+            ),
         )
     except PolicyBlockError:
         logger.error(

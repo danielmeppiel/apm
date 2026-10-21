@@ -78,10 +78,14 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     integration, integration_fail = _facts_for(
         provider, "src/apm_cli/install/phases/integrate.py", rule_id
     )
-    if owner_fail or adapter_fail or services_fail or integration_fail:
-        return tuple(
-            list(owner_fail) + list(adapter_fail) + list(services_fail) + list(integration_fail)
-        )
+    outcome, outcome_fail = _facts_for(provider, "src/apm_cli/install/outcome.py", rule_id)
+    mcp, mcp_fail = _facts_for(provider, "src/apm_cli/install/mcp/integration.py", rule_id)
+    failures = owner_fail + adapter_fail + services_fail + integration_fail + outcome_fail + mcp_fail
+    if failures:
+        return tuple(failures)
+    mcp_prepare_body = _awk_body(
+        mcp, re.compile(r"^def prepare_mcp_integration\("), re.compile(r"^def ")
+    )
 
     preflight = _first_line(adapter, "InstallService.enforce_frozen(")
     migration = _first_line(adapter, "migrate_lockfile_if_needed(ctx.apm_dir)")
@@ -157,6 +161,19 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or not _present(services, "prepared=prepared_mcp,")
         or not _present(services, "prepared=prepared_lsp,")
         or not _present(services, "current_mcp=prepared_mcp.current_view,")
+        or not _present(
+            outcome, 'complete_dep_keys = getattr(ctx, "update_plan_complete_dep_keys", None)'
+        )
+        or not _present(
+            outcome, "frozenset(complete_dep_keys) if complete_dep_keys is not None else None"
+        )
+        or not _present(
+            adapter, "install_result.active_package_keys if install_result is not None else None"
+        )
+        or not _present(services, "active_package_keys=active_package_keys,")
+        or not _present(services, "allow_pending=False,")
+        or not _body_has(mcp_prepare_body, "active_package_keys=active_package_keys,")
+        or not _body_has(mcp_prepare_body, "allow_pending=allow_pending,")
         or not _present(adapter, "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,")
         or not _present(integration, "if ctx.frozen and ctx.existing_lockfile is not None:")
         or not _present(

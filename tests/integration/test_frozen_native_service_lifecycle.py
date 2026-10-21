@@ -268,6 +268,44 @@ def test_frozen_service_only_missing_package_source_cannot_remove_native_servers
     assert "fixture-mcp" in result.stdout + result.stderr
 
 
+def test_frozen_package_selection_retains_unselected_active_service_evidence(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """The late native guard must use the complete graph, not the --only subset."""
+    scenario = _new_scenario(tmp_path / "selected-service-graph", apm_binary_path)
+    selected = _publish(scenario, "selected", skill="selected-skill")
+    service = _publish(scenario, "retained-service", mcp=True)
+    scenario.environment.update(
+        scenario.repositories.url_rewrite_subprocess_env_many(
+            (
+                (selected.repository, selected.remote_url),
+                (service.repository, service.remote_url),
+            )
+        )
+    )
+    project = scenario.consumers.create(
+        "selected-consumer",
+        dependencies=(selected.dependency, service.dependency),
+        targets=("copilot", "claude"),
+    )
+    _success(scenario, project, label="complete-graph-baseline")
+    lock = project.root / "apm.lock.yaml"
+    locked, manifest = lock.read_bytes(), project.manifest_path.read_bytes()
+    native = _native_bytes(scenario, project)
+    assert "fixture-mcp" in json.loads((project.root / ".github/mcp.json").read_bytes())["servers"]
+    _success(
+        scenario,
+        project,
+        "--only",
+        "apm-fixture-org/selected",
+        "--frozen",
+        label="selected-package-keeps-full-service-graph",
+    )
+    assert lock.read_bytes() == locked
+    assert project.manifest_path.read_bytes() == manifest
+    assert _native_bytes(scenario, project) == native
+
+
 def test_frozen_indirect_self_defined_service_still_requires_explicit_trust(
     tmp_path: Path, apm_binary_path: Path
 ) -> None:

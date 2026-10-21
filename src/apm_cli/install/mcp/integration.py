@@ -38,6 +38,8 @@ def prepare_mcp_integration(
     logger: "InstallLogger",
     diagnostics: "DiagnosticCollector | None" = None,
     trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
+    allow_pending: bool | None = None,
+    active_package_keys: frozenset[str] | None = None,
 ) -> PreparedMcpIntegration:
     """Collect and filter once, without native writes or ownership adoption."""
     from apm_cli.deps.lockfile import LockFile
@@ -55,6 +57,8 @@ def prepare_mcp_integration(
             diagnostics=diagnostics,
             logger=logger,
             trusted_transitive_configs=trusted_transitive_configs,
+            allow_pending=allow_pending,
+            active_package_keys=active_package_keys,
         )
         root_count = len(apm_package.get_all_mcp_dependencies())
         transitive_count = max(0, len(current_view.dependencies) - root_count)
@@ -190,6 +194,7 @@ def run_mcp_integration(  # noqa: PLR0913
     scope=None,
     trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
     prepared: PreparedMcpIntegration | None = None,
+    active_package_keys: frozenset[str] | None = None,
 ) -> tuple[int, dict]:
     """Run MCP server integration after APM package installation.
 
@@ -252,6 +257,7 @@ def run_mcp_integration(  # noqa: PLR0913
         logger=logger,
         diagnostics=diagnostics,
         trusted_transitive_configs=trusted_transitive_configs,
+        active_package_keys=active_package_keys,
     )
     mcp_deps, current_view = prepared.dependencies, prepared.current_view
 

@@ -1,15 +1,99 @@
 """Cross-platform lifetime and recorded-only native-service eligibility."""
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
-from apm_cli.deps.lockfile import LockFile
+from apm_cli.deps.lockfile import LockedDependency, LockFile
+from apm_cli.install.context import InstallContext
 from apm_cli.install.errors import FrozenInstallError
+from apm_cli.install.mcp.integration import prepare_mcp_integration
+from apm_cli.install.outcome import result_from_install_context
 from apm_cli.install.service import InstallService
 from apm_cli.integration.mcp_config_view import CurrentMcpConfigView, McpSourceProblem
+from apm_cli.models.apm_package import APMPackage
+from apm_cli.models.results import InstallResult
 
 pytestmark = pytest.mark.component
+
+
+def test_result_retains_complete_graph_instead_of_selected_packages(tmp_path: Path) -> None:
+    """Late services receive the same pre-selection graph as the hydrated gate."""
+    context = InstallContext(project_root=tmp_path, apm_dir=tmp_path)
+    context.update_plan_complete_dep_keys = {"owner/selected", "owner/transitive", "owner/other"}
+    context.intended_dep_keys = {"owner/selected"}
+    result = result_from_install_context(context)
+    assert result.active_package_keys == frozenset(
+        {"owner/selected", "owner/transitive", "owner/other"}
+    )
+    context.update_plan_complete_dep_keys.clear()
+    assert len(result.active_package_keys) == 3
+
+
+def test_result_distinguishes_unknown_membership_from_resolved_empty_graph(tmp_path: Path) -> None:
+    """Skipping package resolution must not claim that no active packages exist."""
+    assert InstallResult().active_package_keys is None
+    context = InstallContext(project_root=tmp_path, apm_dir=tmp_path)
+    assert result_from_install_context(context).active_package_keys == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("active_keys", "selected", "expected_problems"),
+    [
+        (None, True, {"owner/active", "owner/orphan"}),
+        (frozenset(), True, set()),
+        (frozenset({"owner/active"}), True, {"owner/active"}),
+        (None, False, None),
+    ],
+    ids=["unknown", "known-empty", "active-unavailable", "standalone-mcp-unselected"],
+)
+def test_prepared_frozen_view_preserves_membership_and_actual_source_requirements(
+    tmp_path: Path,
+    active_keys: frozenset[str] | None,
+    selected: bool,
+    expected_problems: set[str] | None,
+) -> None:
+    """Inactive rows may be ignored; unavailable active sources are never empty."""
+    root = APMPackage(
+        name="root",
+        version="1.0.0",
+        package_path=tmp_path,
+        dependencies={
+            "mcp": [
+                {
+                    "name": "root-service",
+                    "registry": False,
+                    "transport": "http",
+                    "url": "https://example.invalid/root",
+                }
+            ]
+        },
+    )
+    dependencies = {
+        key: LockedDependency(repo_url=key, package_type="apm_package", depth=1)
+        for key in ("owner/active", "owner/orphan")
+    }
+    lock_path = tmp_path / "apm.lock.yaml"
+    LockFile(dependencies=dependencies).write(lock_path)
+    prepared = prepare_mcp_integration(
+        apm_package=root,
+        mcp_deps=root.get_all_mcp_dependencies(),
+        apm_modules_path=tmp_path / "apm_modules",
+        lock_path=lock_path,
+        should_install=selected,
+        trust_transitive_mcp=False,
+        logger=Mock(),
+        allow_pending=False,
+        active_package_keys=active_keys,
+    )
+    if expected_problems is None:
+        assert prepared.current_view is None
+    else:
+        assert prepared.current_view is not None
+        assert {problem.package_key for problem in prepared.current_view.problems} == expected_problems
+        assert set(prepared.current_view.configs) == {"root-service"}
+        assert not prepared.current_view.pending_packages
 
 
 @pytest.mark.windows_compat
