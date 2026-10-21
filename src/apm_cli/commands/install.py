@@ -106,6 +106,7 @@ from apm_cli.install.services import (
     _integrate_local_content,  # noqa: F401 -- re-exported; test_architecture_invariants checks importability
     _integrate_package_primitives,  # noqa: F401 -- re-exported; tests import/patch from apm_cli.commands.install
 )
+from apm_cli.install.summary import render_post_install_summary as _post_install_summary
 from apm_cli.install.transaction import InstallTransaction
 
 # Re-export validation leaf helpers so that existing test patches like
@@ -1211,6 +1212,7 @@ def install(  # noqa: PLR0913
     dry_run_manifest_tmp = None
     from ..install.service import InstallService
 
+    ctx.with_resource(InstallService.frozen_writes(frozen))
     try:
         if mcp_name is not None:
             InstallService.reject_frozen_mutation(frozen, "--mcp")
@@ -1712,8 +1714,7 @@ def install(  # noqa: PLR0913
 def _install_apm_packages(ctx, outcome):
     """Execute the APM + transitive MCP installation pipeline.
 
-    Parses ``apm.yml``, installs APM dependencies, collects and installs
-    transitive MCP servers, and handles lockfile updates.
+    Install packages and transitive MCP servers, updating non-frozen lock state.
     Args:
         ctx: :class:`InstallContext` with configuration and environment.
         outcome: ``_ValidationOutcome`` from package validation (may be
@@ -1772,7 +1773,8 @@ def _install_apm_packages(ctx, outcome):
                 frozen=True,
                 scope=ctx.scope,
                 trust_transitive_mcp=ctx.trust_transitive_mcp,
-            )
+            ),
+            allow_pending_mcp=ctx.install_mode != InstallMode.MCP,
         )
 
     should_install_apm = ctx.install_mode != InstallMode.MCP
@@ -1790,14 +1792,14 @@ def _install_apm_packages(ctx, outcome):
         )
 
     if ctx.dry_run:
-        prospective_plan = ProspectiveInstallPlan.from_apm_package(
+        prospective_plan = ProspectiveInstallPlan.from_install_context(
             apm_package,
+            ctx,
             should_install_apm=should_install_apm,
             should_install_mcp=should_install_mcp,
-            only_packages=ctx.only_packages,
             updated_packages=outcome.updated_packages if outcome is not None else (),
         )
-        prospective_plan = prospective_plan.with_allowed_lsp_dependencies(apm_package, logger)
+        logger.record_dry_run_incomplete(bool(prospective_plan.dependency_preview_errors))
         logger.record_dry_run_apm_updates(len(prospective_plan.updated_apm_identities))
         _check_insecure_dependencies(
             prospective_plan.selected_apm_dependencies,
@@ -1991,6 +1993,9 @@ def _install_apm_packages(ctx, outcome):
             diagnostics=apm_diagnostics,
             explicit_target=ctx.target or ctx.runtime,
             target_decision=ctx.target_decision,
+            active_package_keys=(
+                install_result.active_package_keys if install_result is not None else None
+            ),
         )
     except PolicyBlockError:
         logger.error(
@@ -2017,37 +2022,6 @@ def _install_apm_packages(ctx, outcome):
     command_result.diagnostics = apm_diagnostics
     ctx.install_result = finalize_install_result(command_result, force=ctx.force)
     return apm_count, mcp_count, lsp_count, apm_diagnostics
-
-
-def _post_install_summary(
-    *,
-    logger,
-    apm_count,
-    mcp_count,
-    lsp_count=0,
-    apm_diagnostics,
-    force,
-    elapsed_seconds=None,
-    result=None,
-):
-    """Thin shim forwarding to :func:`apm_cli.install.summary.render_post_install_summary`.
-
-    Kept as a module-level alias so existing tests that
-    ``@patch("apm_cli.commands.install._post_install_summary")`` continue
-    to work after the extraction (microsoft/apm#1116, F5).
-    """
-    from apm_cli.install.summary import render_post_install_summary
-
-    return render_post_install_summary(
-        logger=logger,
-        apm_count=apm_count,
-        mcp_count=mcp_count,
-        lsp_count=lsp_count,
-        apm_diagnostics=apm_diagnostics,
-        force=force,
-        elapsed_seconds=elapsed_seconds,
-        result=result,
-    )
 
 
 # ---------------------------------------------------------------------------

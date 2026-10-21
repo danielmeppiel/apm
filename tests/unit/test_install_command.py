@@ -527,7 +527,7 @@ class TestInstallCommandAutoBootstrap:
         self,
         _mock_validate,
     ):
-        """A changed positional ref remains prospective during dry-run."""
+        """A changed positional ref remains prospective and explicitly incomplete."""
         with self._chdir_tmp():
             Path("apm.yml").write_text(
                 "name: project\nversion: 1.0.0\ndependencies:\n  apm:\n    - owner/repo#main\n",
@@ -545,7 +545,8 @@ class TestInstallCommandAutoBootstrap:
             assert "would update ref in apm.yml" in result.output
             assert "Previewing 1 package (1 ref update)" in result.output
             assert "-> update" in result.output
-            assert "Dry run completed: would apply 1 APM dependency update" in result.output
+            assert "Dry run incomplete: 1 locally known APM dependency" in result.output
+            assert "Dry run completed:" not in result.output
             assert "No new packages to add" not in result.output
             assert "Installing 1 new package" not in result.output
             assert Path("apm.yml").read_bytes() == manifest_before

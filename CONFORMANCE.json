@@ -150,13 +150,18 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 12,
+      "test_count": 17,
       "tests": [
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-stdio]",
+        "tests/spec_conformance/test_frozen_service_lock_reqs.py::test_frozen_service_command_preserves_committed_lock_bytes[narrower]",
+        "tests/spec_conformance/test_frozen_service_lock_reqs.py::test_frozen_service_command_preserves_committed_lock_bytes[recorded]",
+        "tests/spec_conformance/test_frozen_service_lock_reqs.py::test_frozen_service_command_preserves_committed_lock_bytes[unrecorded]",
         "tests/spec_conformance/test_lockfile_reqs.py::TestFrozenInstallNeverWritesLockfile::test_frozen_install_withholds_the_write_and_fails_instead",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_cold_dependency_evidence_cannot_defer_direct_mcp_drift[False]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_cold_dependency_evidence_cannot_defer_direct_mcp_drift[True]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_install_preserves_conflicted_lockfile_bytes[crlf]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_install_preserves_conflicted_lockfile_bytes[lf]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_mcp_validation_fails_before_durable_mutation",
@@ -477,24 +482,42 @@
     },
     {
       "conformance_class": "consumer",
+      "fixture": "tests/fixtures/spec-conformance/manifest/dependency-schema-cases.json",
       "id": "req-mf-011",
       "keyword": "MUST",
       "section": "4.3.2",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_apm_source_table_form"
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[conflicting-git-id-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[conflicting-git-id-devDependencies]"
       ]
     },
     {
       "conformance_class": "consumer",
+      "fixture": "tests/fixtures/spec-conformance/manifest/dependency-schema-cases.json",
       "id": "req-mf-012",
       "keyword": "MUST",
       "section": "4.3.6",
       "status": "active",
-      "test_count": 1,
+      "test_count": 16,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_rejects_unknown_source_kind"
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-tab-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-tab-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-whitespace-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-whitespace-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-command-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-command-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-http-url-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-http-url-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-sse-url-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-sse-url-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-streamable-url-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-streamable-url-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-transport-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-transport-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-spaced-command-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-spaced-command-devDependencies]"
       ]
     },
     {
@@ -1035,12 +1058,13 @@
       "keyword": "MUST",
       "section": "7.2",
       "status": "active",
-      "test_count": 5,
+      "test_count": 6,
       "tests": [
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[False-False]",
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[False-True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[True-False]",
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[True-True]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_offline_preview_preserves_breadth_first_declaration_order",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_walks_dependency_graph_deterministically"
       ]
     },
@@ -1565,9 +1589,10 @@
       "keyword": "MUST",
       "section": "8.5.5",
       "status": "active",
-      "test_count": 3,
+      "test_count": 4,
       "tests": [
         "tests/spec_conformance/test_copilot_plugins_reqs.py::test_cache_only_replay_preserves_native_target_exclusion",
+        "tests/spec_conformance/test_copilot_plugins_reqs.py::test_transitive_native_preview_preflight_preserves_state",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_materializes_without_projection",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_stays_opaque_after_materialization"
       ]
@@ -1578,9 +1603,15 @@
       "keyword": "MUST",
       "section": "8.5.6",
       "status": "active",
-      "test_count": 1,
+      "test_count": 7,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_plugin_root_hook_resolution_preserves_quoting_and_warns"
+        "tests/spec_conformance/test_manifest_reqs.py::test_plugin_root_hook_resolution_preserves_quoting_and_warns",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}\"/scripts/probe.py-probe file.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}\"/scripts/probe.py-probe.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}/scripts/probe.py\"-probe file.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}/scripts/probe.py\"-probe.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python '${CLAUDE_PLUGIN_ROOT}'\\\\scripts\\\\probe.py-probe file.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python '${CLAUDE_PLUGIN_ROOT}'\\\\scripts\\\\probe.py-probe.py]"
       ]
     },
     {
