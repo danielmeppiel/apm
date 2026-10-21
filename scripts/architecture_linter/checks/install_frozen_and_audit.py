@@ -75,8 +75,13 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     services, services_fail = _facts_for(
         provider, "src/apm_cli/install/service_integration.py", rule_id
     )
-    if owner_fail or adapter_fail or services_fail:
-        return tuple(list(owner_fail) + list(adapter_fail) + list(services_fail))
+    integration, integration_fail = _facts_for(
+        provider, "src/apm_cli/install/phases/integrate.py", rule_id
+    )
+    if owner_fail or adapter_fail or services_fail or integration_fail:
+        return tuple(
+            list(owner_fail) + list(adapter_fail) + list(services_fail) + list(integration_fail)
+        )
 
     preflight = _first_line(adapter, "InstallService.enforce_frozen(")
     migration = _first_line(adapter, "migrate_lockfile_if_needed(ctx.apm_dir)")
@@ -85,6 +90,9 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     root_redirect = _first_line(adapter, "_root_redirect = install_root_redirect(")
     dedicated_mcp = _last_line_re(adapter, re.compile(r"^[ \t]*_handle_mcp_install\("))
     local_bundle = _first_line(adapter, "if len(packages) == 1 and not mcp_name")
+    acquisition = _first_line(integration, "prepare_integration_materialization(source)")
+    hydrated_check = _first_line(integration, "InstallService.enforce_hydrated_mcp(")
+    deployment = _first_line(integration, "run_integration_template(source,")
 
     duplicates = _duplicate_definition_lines(
         provider,
@@ -102,6 +110,11 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         and _present_re(owner, re.compile(r"^    def frozen_writes\("))
         and _present_re(owner, re.compile(r"^    def enforce_frozen_services\("))
         and _present(owner, "current_mcp.diff(lockfile.mcp_configs)")
+        and _present_re(owner, re.compile(r"^    def enforce_hydrated_mcp\("))
+        and _present(owner, "current.pending_servers(lockfile)")
+        and _present(owner, "current.diff(lockfile.mcp_configs)")
+        and _present(owner, "allow_pending=False,")
+        and _present(owner, "active_package_keys=active_package_keys,")
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
 
@@ -144,6 +157,13 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or not _present(services, "prepared=prepared_mcp,")
         or not _present(services, "prepared=prepared_lsp,")
         or not _present(services, "current_mcp=prepared_mcp.current_view,")
+        or not _present(adapter, "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,")
+        or not _present(integration, "if ctx.frozen and ctx.existing_lockfile is not None:")
+        or not _present(
+            integration, "active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),"
+        )
+        or not _before(acquisition, hydrated_check)
+        or not _before(hydrated_check, deployment)
         or bool(duplicates)
     )
     if not failed:
