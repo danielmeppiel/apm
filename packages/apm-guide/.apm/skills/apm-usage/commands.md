@@ -166,6 +166,22 @@ The local-source check is APM-specific frozen-install behavior, not a new
 lockfile schema requirement. Legacy bare SHA-256 digests are accepted without
 rewriting the lock. Normal non-frozen installs can establish missing baselines.
 
+Frozen native MCP/LSP integration also preserves exact manifest and lockfile
+bytes. It refuses a selected target/server without recorded ownership before
+writing or removing either service's native configs. For example, adding
+`intellij` to a Copilot/Claude baseline requires an ordinary install with the
+intended `--target` first; frozen mode does not create an unrecorded personal
+deployment. Retain `--only`, `--root DIR` or `--global` during recovery.
+Reordered, repeated and narrower selections work. Downloads may precede the
+check; package deployment and lifecycle scripts are not generally rolled back.
+Late MCP checks use the complete resolved package graph, not just the packages
+selected for installation.
+
+`--only mcp` does not hydrate package sources, even without `--frozen`.
+Restore the package sources and declarations matching the lock using
+`apm install` without `--only mcp` in the same deployment store (retain `--root DIR`
+or `--global`, if used) before retrying.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
@@ -442,7 +458,7 @@ rewriting files. Explicit `--file` remains user-directed.
 
 Native Copilot Agent Plugins replay through the canonical package loader, with or without a plugin `apm.yml`. A clean install or reinstall can audit successfully. Set the consumer's `targets: [copilot]` in `apm.yml`; audit has no `--target` flag. Invalid native manifests fail replay instead of entering legacy conversion. Admitted local native cache units are compared with a scratch copy of their original source using install's validated copying; modified or missing cached skills fail audit. Remote native units use the recorded package content hash, including in cold-cache CI. Run `apm install` to restore drift or establish a missing remote hash. Cache files remain outside deployed-file tracking, and native registration files are not covered by this content comparison.
 
-Bare `apm audit` uses the warmed local cache and skips drift with an informational message when the cache is absent; run `apm install` before relying on non-CI drift. `apm audit --ci` is stricter: when `apm_modules/` is missing but `apm.lock.yaml` is present, it self-hydrates a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without touching the checkout. No checkout install is required first. Missing gitignored deployed outputs do not fail `deployed-files-present`, so repos that gitignore them can use audit-only CI too. Without committed deployed bytes, that pattern lacks deployed-byte integrity and drift coverage; use full-install CI when outputs need to be materialized.
+Bare `apm audit` uses the warmed local cache and skips drift with an informational message when the cache is absent; run `apm install` before relying on non-CI drift. `apm audit --ci` is stricter: in a project with `apm.yml` and `apm.lock.yaml` but no `apm_modules/`, it prepares a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without touching the checkout. No checkout install is required first, but local dependency sources must be available at their declared paths. Windows long and native 8.3 spellings of the same project retain project scope; they do not require a global install. Auditing the actual user metadata workspace (`~/.apm`) still refuses missing modules and requires `apm install --global`. Missing gitignored deployed outputs do not fail `deployed-files-present`, so repos that gitignore them can use audit-only CI too. Without committed deployed bytes, that pattern lacks deployed-byte integrity and drift coverage; use full-install CI when outputs need to be materialized.
 
 For project-local content, replay uses the same package interpretation as install.
 A sibling `skills/<name>/SKILL.md` alongside `.apm/` is not promoted to a local
