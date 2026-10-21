@@ -30,9 +30,8 @@ from apm_cli.install.errors import (
     InstallFailureAlreadyRendered,
     PolicyViolationError,
     RequiredIntegrationError,
-)
-from apm_cli.install.errors import (
-    frozen_install_tip as _frozen_install_tip,
+    install_failure_message,
+    log_frozen_install_error,
 )
 from apm_cli.install.gitlab_resolver import _try_resolve_gitlab_direct_shorthand
 from apm_cli.install.helpers.ref_reuse import is_git_semver_resolution_eligible
@@ -1654,10 +1653,7 @@ def install(  # noqa: PLR0913
             else InstallResult(disposition=InstallDisposition.FAILED, exit_code=1, error=e)
         )
     except FrozenInstallError as e:
-        logger.error(str(e))
-        for reason in e.reasons:
-            logger.error_detail(reason)
-        logger.info(_frozen_install_tip(e))
+        log_frozen_install_error(e, logger)
         command_result = (
             transaction.fail(e)
             if transaction is not None
@@ -1675,9 +1671,8 @@ def install(  # noqa: PLR0913
         # render with exit code 2 and the standard "Usage: ..." prefix.
         raise
     except Exception as e:
-        (logger or InstallLogger(verbose=verbose, dry_run=dry_run)).exception(
-            f"Error installing dependencies: {e}"
-        )
+        failure_logger = logger or InstallLogger(verbose=verbose, dry_run=dry_run)
+        failure_logger.exception(install_failure_message(e))
         command_result = (
             transaction.fail(e)
             if transaction is not None
@@ -1718,7 +1713,7 @@ def install(  # noqa: PLR0913
 def _install_apm_packages(ctx, outcome):
     """Execute the APM + transitive MCP installation pipeline.
 
-    Parse the manifest, install dependencies and transitive MCP, and update the lockfile.
+    Install packages and transitive MCP servers, updating non-frozen lock state.
     Args:
         ctx: :class:`InstallContext` with configuration and environment.
         outcome: Package validation result, or ``None`` without explicit packages.
@@ -1774,7 +1769,8 @@ def _install_apm_packages(ctx, outcome):
                 frozen=True,
                 scope=ctx.scope,
                 trust_transitive_mcp=ctx.trust_transitive_mcp,
-            )
+            ),
+            allow_pending_mcp=ctx.install_mode != InstallMode.MCP,
         )
 
     should_install_apm = ctx.install_mode != InstallMode.MCP
@@ -1792,14 +1788,14 @@ def _install_apm_packages(ctx, outcome):
         )
 
     if ctx.dry_run:
-        prospective_plan = ProspectiveInstallPlan.from_apm_package(
+        prospective_plan = ProspectiveInstallPlan.from_install_context(
             apm_package,
+            ctx,
             should_install_apm=should_install_apm,
             should_install_mcp=should_install_mcp,
-            only_packages=ctx.only_packages,
             updated_packages=outcome.updated_packages if outcome is not None else (),
         )
-        prospective_plan = prospective_plan.with_allowed_lsp_dependencies(apm_package, logger)
+        logger.record_dry_run_incomplete(bool(prospective_plan.dependency_preview_errors))
         logger.record_dry_run_apm_updates(len(prospective_plan.updated_apm_identities))
         _check_insecure_dependencies(
             prospective_plan.selected_apm_dependencies,
@@ -1941,10 +1937,7 @@ def _install_apm_packages(ctx, outcome):
             logger.info("Tip: run 'apm doctor' to diagnose auth and connectivity.")
             raise InstallFailureAlreadyRendered(str(e)) from e
         except FrozenInstallError as e:
-            logger.error(str(e))
-            for reason in e.reasons:
-                logger.error_detail(reason)
-            logger.info(_frozen_install_tip(e))
+            log_frozen_install_error(e, logger)
             raise InstallFailureAlreadyRendered(str(e)) from e
         except InstallFailureAlreadyRendered:
             raise

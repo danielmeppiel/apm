@@ -177,9 +177,9 @@ def test_codex_native_content_and_ownership_gates_cannot_be_bypassed(
     ("path", "old", "new"),
     [
         (
-            "src/apm_cli/install/phases/resolve.py",
-            "selected_dependency_identity(p, resolved_refs)",
-            "DependencyReference.parse(p).get_identity()",
+            "src/apm_cli/install/package_selection.py",
+            "selected_dependency_identity(package, resolved_refs)",
+            "DependencyReference.parse(package).get_identity()",
         ),
         (
             "src/apm_cli/install/dry_run_plan.py",
@@ -212,6 +212,46 @@ def test_package_selector_identity_cannot_bypass_interpreted_references(
     path: str, old: str, new: str
 ) -> None:
     """Install and preview cannot revert to lossy shorthand reparsing."""
+    rule_id = "install-deployment-prospective-dry-run-plan"
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert old in source
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: source.replace(old, new)})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "read_only=True,",
+            "read_only=False,",
+        ),
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "graph.flattened_dependencies.get_installation_list()",
+            "apm_package.get_apm_dependencies()",
+        ),
+        (
+            "src/apm_cli/install/phases/resolve.py",
+            "ctx.deps_to_install = selected_subtree_dependencies(",
+            "ctx.deps_to_install = alternate_subtree_dependencies(",
+        ),
+        (
+            "src/apm_cli/install/dry_run_plan.py",
+            "selected_subtree_dependencies(",
+            "alternate_subtree_dependencies(",
+        ),
+        (
+            "src/apm_cli/install/presentation/dry_run.py",
+            "and not plan.dependency_preview_errors:",
+            ":",
+        ),
+    ],
+)
+def test_preview_cannot_bypass_offline_graph_authority(path: str, old: str, new: str) -> None:
+    """An alternate root-only preview or incomplete-removal claim fails the guard."""
     rule_id = "install-deployment-prospective-dry-run-plan"
     source = (ROOT / path).read_text(encoding="utf-8")
     assert old in source
@@ -1711,6 +1751,68 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
     """Global consumers cannot bypass native type or selected-target safety owners."""
     baseline = run_selected_rules(ROOT, (rule_id,))
     assert baseline.failures == ()
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new", "rule_id"),
+    [
+        (
+            "src/apm_cli/commands/install.py",
+            "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,",
+            "allow_pending_mcp=True,",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "if ctx.frozen and ctx.existing_lockfile is not None:",
+            "if False:",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "InstallService.enforce_hydrated_mcp(",
+            "InstallService.skip_hydrated_mcp(",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/install/service.py",
+            "allow_pending=False,",
+            "allow_pending=True,",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "require_locked=True,",
+            "require_locked=False,",
+            "mutation_writes.mcp_declaration_scope",
+        ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),",
+            "active_package_keys=frozenset(ctx.intended_dep_keys),",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "active_package_keys is not None and package_key not in active_package_keys",
+            "False",
+            "mutation_writes.mcp_declaration_scope",
+        ),
+    ],
+)
+def test_frozen_mcp_verification_cannot_bypass_owners(
+    path: str, old: str, new: str, rule_id: str
+) -> None:
+    """Cold restoration must retain acquisition evidence and pre-deployment verification."""
+    baseline = run_selected_rules(ROOT, (rule_id,))
     assert baseline.violations == ()
     source = _source(path)
     assert source.count(old) == 1

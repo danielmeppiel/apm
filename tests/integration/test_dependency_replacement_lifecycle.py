@@ -222,6 +222,30 @@ def test_replacement_ignores_unused_original_http_transport(
     assert "insecure" in (result.stdout + result.stderr).lower()
 
 
+def test_replacement_transitive_dry_run_keeps_consumer_anchor_and_outputs_untouched(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    nested = LocalPackageFactory(fixture.consumer.root.parent / "nested")
+    nested.create("parent", dependencies=({"git": _UPSTREAM},), targets=("copilot",))
+    fixture.replace({"path": "../local-base"})
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["dependencies"]["apm"] = ["../nested/parent"]
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    manifest_before = fixture.consumer.manifest_path.read_bytes()
+    before = _snapshot(fixture.consumer.root)
+    preview = fixture.run(*_INSTALL, "--dry-run")
+    assert preview.returncode == 0, preview.stdout + preview.stderr
+    assert "apm-replacement-fixture/base" in preview.stdout
+    assert _snapshot(fixture.consumer.root) == before
+    assert fixture.consumer.manifest_path.read_bytes() == manifest_before
+    fixture.replace({"path": "../missing"})
+    refused = fixture.run(*_INSTALL, "--dry-run")
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "Cannot load replacement" in " ".join((refused.stdout + refused.stderr).split())
+    assert _snapshot(fixture.consumer.root) == before
+
+
 @pytest.mark.parametrize("cli_consent", [False, True])
 def test_replacement_http_source_cannot_borrow_original_or_global_consent(
     tmp_path: Path, apm_binary_path: Path, cli_consent: bool

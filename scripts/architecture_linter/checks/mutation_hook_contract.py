@@ -74,6 +74,10 @@ _HOOK_OWNERSHIP = "src/apm_cli/integration/hook_ownership.py"
 
 _HOOK_COMMAND_PATHS = "src/apm_cli/integration/hook_command_paths.py"
 
+_HOOK_SOURCE_SELECTION = "src/apm_cli/integration/hook_source_selection.py"
+
+_PLUGIN_HOOK_RESOURCES = "src/apm_cli/bundle/plugin_hooks.py"
+
 
 _AGENT_PLUGIN_LOADER = "src/apm_cli/agent_plugins/loader.py"
 
@@ -921,7 +925,9 @@ def _check_hook_command_vocabulary(provider: FactsProvider) -> Iterable[Violatio
     """
     rule_id = "mutation_writes.hook_command_vocabulary"
     facts_by_path, failures = _read_required(
-        provider, rule_id, (_HOOK_COMMAND_PATHS, _HOOK_INTEGRATOR)
+        provider,
+        rule_id,
+        (_HOOK_COMMAND_PATHS, _HOOK_INTEGRATOR, _HOOK_SOURCE_SELECTION, _PLUGIN_HOOK_RESOURCES),
     )
     if failures:
         return failures
@@ -950,6 +956,41 @@ def _check_hook_command_vocabulary(provider: FactsProvider) -> Iterable[Violatio
             rule_id,
             _HOOK_INTEGRATOR,
             "HookIntegrator must not hard-code the PLUGIN_ROOT literal",
+        )
+    )
+    for path in (_HOOK_INTEGRATOR, _PLUGIN_HOOK_RESOURCES):
+        facts = facts_by_path[path]
+        for required in ("iter_plugin_root_paths(", "resolve_plugin_root_hook_script("):
+            findings.extend(
+                _require(
+                    _has_fixed(facts, required),
+                    rule_id,
+                    path,
+                    f"Hook consumers must route through {required[:-1]}",
+                )
+            )
+    producer = facts_by_path[_PLUGIN_HOOK_RESOURCES]
+    for required in ("walk_hook_commands(", "iter_deployable_hook_bundle_files("):
+        findings.extend(
+            _require(
+                _has_fixed(producer, required),
+                rule_id,
+                _PLUGIN_HOOK_RESOURCES,
+                f"Hook packing must route through {required[:-1]}",
+            )
+        )
+    findings.extend(
+        _duplicate_scan(
+            provider,
+            rule_id=rule_id,
+            paths=[
+                path
+                for path in _python_paths(provider, under=_SRC)
+                if path != _HOOK_SOURCE_SELECTION
+            ],
+            pattern=r"^\s*def resolve_plugin_root_hook_script\(",
+            message="Plugin-root hook resource resolution belongs to hook_source_selection.py",
+            exempt=False,
         )
     )
     return findings

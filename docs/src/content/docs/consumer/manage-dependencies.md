@@ -240,6 +240,10 @@ local sources are shown as not remotely comparable. `apm deps why` shows source
 provenance and original request paths. Missing or invalid selected sources fail
 without falling back upstream.
 
+`apm install --dry-run` previews locally available replacement dependencies
+without changing installed outputs. Transitive local replacements keep the
+consumer-root anchor; unavailable selected sources make the preview incomplete.
+
 `--frozen` compares the complete rule table, including unused rules, and verifies
 local content against its recorded baseline before deployment. Changed, added
 or removed files, missing sources and missing content hashes are refused.

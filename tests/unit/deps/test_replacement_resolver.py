@@ -48,6 +48,35 @@ def test_actual_resolver_dispatches_local_source_into_original_slot(tmp_path: Pa
     assert node.package.source_path == local.root.resolve()
 
 
+@pytest.mark.parametrize("missing", [False, True])
+def test_read_only_replacement_uses_consumer_anchor_not_nested_parent(
+    tmp_path: Path, missing: bool
+) -> None:
+    factory = LocalPackageFactory(tmp_path)
+    local = factory.create("local-base")
+    nested = LocalPackageFactory(tmp_path / "nested")
+    nested.create("parent", dependencies=({"git": _UPSTREAM},))
+    decoy = nested.create("local-base")
+    consumer = factory.create("consumer", dependencies=("../nested/parent",))
+    _root_rules(
+        consumer.root,
+        [{"for": {"git": _UPSTREAM}, "with": {"path": "../missing" if missing else "../local-base"}}],
+    )
+    graph = APMDependencyResolver(read_only=True).resolve_dependencies(consumer.root)
+    assert graph.is_valid() is not missing, graph.resolution_errors
+    node = graph.dependency_tree.get_node("example/base")
+    assert node is not None
+    if missing:
+        assert node.package is None
+        assert any("Cannot load replacement" in error for error in graph.resolution_errors)
+    else:
+        assert node.package is not None
+        assert node.package.source_path == local.root.resolve()
+        assert node.package.source_path != decoy.root.resolve()
+    assert not (consumer.root / "apm_modules").exists()
+    assert not (consumer.root / "apm.lock.yaml").exists()
+
+
 @pytest.mark.parametrize("updating", [False, True])
 def test_actual_resolver_replaces_every_diamond_request_before_immutable_admission(
     tmp_path: Path,

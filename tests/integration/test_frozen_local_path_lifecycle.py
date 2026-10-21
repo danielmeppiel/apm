@@ -14,12 +14,18 @@ from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.local_package import LocalPackageFactory
 
-pytestmark = [pytest.mark.integration, pytest.mark.e2e, pytest.mark.lifecycle_smoke]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.e2e,
+    pytest.mark.lifecycle_smoke,
+    pytest.mark.requires_apm_binary,
+]
 
 
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
+@pytest.mark.parametrize("hash_format", ["envelope", "bare"])
 def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
-    tmp_path: Path, apm_binary_path: Path, transitive: bool
+    tmp_path: Path, apm_binary_path: Path, transitive: bool, hash_format: str
 ) -> None:
     isolated = IsolatedApmEnvironment.create(tmp_path / "local-frozen", base_env=dict(os.environ))
     factory = LocalPackageFactory(isolated.work_root)
@@ -45,6 +51,12 @@ def test_frozen_local_path_refuses_changed_snapshot_without_mutation(
     initial = run(consumer.root, "install", "--no-policy")
     assert initial.returncode == 0, initial.stdout + initial.stderr
     lockfile = consumer.root / "apm.lock.yaml"
+    if hash_format == "bare":
+        legacy_lock = load_yaml(lockfile)
+        for entry in legacy_lock["dependencies"]:
+            if entry.get("source") == "local":
+                entry["content_hash"] = entry["content_hash"].removeprefix("sha256:")
+        dump_yaml(legacy_lock, lockfile)
     locked_bytes = lockfile.read_bytes()
     deployed = consumer.root / ".agents" / "skills" / "review" / "SKILL.md"
     deployed_bytes = deployed.read_bytes()
@@ -230,7 +242,7 @@ def test_frozen_local_in_project_transitive_identity(tmp_path: Path, apm_binary_
 
 
 @pytest.mark.parametrize("transitive", [False, True], ids=["direct", "transitive"])
-@pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash"])
+@pytest.mark.parametrize("baseline", ["missing-entry", "legacy-hash", "empty-hash", "wrong-source"])
 def test_frozen_local_requires_selected_lock_evidence(
     tmp_path: Path, apm_binary_path: Path, transitive: bool, baseline: str
 ) -> None:
@@ -256,13 +268,19 @@ def test_frozen_local_requires_selected_lock_evidence(
     if baseline == "missing-entry":
         lock["dependencies"].remove(provider_entry)
         original.write_bytes(original.read_bytes().replace(b"original", b"changed"))
-    else:
+    elif baseline == "legacy-hash":
         provider_entry.pop("content_hash")
+    elif baseline == "empty-hash":
+        provider_entry["content_hash"] = ""
+    else:
+        provider_entry["source"] = "registry"
     dump_yaml(lock, lock_path)
     before = _snapshot(consumer.root)
     result = runner.run(("install", "--frozen", "--no-policy"), cwd=consumer.root, env=env)
     assert result.returncode != 0, result.stdout + result.stderr
-    assert "provider" in result.stdout + result.stderr
+    # Rich can wrap a long canonical identity inside the dependency name.
+    output = result.stdout + result.stderr
+    assert "provider" in "".join(line.strip() for line in output.splitlines())
     assert _snapshot(consumer.root) == before
 
 

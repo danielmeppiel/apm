@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Legacy Claude plugin packing preserves hook scripts and sibling assets, rewrites commands to packed paths, and declares hooks in the native manifest; unsafe or excluded resources fail before replacing an existing bundle. (#3301)
+- Lockfile conflict diagnostics now name the affected file and direct manual resolution or restoration before retrying the original command, preserving bytes and frozen/preview behavior. Automatic recovery remains deferred to #2979. -- by @lachieh (#3028)
 - Hook-only Git-path packages using `hooks/*.json` or `.apm/hooks/*.json` install without a placeholder manifest or skill, and invalid updates preserve the installed source, lockfile and deployment ownership. (#3282)
 - Codex MCP entries no longer emit the unsupported `id` setting; reinstalling repairs recorded APM-owned entries while preserving registry identity, user settings, and ownership safeguards. -- by @Pybsama (#3157)
 - Git marketplace installs accept versioned plugin directories while rejecting file, symlink, and submodule responses during directory validation. -- by @Pybsama (#3156)
@@ -27,9 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `apm install --frozen` verifies selected local dependency content before mutation; legacy locks need one reviewed non-frozen `apm install` to record missing hashes. `openapm-v0.1.md` records proposed `req-lk-023`, pending specification adoption. -- by @dajiaohuang (#3236)
-- `batch_fetch_server_info` now looks up independent MCP registry documents concurrently with a bounded `ThreadPoolExecutor` (max 4 workers), matching the existing install-check fan-out. Closes #2981. (#2983)
-- `docs/src/content/docs/specs/openapm-v0.1.md` adds proposed `req-tg-015` for Codex-native `model`/`model_reasoning_effort` preservation and bounded dropped-metadata diagnostics. (#3150)
 - **BREAKING:** `apm install --frozen` no longer writes `apm.lock.yaml`; a frozen install whose lockfile does not record every deployed file now fails and names the missing paths instead of silently repairing the lockfile. If CI starts failing on `--frozen` after upgrading, run `apm install` locally and commit the updated `apm.lock.yaml`. (by @salpers, closes #2379, #2384)
 - Cursor hooks are now written as native v1 events with flat handlers, and a dependency that would activate the same hooks through both native Cursor output and Claude imports fails explicitly. Choose one hook route per dependency; see the [supported mappings](docs/src/content/docs/producer/author-primitives/hooks-and-commands.md#cursor-native-hooks-and-claude-import). (#3149)
 
