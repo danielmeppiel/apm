@@ -117,6 +117,130 @@ def test_omission_never_masks_unknown_or_previously_admitted_state(
     assert not audited.diff(lock.mcp_configs).is_empty
 
 
+@pytest.mark.parametrize("root_declared", [False, True])
+def test_admitted_config_supersedes_obsolete_omission(tmp_path: Path, root_declared: bool) -> None:
+    """Old omission evidence cannot invalidate admission or hide later real drift."""
+    root = _write_manifest(tmp_path, name="consumer")
+    source = tmp_path / "package"
+    declaration = _self_defined("firebase", "inert")
+    _write_manifest(source, name="firebase", mcp=[declaration])
+    lock = _lock(
+        LockedDependency(
+            repo_url="_local/firebase", source="local", local_path=str(source), depth=1
+        )
+    )
+    modules = tmp_path / "apm_modules"
+    selected = CurrentMcpConfigView.derive(
+        root, lock, modules, trust_transitive_self_defined=False, include_dependency_mcp=False
+    )
+    lock.mcp_omissions = selected.omission_evidence(lock)
+    assert set(lock.mcp_omissions) == {"firebase"}
+    if root_declared:
+        root = _write_manifest(tmp_path, name="consumer", mcp=[declaration])
+    lock.mcp_configs = dict(_derive(root, lock, modules).configs)
+    lock.mcp_servers = ["firebase"]
+    before = lock.to_yaml()
+    audited = _derive(root, lock, modules).with_recorded_omissions(lock)
+    assert audited.problems == ()
+    assert audited.configs == lock.mcp_configs
+    assert audited.diff(lock.mcp_configs).is_empty
+    assert lock.to_yaml() == before
+
+    changed = [_self_defined("firebase", "changed")]
+    if root_declared:
+        root = _write_manifest(tmp_path, name="consumer", mcp=changed)
+    else:
+        _write_manifest(source, name="firebase", mcp=changed)
+    audited = _derive(root, lock, modules).with_recorded_omissions(lock)
+    assert audited.diff(lock.mcp_configs).changed == {"firebase"}
+
+
+@pytest.mark.parametrize("field", ["args", "env"])
+def test_omission_fingerprint_uses_authored_portable_declaration(
+    tmp_path: Path, field: str
+) -> None:
+    """Replay relocation is harmless; changing an authored literal is not."""
+    root = _write_manifest(tmp_path, name="consumer")
+    dependency = LockedDependency(
+        repo_url="owner/firebase", resolved_ref="main", resolved_commit="a" * 40, depth=1
+    )
+    lock = _lock(dependency)
+    installed = tmp_path / "installed"
+    replay = tmp_path / "replay"
+    source = dependency.to_dependency_ref().get_install_path(installed)
+    replay_source = dependency.to_dependency_ref().get_install_path(replay)
+    declaration = _self_defined("firebase", "inert")
+    portable = "${CLAUDE_PLUGIN_ROOT}/start.mjs"
+    declaration[field] = [portable] if field == "args" else {"SCRIPT": portable}
+    _write_manifest(source, name="firebase", mcp=[declaration])
+    _write_manifest(replay_source, name="firebase", mcp=[declaration])
+    selected = CurrentMcpConfigView.derive(
+        root, lock, installed, trust_transitive_self_defined=False, include_dependency_mcp=False
+    )
+    lock.mcp_omissions = selected.omission_evidence(lock)
+    assert set(lock.mcp_omissions) == {"firebase"}
+    installed_view = _derive(root, lock, installed)
+    replay_view = _derive(root, lock, replay)
+    assert installed_view.problems == replay_view.problems == ()
+    assert installed_view.configs["firebase"][field] != replay_view.configs["firebase"][field]
+    assert replay_view.declaration_fingerprints == installed_view.declaration_fingerprints
+    audited = replay_view.with_recorded_omissions(lock)
+    assert audited.configs == {}
+    assert audited.problems == ()
+
+    literal = str(source.resolve() / "start.mjs")
+    declaration[field] = [literal] if field == "args" else {"SCRIPT": literal}
+    _write_manifest(source, name="firebase", mcp=[declaration])
+    selected = CurrentMcpConfigView.derive(
+        root, lock, installed, trust_transitive_self_defined=False, include_dependency_mcp=False
+    )
+    lock.mcp_omissions = selected.omission_evidence(lock)
+    other_literal = str(replay_source.resolve() / "start.mjs")
+    declaration[field] = [other_literal] if field == "args" else {"SCRIPT": other_literal}
+    _write_manifest(replay_source, name="firebase", mcp=[declaration])
+    changed = _derive(root, lock, replay).with_recorded_omissions(lock)
+    assert set(changed.configs) == {"firebase"}
+    assert [problem.package_key for problem in changed.problems] == ["firebase"]
+
+
+def test_pending_sources_preserve_known_omission_evidence(tmp_path: Path) -> None:
+    """The merged collector retains pending and omission metadata independently."""
+    root = _write_manifest(tmp_path, name="consumer")
+    source = tmp_path / "package"
+    _write_manifest(source, name="firebase", mcp=[_self_defined("firebase", "inert")])
+    known = LockedDependency(
+        repo_url="_local/firebase", source="local", local_path=str(source), depth=1
+    )
+    cold = LockedDependency(
+        repo_url="owner/cold",
+        name="cold",
+        resolved_ref="main",
+        resolved_commit="a" * 40,
+        package_type="apm_package",
+        depth=1,
+    )
+    lock = _lock(known, cold)
+    selected = CurrentMcpConfigView.derive(
+        root,
+        lock,
+        tmp_path / "apm_modules",
+        trust_transitive_self_defined=False,
+        include_dependency_mcp=False,
+        allow_pending=True,
+        active_package_keys=frozenset(lock.dependencies),
+    )
+    assert selected.problems == ()
+    assert selected.pending_packages == {cold.get_unique_key()}
+    assert set(selected.declaration_fingerprints) == {"firebase"}
+    assert selected.omission_evidence(lock) == {
+        "firebase": {
+            "declaration": selected.declaration_fingerprints["firebase"],
+            "reason": "only-apm",
+        }
+    }
+    assert selected.configs == {}
+
+
 def _write_manifest(
     directory: Path,
     *,

@@ -222,7 +222,6 @@ def test_skills_only_preserves_admitted_baseline_and_real_drift(
     for field in ("mcp_configs", "mcp_servers", "mcp_config_provenance", "mcp_target_servers"):
         assert after.get(field) == baseline.get(field)
     assert native.read_bytes() == native_before
-
     source_manifest = (
         scenario.project / "apm.yml"
         if root_declared
@@ -252,3 +251,26 @@ def test_skills_only_preserves_admitted_baseline_and_real_drift(
     dump_yaml(data, lock_path)
     scenario.audit(passed=False)
     assert native.read_bytes() == native_before
+
+
+def test_direct_mcp_admission_supersedes_prior_omission(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """A real direct install replaces omission intent without muting later drift."""
+    scenario = _scenario(tmp_path, apm_binary_path, "direct")
+    scenario.run(*scenario.install_args)
+    lock_path = scenario.project / "apm.lock.yaml"
+    assert "firebase" in load_yaml(lock_path)["mcp_omissions"]
+    scenario.audit(passed=True)
+    scenario.run("install", "--mcp", "firebase", "--", "inert")
+    assert "firebase" in load_yaml(lock_path)["mcp_configs"]
+    scenario.audit(passed=True)
+    scenario.run("install", "--mcp", "firebase", "--", "inert")
+    scenario.audit(passed=True)
+    manifest_path = scenario.project / "apm.yml"
+    manifest = load_yaml(manifest_path)
+    server = next(item for item in manifest["dependencies"]["mcp"] if item["name"] == "firebase")
+    server["command"] = "different-inert"
+    dump_yaml(manifest, manifest_path)
+    check = scenario.audit(passed=False)
+    assert any(detail.startswith("firebase:") for detail in check["details"])

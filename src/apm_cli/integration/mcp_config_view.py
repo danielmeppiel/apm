@@ -139,9 +139,9 @@ class CurrentMcpConfigView:
         configs = dict(self.configs)
         problems = list(self.problems)
         admitted = _admitted_names(lockfile)
-        candidates = (set(lockfile.mcp_omissions) & set(configs)) | (
-            set(self.declaration_fingerprints) - admitted
-        )
+        candidates = (
+            (set(lockfile.mcp_omissions) & set(configs)) | set(self.declaration_fingerprints)
+        ) - admitted
         for name in sorted(candidates):
             evidence = lockfile.mcp_omissions.get(name)
             fingerprint = self.declaration_fingerprints.get(name)
@@ -171,6 +171,7 @@ class CurrentMcpConfigView:
                     )
                 )
         return replace(self, configs=configs, problems=tuple(problems))
+
     def pending_servers(self, lockfile: LockFile) -> frozenset[str]:
         """Defer only unambiguous recorded declarers whose sources are unavailable."""
         declarers: dict[str, list[str]] = {}
@@ -252,6 +253,31 @@ def _declaration_fingerprint(dependency: LockedDependency, declaration: MCPDepen
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return "sha256:" + hashlib.sha256(encoded.encode("ascii")).hexdigest()
+
+
+def _authored_mcp_declarations(manifest_path: Path) -> dict[str, MCPDependency]:
+    """Parse portable authored declarations through the canonical MCP model."""
+    from apm_cli.utils.yaml_io import load_yaml
+
+    manifest = load_yaml(manifest_path)
+    if not isinstance(manifest, dict):
+        raise ValueError("package manifest must be a mapping")
+    dependencies = manifest.get("dependencies") or {}
+    if not isinstance(dependencies, dict):
+        raise ValueError("package dependencies must be a mapping")
+    entries = dependencies.get("mcp")
+    if not isinstance(entries, list):
+        return {}
+    declarations: dict[str, MCPDependency] = {}
+    for entry in entries:
+        if isinstance(entry, str):
+            declaration = MCPDependency.from_string(entry)
+        elif isinstance(entry, dict):
+            declaration = MCPDependency.from_dict(entry)
+        else:
+            continue
+        declarations.setdefault(declaration.name, declaration)
+    return declarations
 
 
 def _get_server_configs(dependencies: list[Any] | tuple[Any, ...]) -> dict[str, dict[str, Any]]:
@@ -534,6 +560,7 @@ def _collect_locked_dependencies(
                 manifest_path,
                 source_path=manifest_path.parent,
             )
+            authored_declarations = _authored_mcp_declarations(manifest_path)
         except (OSError, ValueError, UnicodeError) as exc:
             problems.append(
                 McpSourceProblem(
@@ -549,7 +576,9 @@ def _collect_locked_dependencies(
         # Only collect prod MCP from transitive packages; devDependencies.mcp
         # are scoped to the package author's own environment (#2340).
         for mcp_dependency in package.get_mcp_dependencies():
-            fingerprint = _declaration_fingerprint(dependency, mcp_dependency)
+            fingerprint = _declaration_fingerprint(
+                dependency, authored_declarations[mcp_dependency.name]
+            )
             fingerprints.setdefault(mcp_dependency.name, fingerprint)
             if mcp_dependency.is_self_defined and dependency.depth > 1:
                 refusable.add(mcp_dependency.name)
