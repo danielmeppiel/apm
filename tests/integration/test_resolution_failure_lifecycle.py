@@ -21,11 +21,33 @@ from tests.integration.test_required_lifecycle_state_machine import (
     _PublishedPackage,
     _Scenario,
 )
+from tests.unit.install import test_resolution_failure_recovery as recovery
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
 from tests.utils.local_package import LocalPackage
 from tests.utils.resolution_failure_probe import hold_path, release_directory
 
 pytestmark = [pytest.mark.e2e, pytest.mark.lifecycle_smoke]
+
+
+@pytest.mark.requires_windows_native_standard_user
+@pytest.mark.parametrize("parent_first", [False, True], ids=["child-first", "parent-first"])
+@pytest.mark.parametrize("child_existed", [True, False], ids=["prior-child", "new-child"])
+def test_native_nested_replacement_retry_preserves_original_child_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    parent_first: bool,
+    child_existed: bool,
+    record_property: Callable[[str, object], None],
+) -> None:
+    """Run actual locked-backup cases behind the canonical native capability gate."""
+    recovery.test_nested_replacement_denied_restore_retry_preserves_original_child_bytes(
+        tmp_path,
+        monkeypatch,
+        parent_first,
+        child_existed,
+        record_property,
+        native_denial=True,
+    )
 
 
 @pytest.fixture

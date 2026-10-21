@@ -24,20 +24,13 @@ pytestmark = [pytest.mark.component, pytest.mark.windows_compat]
 
 @pytest.mark.parametrize("parent_first", [False, True], ids=["child-first", "parent-first"])
 @pytest.mark.parametrize("child_existed", [True, False], ids=["prior-child", "new-child"])
-@pytest.mark.parametrize(
-    "native_denial",
-    [
-        pytest.param(False, id="injected"),
-        pytest.param(True, id="native", marks=pytest.mark.requires_windows_native_standard_user),
-    ],
-)
 def test_nested_replacement_denied_restore_retry_preserves_original_child_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     parent_first: bool,
     child_existed: bool,
-    native_denial: bool,
     record_property: Callable[[str, object], None],
+    native_denial: bool = False,
 ) -> None:
     """Denied nested recovery must not consume backups needed by a later retry."""
     modules = tmp_path / "apm_modules"
