@@ -150,6 +150,11 @@ class TestSymlinkLoopResolveError:
         monkeypatch.setattr(Path, "resolve", resolve)
         return tmp_path / "src" / "loop.md"
 
+    def test_recursive_pattern_does_not_match(self, tmp_path: Path, loop: Path) -> None:
+        optimizer = ContextOptimizer(base_dir=str(tmp_path))
+
+        assert optimizer._file_matches_pattern(loop, "**/*.md") is False
+
     def test_non_recursive_pattern_matches_unresolved_path(
         self, tmp_path: Path, loop: Path
     ) -> None:
