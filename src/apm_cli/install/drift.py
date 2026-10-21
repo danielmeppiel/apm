@@ -31,13 +31,14 @@ from __future__ import annotations
 import atexit
 import tempfile
 import tracemalloc
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from shutil import copytree, rmtree
 from typing import TYPE_CHECKING, Any
 
 import click
 
+from apm_cli.core.scope import InstallScope, get_deploy_root, get_modules_dir
 from apm_cli.core.target_detection import (
     read_manifest_target as _read_apm_yml_target,  # noqa: F401 -- compatibility re-export
 )
@@ -271,6 +272,28 @@ def _materialize_install_path(
             raise CacheMissError(
                 f"local source missing for {lock_dep.local_path!r}: expected {candidate}"
             )
+        if candidate.is_file():
+            from apm_cli.deps.virtual_file import materialize_virtual_file_package
+            from apm_cli.install.phases.local_content import read_local_package_source
+
+            # Resolve the declaring directory through the same anchor owner.
+            # Keep the original spelling for admission so file symlinks cannot
+            # disappear behind the resolved candidate.
+            source_base = resolve_local_dep_dir(
+                replace(lock_dep, local_path="."),
+                lockfile,
+                project_root,
+                parent_index=parent_index,
+            )
+            dependency = lock_dep.to_dependency_ref()
+            source = read_local_package_source(dependency, source_base)
+            if source.content is None:
+                raise ValueError(f"Local single-file source changed kind during audit: {candidate}")
+            replay_path = dependency.get_install_path(apm_modules_dir)
+            materialize_virtual_file_package(
+                dependency, replay_path, source.path.name, source.content
+            )
+            return replay_path
         return candidate
 
     dep_ref = lock_dep.to_dependency_ref()
@@ -526,6 +549,10 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
+    replay_scope = InstallScope.USER if config.user_scope else InstallScope.PROJECT
+    deployment_modules_dir = scratch_root / get_modules_dir(replay_scope).relative_to(
+        get_deploy_root(replay_scope)
+    )
     codex_records = None
 
     live_targets = resolve_audit_targets(
@@ -588,7 +615,10 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
 
     try:
         with native_registration_scope(targets):
-            with _ReadOnlyProjectGuard(project_root, protected_subpaths):
+            with (
+                integrators["skill"].ownership_snapshot(replay_lockfile=lock),
+                _ReadOnlyProjectGuard(project_root, protected_subpaths),
+            ):
                 for lock_dep in lock.get_all_dependencies():
                     if lock_dep.local_path == _SELF_KEY:
                         # Synthesized self-entry: project's own local content.
@@ -622,9 +652,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     else:
                         package_info = _build_package_info(lock_dep, install_path)
                         package_info.deployment_package_root = (
-                            lock_dep.to_dependency_ref().get_install_path(
-                                scratch_root / "apm_modules"
-                            )
+                            lock_dep.to_dependency_ref().get_install_path(deployment_modules_dir)
                         )
                     dep_key = lock_dep.get_unique_key()
 

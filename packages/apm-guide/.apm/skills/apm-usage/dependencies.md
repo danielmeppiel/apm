@@ -236,8 +236,17 @@ and `alias`.
 Local-path deps inside another local package resolve relative to that
 package's directory, not the project root.
 
+Local strings and `path:` objects can select one `.agent.md`, `.instructions.md`,
+or `.prompt.md` file as well as a directory package. The selected file goes
+through ordinary package materialization, validation, rendering, and ownership.
+It is copied, not linked; file symlinks are rejected. No sibling assets or
+dependencies mentioned in prose are collected. Use a directory package with
+`apm.yml` for companion files. `--root` does not change source anchors;
+`--global` still requires an absolute or expanded `~/...` path.
+
 ```yaml
 - path: ./packages/my-skills
+- path: ./ai/agents/xyz.agent.md
 
 - path: ./packages/local-review-kit
   alias: local-review-kit
@@ -246,7 +255,7 @@ package's directory, not the project root.
 ```
 
 After install, `apm deps list` presents a local dependency as
-`_local/<directory-name>`. For a direct declaration with matching
+`_local/<directory-or-file-name>`. For a direct declaration with matching
 `apm.lock.yaml` metadata, that portable key is accepted verbatim by
 `apm uninstall` and `apm uninstall -g`; user-scope automation does not need to
 discover or print the absolute declared path. Without a lockfile, use the exact
@@ -524,7 +533,8 @@ dependencies:
         #                            and resolved at runtime.
         #                            Kiro: preserved as ${VAR} and resolved at runtime.
         #                            Cursor: translated to ${env:VAR} and resolved at runtime.
-        #                            Windsurf/OpenCode/Claude/Gemini: resolved at install time.
+        #                            OpenCode: translated to {env:VAR}; export variables at runtime.
+        #                            Windsurf/Claude/Gemini: resolved at install time.
         #                            Codex: env resolved at install time; a remote
         #                            server's headers are written as
         #                            bearer_token_env_var / env_http_headers and
@@ -585,10 +595,14 @@ See the [MCP
 Servers guide](../../../../../docs/src/content/docs/consumer/install-mcp-servers.md#token-injection-github-mcp-server)
 for token selection details.
 
+OpenCode requires referenced variables in its launch environment. See the
+[variable reference rules](../../../../../docs/src/content/docs/reference/manifest-schema.md#424-variable-references-in-headers-and-env)
+for supported fields and literal-value handling.
+
 For OpenCode, top-level `enabled` passes the supplied value and JSON type
 unchanged, including `false`, `null`, and non-boolean values. Only omission
 defaults to `true`; OpenCode interprets the value, not APM. Reinstall applies
-changes to this field. OpenCode remains project-only. See the
+changes to this field. See the
 [manifest schema](https://microsoft.github.io/apm/reference/manifest-schema/#422-dependenciesmcp)
 for the dependency contract.
 
@@ -785,6 +799,14 @@ upstream instead of using a persistent bare-cache ref as current-state evidence.
 transport against the lock, including transport changes under an unchanged
 semver range. It does not check whether an upstream branch moved. Review an
 intentional declaration change and run `apm install --update` to refresh the lock.
+
+For local `.agent.md`, `.instructions.md`, and `.prompt.md` dependencies, the
+locked content hash covers the ordinary materialized package, including its
+generated manifest. `--frozen` reconstructs that image from the declared source
+and rejects changed bytes without rewriting the lock or replacing deployment.
+Run normal `apm install` to accept deliberate source edits; sibling files are
+not included. `apm update` compares dependency refs; do not use it as a
+local-content refresh.
 
 Directory symlink aliases in `HOME` or `APM_HOME` work for global skill deployment.
 They do not relax package-descendant containment or destination-symlink checks,

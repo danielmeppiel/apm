@@ -8,6 +8,7 @@ import tomlkit
 from apm_cli.adapters.client.codex import CodexClientAdapter
 from apm_cli.core.conflict_detector import MCPConflictDetector
 from apm_cli.core.safe_installer import SafeMCPInstaller
+from apm_cli.install.errors import MCPNativeConflictError
 from apm_cli.install.mcp.ownership import resolve_mcp_target_servers
 from apm_cli.integration.mcp_integrator import MCPIntegrator
 from apm_cli.models.dependency.mcp import MCPDependency
@@ -77,7 +78,7 @@ def test_native_output_preserves_uuid_conflicts_after_reparse(
 def test_install_corrects_only_recorded_managed_entries(
     tmp_path: Path, dependency: MCPDependency, owned: bool
 ) -> None:
-    """An unchanged manifest still repairs owned legacy output, not user entries."""
+    """A recorded name cannot authorize removal of unverifiable legacy identity."""
     adapter = CodexClientAdapter(project_root=tmp_path)
     # Write the old output independently of the formatter being repaired.
     legacy = (
@@ -96,12 +97,21 @@ def test_install_corrects_only_recorded_managed_entries(
     native_path.write_text(original, encoding="utf-8")
     owners = {"codex": {"managed"}} if owned else {}
 
-    MCPIntegrator.install(
-        [dependency],
-        project_root=tmp_path,
-        explicit_target="codex",
-        stored_mcp_configs={"managed": dependency.to_dict()},
-        managed_target_servers=owners,
+    with pytest.raises(MCPNativeConflictError) as conflict:
+        MCPIntegrator.install(
+            [dependency],
+            project_root=tmp_path,
+            explicit_target="codex",
+            stored_mcp_configs={"managed": dependency.to_dict()},
+            managed_target_servers=owners,
+        )
+    assert not conflict.value.wrote_connections
+    assert native_path.read_bytes() == original.encode("utf-8")
+    assert not owners.get("codex")
+
+    # Exercise the low-level migration writer separately from install authorization.
+    assert adapter.migrate_legacy_managed_servers({"managed"} if owned else set()) == (
+        {"managed"} if owned else set()
     )
 
     written = native_path.read_text(encoding="utf-8")
@@ -111,18 +121,12 @@ def test_install_corrects_only_recorded_managed_entries(
     assert user_settings in written
     assert native["model"] == "gpt-5"
     assert "# keep note" in written
-    assert owners == ({"codex": {"managed"}} if owned else {})
+    assert not owners.get("codex")
     if owned:
         assert MCPConflictDetector(adapter).check_server_exists(
             "alias", server_info={"id": "legacy-uuid"}
         )
-        MCPIntegrator.install(
-            [dependency],
-            project_root=tmp_path,
-            explicit_target="codex",
-            stored_mcp_configs={"managed": dependency.to_dict()},
-            managed_target_servers=owners,
-        )
+        assert adapter.migrate_legacy_managed_servers({"managed"}) == set()
         assert native_path.read_text(encoding="utf-8") == written
     else:
         assert written == original
@@ -371,7 +375,7 @@ def test_inline_registry_comment_blocks_legacy_ownership_adoption(
 def test_dotted_legacy_config_preserves_identity_and_layout(
     tmp_path: Path, dependency: MCPDependency, full_root_keys: bool, registry_id: str
 ) -> None:
-    """Implicit dotted server mappings migrate without materializing new tables."""
+    """Dotted identity needs verification; the writer preserves its native layout."""
     prefix = "mcp_servers." if full_root_keys else ""
     header = "" if full_root_keys else "[mcp_servers]\n"
     transport = (
@@ -403,13 +407,28 @@ def test_dotted_legacy_config_preserves_identity_and_layout(
         user_scope=False,
     )
     assert ownership == {"codex": {"managed"}}
-    MCPIntegrator.install(
-        [dependency],
-        project_root=tmp_path,
-        explicit_target="codex",
-        stored_mcp_configs=stored,
-        managed_target_servers=ownership,
-    )
+    if registry_id:
+        with pytest.raises(MCPNativeConflictError) as conflict:
+            MCPIntegrator.install(
+                [dependency],
+                project_root=tmp_path,
+                explicit_target="codex",
+                stored_mcp_configs=stored,
+                managed_target_servers=ownership,
+            )
+        assert not conflict.value.wrote_connections
+        assert path.read_bytes() == original.encode("utf-8")
+        assert not ownership.get("codex")
+        # The writer's formatting contract does not confer install ownership.
+        assert adapter.migrate_legacy_managed_servers({"managed"}) == {"managed"}
+    else:
+        MCPIntegrator.install(
+            [dependency],
+            project_root=tmp_path,
+            explicit_target="codex",
+            stored_mcp_configs=stored,
+            managed_target_servers=ownership,
+        )
     written = path.read_text(encoding="utf-8")
     expected = original.replace(identity_line, "")
     if registry_id:
