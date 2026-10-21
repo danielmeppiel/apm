@@ -490,8 +490,8 @@ class TestPromoteSubSkills:
         )
         logger.warning.assert_called()
 
-    def test_warn_overwrite_importerror_path(self, tmp_path):
-        """Lines 643-644: ImportError path when no diagnostics and no logger."""
+    def test_warn_overwrite_console_fallback(self, tmp_path, capsys):
+        """Without a logger or diagnostics, the console reports the overwrite."""
         sub = self._make_sub_skills_dir(tmp_path, ["shared-skill"])
         target_root = tmp_path / "target"
         target_root.mkdir()
@@ -499,18 +499,18 @@ class TestPromoteSubSkills:
         target_skill.mkdir()
         (target_skill / "SKILL.md").write_text("# from other package\n")
 
-        with patch(
-            "apm_cli.utils.console._rich_warning",
-            side_effect=ImportError,
-        ):
-            # Should not raise -- ImportError is caught internally
-            count, _ = SkillIntegrator._promote_sub_skills(
-                sub,
-                target_root,
-                "parent-pkg",
-                warn=True,
-            )
+        count, promoted = SkillIntegrator._promote_sub_skills(
+            sub,
+            target_root,
+            "parent-pkg",
+            warn=True,
+        )
         assert count == 1
+        assert promoted == [target_skill]
+        assert (target_skill / "SKILL.md").read_bytes() == b"# shared-skill\n"
+        output = capsys.readouterr()
+        assert "shared-skill" in output.out + output.err
+        assert "parent-pkg" in output.out + output.err
 
     def test_project_root_provided_computes_rel_prefix(self, tmp_path):
         """Lines 567-572: project_root provided -- uses relative path prefix."""
