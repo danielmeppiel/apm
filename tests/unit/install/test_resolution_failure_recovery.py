@@ -69,7 +69,7 @@ def test_cleanup_denial_preserves_original_failure_and_restores_manifest(
 
     assert manifest.read_bytes() == original
     assert (candidate / "partial").read_bytes() == b"downloaded candidate"
-    diagnostics = " ".join(str(call) for call in logger.method_calls)
+    diagnostics = " ".join(str(arg) for call in logger.method_calls for arg in call.args)
     assert "cleanup obstruction" in diagnostics
     assert str(candidate.parent.parent) in diagnostics
 
@@ -248,3 +248,55 @@ def test_manifest_restoration_denial_retains_byte_exact_snapshot(
     warning = logger.warning.call_args.args[0]
     assert "manifest is locked" in warning
     assert str(snapshots[0]) in warning
+
+
+def test_denied_relocation_restore_continues_remaining_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A denied relocation does not hide the error or stop independent recovery."""
+    modules = tmp_path / "apm_modules"
+    staging = ResolutionStagingSession(modules)
+    sources = [modules / name for name in ("first", "second")]
+    destinations = [modules / name for name in ("moved-first", "moved-second")]
+    for source, destination in zip(sources, destinations, strict=True):
+        source.mkdir(parents=True)
+        (source / "marker").write_bytes(b"prior")
+        staging.relocate_path(source, destination)
+    replace = Path.replace
+
+    def deny_one(path: Path, target: Path) -> Path:
+        if path == destinations[1]:
+            raise PermissionError("relocation restore denied")
+        return replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", deny_one)
+    issues = staging.rollback()
+    assert any("relocation restore denied" in reason for _, reason in issues)
+    assert (sources[0] / "marker").read_bytes() == b"prior"
+    assert (destinations[1] / "marker").read_bytes() == b"prior"
+    monkeypatch.setattr(Path, "replace", replace)
+    assert staging.rollback() == []
+    assert (sources[1] / "marker").read_bytes() == b"prior"
+
+
+def test_partial_directory_removal_finishes_independent_children(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Report the denied child after removing independent writable children."""
+    root = tmp_path / "partial"
+    root.mkdir()
+    denied = root / "denied"
+    denied.write_bytes(b"preserve")
+    (root / "writable").write_bytes(b"remove")
+    unlink = os.unlink
+
+    def deny_one(path: str, *args: object, **kwargs: object) -> None:
+        if Path(path).name == denied.name:
+            raise PermissionError(errno.EACCES, "child removal denied", str(path))
+        unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", deny_one)
+    with pytest.raises(PermissionError, match="child removal denied"):
+        safe_rmtree(root, tmp_path)
+    assert denied.read_bytes() == b"preserve"
+    assert not (root / "writable").exists()

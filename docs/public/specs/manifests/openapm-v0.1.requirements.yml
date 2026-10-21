@@ -232,6 +232,11 @@ requirements:
     section: "5.2"
     conformance_class: consumer
     notes: "source-cased materialization_repo_url remains non-identity metadata and drives rollback-safe, collision-closed materialization/link spelling"
+  - id: req-lk-023
+    keyword: MUST
+    section: "5.2.1"
+    conformance_class: consumer
+    notes: "PROPOSED amendment 0.1.52, not adopted: staged replacement retains original and secondary errors, recoverable prior data, independent restoration, safe staging and committed replacements after disposal failure; native Windows acceptance is separate from the portable conformance oracles"
   - id: req-pl-001
     keyword: MUST
     section: "6.1"

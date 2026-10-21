@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **129 normative statements (124 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **130 normative statements (125 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -1149,6 +1149,53 @@ diagnostic MUST name the offending path, the expected envelope, and
 the observed envelope. The same re-verification MUST run on `apm
 audit`.
 
+#### 5.2.1 Staged replacement recovery (proposed)
+
+> **PROPOSED amendment 0.1.52**, implementing the bounded recovery behavior
+> accepted in issue #3293. Section 9.3 review and public comment remain
+> pending. Inclusion in this working draft, its requirement index, or its
+> conformance tests is not evidence of adoption or a released implementation.
+
+For this section, staged dependency replacement means preparing a candidate
+outside its final package-materialization path before atomically creating
+or replacing that path. Direct writes without a separate candidate are
+outside this capability.
+
+<a id="req-lk-023"></a>
+**[req-lk-023]** A conforming **consumer** implementation providing staged
+dependency replacement MUST preserve the following recovery guarantees:
+
+1. Candidate download or activation failure produces a nonzero install
+   result identifying the failed operation, affected path, and original
+   error, including the actual filesystem error where applicable. A later
+   rollback or cleanup failure is reported alongside that original failure,
+   not substituted for it.
+2. Such failure, before committing the replacement, preserves existing
+   lockfile bytes and restores the prior package and manifest through the
+   implementation's transaction mechanism where filesystem access permits.
+   If restoration is denied, the consumer retains available prior data or
+   backups and identifies their recovery locations and the denied operation;
+   it does not claim that rollback completed.
+3. A failed recovery of one package does not prevent independent package
+   or manifest restoration attempts. Cleanup preserves active staging,
+   unknown or legacy roots, and retained prior-data backups; it removes only
+   paths established as safe, inactive, implementation-owned staging without
+   following symlinked staging roots or deleting outside the authorized
+   staging boundary. A later retry after the obstruction clears uses a fresh
+   candidate, not an incomplete clone target.
+4. Once replacement is committed, backup-disposal failure is reported with
+   residual paths, without rolling the validated replacement back to an old
+   backup that disposal may already have partially removed.
+
+This proposal does not extend transaction coverage to arbitrary lifecycle
+scripts or promise successful filesystem operations under persistent OS or
+endpoint-policy denial. Validation-before-activation, pin verification,
+atomic replacement, and existing security requirements remain unchanged.
+Under Section 9.2 this adds a conditional recovery obligation, not
+behavior-neutral errata; consumers without staged replacement acquire no
+new replacement capability.
+The optional-feature disclosure in Section 11.2 item 3 covers this capability.
+
 ### 5.3 Self-entry semantics
 
 A project that ships its own primitives records the files it deploys
@@ -1361,7 +1408,8 @@ This section's normative statements are:
   [req-lk-014](#req-lk-014), [req-lk-015](#req-lk-015),
   [req-lk-016](#req-lk-016), [req-lk-017](#req-lk-017),
   [req-lk-019](#req-lk-019), [req-lk-020](#req-lk-020),
-  [req-lk-021](#req-lk-021), [req-lk-022](#req-lk-022).
+  [req-lk-021](#req-lk-021), [req-lk-022](#req-lk-022),
+  [req-lk-023](#req-lk-023) (proposed staged-replacement capability).
 - Consumer (SHOULD): [req-lk-007](#req-lk-007),
   [req-lk-018](#req-lk-018).
 
@@ -3492,7 +3540,7 @@ every stored hash, foreclosing algorithm-ambiguity attacks.
 | 4 | Lockfile tampering                          | [req-lk-012](#req-lk-012), [req-lk-013](#req-lk-013), [req-lk-016](#req-lk-016), [req-lk-017](#req-lk-017), [req-sc-001](#req-sc-001) | Consumer-default  |
 | 5 | Registry impersonation                      | [req-lk-013](#req-lk-013), [req-rs-009](#req-rs-009), [req-sc-004](#req-sc-004); v0.2 TLS-only deferred | Consumer-default  |
 | 6 | Malicious package execution at install time | No install-time execution path; [req-pl-006](#req-pl-006) defence  | Consumer-default  |
-| 7 | Unverified content cleanup                  | [req-tg-002](#req-tg-002), [req-lk-020](#req-lk-020), [req-lk-021](#req-lk-021); [req-mf-025](#req-mf-025) for supported aliases; self-entry isolation | Consumer-default  |
+| 7 | Unverified content cleanup                  | [req-tg-002](#req-tg-002), [req-lk-020](#req-lk-020), [req-lk-021](#req-lk-021), [req-lk-023](#req-lk-023) when staged replacement is provided; [req-mf-025](#req-mf-025) for supported aliases; self-entry isolation | Consumer-default  |
 | 8 | Policy bypass via crafted manifest          | [req-pl-002](#req-pl-002), [req-pl-009](#req-pl-009), [req-pl-010](#req-pl-010), [req-pl-018](#req-pl-018) | Governance-only   |
 | 9 | Archive path-traversal                      | [req-sc-002](#req-sc-002), [req-sc-004](#req-sc-004)               | Consumer-default  |
 | 10| Hash-algorithm downgrade                    | [req-mf-018](#req-mf-018), [req-lk-016](#req-lk-016)               | Consumer-default  |
@@ -3752,6 +3800,7 @@ conformance statement identifying:
 [req-lk-017](#req-lk-017), [req-lk-018](#req-lk-018) (SHOULD),
 [req-lk-019](#req-lk-019), [req-lk-020](#req-lk-020),
 [req-lk-021](#req-lk-021), [req-lk-022](#req-lk-022),
+[req-lk-023](#req-lk-023) (proposed staged-replacement capability),
 [req-rs-001](#req-rs-001), [req-rs-002](#req-rs-002),
 [req-rs-003](#req-rs-003), [req-rs-004](#req-rs-004),
 [req-rs-005](#req-rs-005), [req-rs-006](#req-rs-006),
@@ -4130,6 +4179,10 @@ renumbering of conformance classes.
 
 ## Appendix C. Index of normative statements
 
+Conditional requirements retain the applicability limits in their bodies.
+In particular, [req-lk-023](#req-lk-023) applies only to the proposed
+staged-replacement capability, not every consumer implementation.
+
 | ID                                       | Keyword | Section | Class       |
 |------------------------------------------|---------|---------|-------------|
 | [req-mf-001](#req-mf-001)                | MUST    | 4.1     | producer    |
@@ -4182,6 +4235,7 @@ renumbering of conformance classes.
 | [req-lk-020](#req-lk-020)                | MUST    | 5.2     | consumer    |
 | [req-lk-021](#req-lk-021)                | MUST    | 5.2     | consumer    |
 | [req-lk-022](#req-lk-022)                | MUST    | 5.2     | consumer    |
+| [req-lk-023](#req-lk-023)                | MUST    | 5.2.1   | consumer    |
 | [req-pl-001](#req-pl-001)                | MUST    | 6.1     | governance  |
 | [req-pl-002](#req-pl-002)                | MUST    | 6.2     | governance  |
 | [req-pl-003](#req-pl-003)                | MUST    | 6.4     | governance  |
@@ -4262,7 +4316,7 @@ renumbering of conformance classes.
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
 
-**Total normative statements: 129** (124 MUST, 5 SHOULD).
+**Total normative statements: 130** (125 MUST, 5 SHOULD).
 
 ---
 
@@ -4319,6 +4373,7 @@ renumbering of conformance classes.
 | 0.1.45 (proposed) | 2026-10-09 | Editorial fold for PR #3106 (closes #3083 Mode-B silent-extension gate; no new normative statement, count remains 128 (123 MUST, 5 SHOULD)). Section 4.2.1 and [req-tg-001] (Section 8.4): the explicit-only target enumeration now names `agent-skills`, `antigravity`, `hermes`, and `grok-bot`, reflecting the already-registered `hermes` target and the new stable explicit-only `grok-bot` target (skills deploy to `agent-data/workflows/`, per the OpenAPM Target Registry v0.1 companion). |
 | 0.1.46 (proposed) | 2026-10-13 | Spec-citation fold for manifest extension keys (closes #3219 Mode-B silent-extension gate). Added [req-ext-003] (Section 4.6.2, consumer MUST): top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions preserved on the parsed package in declaration order without validating or interpreting values; a dependency lock entry records them under optional `extensions` and omits that field when empty; any other unrecognised top-level key produces a non-failing warning without failing parse or install solely because it is unknown. Independent validation, policy, and security failures still apply. The warning does not relax [req-mf-006] (writers still preserve unknown top-level keys on rewrite). Additive optional lockfile field under Section 9.2: previously silent unknown keys now warn. `extensions` added to the Section 5.2 field table and selected through the distinct proposed `lockfile-v0.1.46.schema.json`; earlier schema bytes and `lockfile_version` are unchanged. Sections 1.3, 4.9, and 11.3.2, and Appendices A and C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. |
 | 0.1.47 (proposed) | 2026-10-15 | Amendment for accepted issue #3204. Revised [req-mf-022] to require a nonzero install result and preservation of previously deployed skill files and ownership records for an unmatched non-empty persisted selection. This intentionally replaces permitted warning-only success; it is not behavior-neutral errata. Section 9.3 review and public-comment requirements remain pending; issue-scope acceptance is not specification adoption. Statement count remains 129 (124 MUST, 5 SHOULD). |
+| 0.1.52 (proposed) | 2026-10-21 | Accepted Windows staging-recovery behavior for issue #3293 / PR #3318. Adds conditional consumer [req-lk-023](#req-lk-023), Section 5.2.1: retain original and secondary failures, recover prior state where permitted, preserve residual prior data under denied restoration, protect active/unknown staging and retry with a fresh candidate, and never undo a committed replacement because backup disposal failed. This is a new recovery obligation under Section 9.2, not behavior-neutral errata. No schema, lockfile version, privilege, or arbitrary lifecycle-script rollback change. Section 9.3 review and public comment remain pending; source landing and conformance tests do not establish adoption or release. Statement count: 129 -> 130 (125 MUST, 5 SHOULD). |
 
 Errata (none at publication).
 

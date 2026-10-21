@@ -157,20 +157,21 @@ class ResolutionStagingSession:
     def commit(self) -> list[tuple[Path, str]]:
         """Discard preserved pre-resolution contents after successful validation."""
         cleanup_issues: list[tuple[Path, str]] = []
-        # Deleting backups is irreversible. Never roll back to a partially
-        # removed backup if post-validation disposal itself fails.
-        self._backups.clear()
-        self._replacement_by_destination.clear()
-        self._destination_by_replacement.clear()
-        self._relocations.clear()
-        try:
-            self._remove_staging_root()
-        except (OSError, ValueError) as exc:
-            cleanup_issues.append(
-                (self._staging_root, f"could not remove committed staging: {exc}")
-            )
-        finally:
-            cleanup_issues.extend(self._release_staging_lock())
+        with self._lock:
+            # Deleting backups is irreversible. Never roll back to a partially
+            # removed backup if post-validation disposal itself fails.
+            self._backups.clear()
+            self._replacement_by_destination.clear()
+            self._destination_by_replacement.clear()
+            self._relocations.clear()
+            try:
+                self._remove_staging_root()
+            except (OSError, ValueError) as exc:
+                cleanup_issues.append(
+                    (self._staging_root, f"could not remove committed staging: {exc}")
+                )
+            finally:
+                cleanup_issues.extend(self._release_staging_lock())
         return cleanup_issues
 
     def remove_abandoned_roots(self) -> list[tuple[Path, str]]:

@@ -146,10 +146,12 @@ def _discard_failed_download(
     try:
         staging_session.discard_replacement(replacement_path)
     except (OSError, ValueError) as cleanup_error:
-        return RuntimeError(
+        combined = RuntimeError(
             f"{error}. Could not discard downloaded candidate {replacement_path}: "
             f"{cleanup_error}. Inspect the retained staging path before retrying."
         )
+        combined.__cause__ = error
+        return combined
     return error
 
 
