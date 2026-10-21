@@ -183,6 +183,7 @@ def _validate_lockfile_container(data: object) -> dict[str, Any]:
         "mcp_configs",
         "mcp_target_servers",
         "mcp_config_provenance",
+        "mcp_omissions",
         "lsp_configs",
         "lsp_target_servers",
         "lsp_config_provenance",
@@ -201,6 +202,11 @@ def _validate_lockfile_container(data: object) -> dict[str, Any]:
     for index, dependency in enumerate(data.get("dependencies", [])):
         if not isinstance(dependency, dict):
             raise LockfileFormatError(f"Lockfile dependency at index {index} must be a mapping")
+    if any(not isinstance(name, str) or not name for name in (data.get("mcp_omissions") or {})):
+        raise LockfileFormatError(
+            "MCP omission evidence has invalid server names; selection is unknown. "
+            "Restore a known-good lockfile and repeat the intended install selection"
+        )
     for field_name in ("mcp_target_servers", "lsp_target_servers"):
         for target, servers in (data.get(field_name) or {}).items():
             if not isinstance(target, str) or not target or not isinstance(servers, list):
@@ -855,6 +861,7 @@ class LockFile:
     # it never pollutes config comparisons. Consistency diagnostics use this as
     # ownership context only; provenance never exempts a lock-only server.
     mcp_config_provenance: dict[str, str | list[str]] = field(default_factory=dict)
+    mcp_omissions: dict[str, Any] = field(default_factory=dict)
     lsp_servers: list[str] = field(default_factory=list)
     lsp_configs: dict[str, dict] = field(default_factory=dict)
     lsp_target_servers: dict[str, list[str]] = field(default_factory=dict)
@@ -999,6 +1006,8 @@ class LockFile:
                 data["mcp_servers"] = sorted(self.mcp_servers)
             if self.mcp_configs:
                 data["mcp_configs"] = dict(sorted(self.mcp_configs.items()))
+            if self.mcp_omissions:
+                data["mcp_omissions"] = dict(sorted(self.mcp_omissions.items()))
             if self.mcp_target_servers or self._mcp_target_servers_present:
                 data["mcp_target_servers"] = {
                     target: sorted(servers)
@@ -1060,6 +1069,7 @@ class LockFile:
             lock.add_dependency(LockedDependency.from_dict(dep_data))
         lock.mcp_servers = list(data.get("mcp_servers", []))
         lock.mcp_configs = dict(data.get("mcp_configs") or {})
+        lock.mcp_omissions = dict(data.get("mcp_omissions") or {})
         lock.mcp_target_servers = {
             target: list(servers)
             for target, servers in (data.get("mcp_target_servers") or {}).items()
@@ -1305,7 +1315,9 @@ class LockFile:
         # Python equality treats ``1`` and ``True`` as equal, which would keep a
         # stale drift baseline after a type-only change such as OpenCode's
         # ``enabled``.
-        if _json_identity(self.mcp_configs) != _json_identity(other.mcp_configs):
+        if _json_identity(self.mcp_configs) != _json_identity(other.mcp_configs) or _json_identity(
+            self.mcp_omissions
+        ) != _json_identity(other.mcp_omissions):
             return False
         if (
             self.mcp_target_servers != other.mcp_target_servers

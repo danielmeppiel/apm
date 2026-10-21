@@ -10,11 +10,24 @@ import yaml
 from apm_cli.deps.lockfile import (
     LockedDependency,
     LockFile,
+    LockfileFormatError,
     get_lockfile_path,
     migrate_lockfile_if_needed,
     resolve_lockfile_path_for_read,
 )
 from apm_cli.models.apm_package import DependencyReference
+
+
+@pytest.mark.parametrize("name", ["", 42])
+def test_malformed_mcp_omission_keys_rejected(name: str | int) -> None:
+    """Invalid omission keys retain explicit, selection-safe recovery guidance."""
+    data = yaml.safe_load(LockFile().to_yaml())
+    data["mcp_omissions"] = {name: {"reason": "only-apm"}}
+    with pytest.raises(LockfileFormatError, match="invalid server names") as error:
+        LockFile.from_yaml(yaml.safe_dump(data))
+    assert "Restore a known-good lockfile and repeat the intended install selection" in str(
+        error.value
+    )
 
 
 class TestLockedDependency:
@@ -716,6 +729,26 @@ class TestLockFileSemanticEquivalence:
         a = self._make_lock(mcp_configs={"s": {"cmd": "a"}})
         b = self._make_lock(mcp_configs={"s": {"cmd": "b"}})
         assert not a.is_semantically_equivalent(b)
+
+    @pytest.mark.parametrize(
+        "other,equivalent",
+        [
+            ({"reason": "only-apm", "declaration": "sha256:original"}, True),
+            ({"declaration": "sha256:changed", "reason": "only-apm"}, False),
+            ({"declaration": "sha256:original", "reason": "untrusted-transitive"}, False),
+            ({}, False),
+        ],
+    )
+    def test_mcp_omission_semantic_equivalence(
+        self, other: dict[str, str], equivalent: bool
+    ) -> None:
+        """Changing omission evidence is semantic; mapping key order is not."""
+        a = self._make_lock(
+            mcp_omissions={"s": {"declaration": "sha256:original", "reason": "only-apm"}}
+        )
+        b = self._make_lock(mcp_omissions={"s": other})
+        assert a.is_semantically_equivalent(b) is equivalent
+        assert b.is_semantically_equivalent(a) is equivalent
 
     def test_changed_mcp_config_provenance_not_equivalent(self):
         a = self._make_lock(mcp_config_provenance={"s": "package-a"})
