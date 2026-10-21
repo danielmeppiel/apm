@@ -237,7 +237,10 @@ Marketplace semver selections reuse the Git-semver fields: `constraint`,
 `resolved_tag`, and `version` record the requested selector, selected tag, and
 selected version. Here `version` comes from the publisher's tag pattern, not
 the package's display version. `resolved_at` records the resolution's UTC
-timestamp and is advisory, never an audit or replay tie-breaker.
+timestamp and is [advisory](../../specs/openapm-v01/#req-lk-008), never an audit
+or replay tie-breaker.
+Reinstalling the same marketplace selection preserves this timestamp; changed
+selection or catalog provenance records a new resolution time.
 `resolved_ref` agrees with `resolved_tag`, and
 `resolved_commit` pins the installed bytes. Audit requires this locked evidence
 for version selections; it neither guesses a tag pattern nor re-resolves the

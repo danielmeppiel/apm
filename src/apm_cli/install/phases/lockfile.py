@@ -461,6 +461,34 @@ class LockfileBuilder:
                         dep.version = prov["resolved_version"]
                     if prov.get("resolved_at"):
                         dep.resolved_at = prov["resolved_at"]
+                        previous = (
+                            self.ctx.existing_lockfile.dependencies.get(dep_key)
+                            if self.ctx.existing_lockfile
+                            else None
+                        )
+                        if (
+                            previous is not None
+                            and previous.resolved_at
+                            and dep.resolved_commit
+                            and all(
+                                getattr(previous, field) == getattr(dep, field)
+                                for field in (
+                                    "port",
+                                    "source",
+                                    "host_type",
+                                    "resolved_commit",
+                                    "resolved_ref",
+                                    "constraint",
+                                    "resolved_tag",
+                                    "version",
+                                    "discovered_via",
+                                    "marketplace_plugin_name",
+                                    "source_url",
+                                    "source_digest",
+                                )
+                            )
+                        ):
+                            dep.resolved_at = previous.resolved_at
 
     def _merge_existing(self, lockfile: LockFile) -> None:
         # Partial operations merge untouched dependencies and their canonical
