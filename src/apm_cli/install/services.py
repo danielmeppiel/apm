@@ -31,7 +31,7 @@ from .deployed_paths import format_target_collapse as _format_target_collapse
 from .deployed_paths import skill_bundle_file_entries as _skill_bundle_file_entries
 from .deployed_paths import skill_summary_paths as _skill_summary_paths
 from .deployment_plan import PackageDeploymentPlan, prepare_package_deployment
-from .exec_gate import resolve_bin_skip
+from .exec_gate import plugin_bin_deployable, resolve_bin_skip
 from .local_bundle_paths import bundle_deploy_relative_path as _bundle_rel
 from .local_bundle_paths import bundle_deploy_skip_warning as _bundle_skip_warning
 from .local_bundle_paths import bundle_pack_files as _bundle_pack_files
@@ -758,6 +758,7 @@ def integrate_local_content(  # noqa: PLR0913
 _integrate_package_primitives = integrate_package_primitives
 _integrate_local_content = integrate_local_content
 _resolve_bin_skip = resolve_bin_skip
+_plugin_bin_deployable = plugin_bin_deployable
 
 
 # ---------------------------------------------------------------------------

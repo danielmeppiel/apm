@@ -147,6 +147,7 @@ def preflight_skill_materializations(
     from apm_cli.install.errors import DirectDependencyError
     from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.integration.base_integrator import BaseIntegrator
+    from apm_cli.integration.skill_preflight import format_skill_conflicts
 
     if not ctx.targets:
         return {}, None
@@ -217,7 +218,7 @@ def preflight_skill_materializations(
         )
         check(local, local_plan)
     if conflicts:
-        raise DirectDependencyError("\n".join(conflict.message() for conflict in conflicts))
+        raise DirectDependencyError(format_skill_conflicts(conflicts))
     return plans, local_plan
 
 

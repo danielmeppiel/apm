@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -65,14 +66,23 @@ class SkillConflict:
     targets: tuple[str, ...]
 
     def message(self) -> str:
-        """Name the failure and a nondestructive resolution in ordinary output."""
+        """Name the source, local file and affected targets in ordinary output."""
         return printable_ascii_text(
             f"Installation refused: skill '{self.skill}' from '{self.package}' "
             f"(source: {self.source}) conflicts with unmanaged file '{self.path}'. "
-            f"Affected targets: {', '.join(self.targets)}. "
-            "Rename the local skill or use a valid existing skill/target selection "
-            "that excludes this conflict, then run 'apm install'."
+            f"Affected targets: {', '.join(self.targets)}."
         )
+
+
+def format_skill_conflicts(conflicts: Sequence[SkillConflict]) -> str:
+    """Group conflict facts with one nondestructive remedy."""
+    return "\n".join(
+        [
+            *(conflict.message() for conflict in conflicts),
+            "Rename the local skill or use a valid existing skills: or targets: selection "
+            "in apm.yml that excludes these conflicts, then run 'apm install'.",
+        ]
+    )
 
 
 def _matches_deployed_file(

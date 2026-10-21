@@ -66,3 +66,32 @@ def test_prepared_plan_cannot_bypass_canonical_target_authorization(old: str, ne
     result = run_selected_rules(ROOT, (rule,), source_overrides={path: source.replace(old, new)})
     assert result.failures == ()
     assert any(finding.rule_id == rule for finding in result.violations)
+
+
+@pytest.mark.parametrize(
+    ("rule", "old", "new"),
+    [
+        (
+            "install-deployment-plugin-bin-eligibility",
+            "plugin_bin_deployable=plugin_bin_deployable(",
+            "plugin_bin_deployable=rogue_bin_eligibility(",
+        ),
+        (
+            "marketplace-integrations-codex-native-lifecycle",
+            "codex_native = plan_native_codex_plugin(",
+            "codex_native = rogue_native_plan(",
+        ),
+        (
+            "marketplace-integrations-codex-native-lifecycle",
+            "native_plugin_root=codex_native.source_root if codex_native else None,",
+            "unadmitted_plugin_root=None,",
+        ),
+    ],
+)
+def test_prepared_plan_retains_native_and_bin_admission(rule: str, old: str, new: str) -> None:
+    path = "src/apm_cli/install/deployment_plan.py"
+    source = (ROOT / path).read_text()
+    assert old in source
+    result = run_selected_rules(ROOT, (rule,), source_overrides={path: source.replace(old, new)})
+    assert result.failures == ()
+    assert any(finding.rule_id == rule for finding in result.violations)
