@@ -37,16 +37,30 @@ def test_omission_evidence_never_uses_inventory_as_identity(tmp_path: Path, fiel
     lock = LockFile()
     lock.add_dependency(dependency)
     modules = tmp_path / "apm_modules"
-    selected = CurrentMcpConfigView.derive(root, lock, modules, include_dependency_mcp=False)
+    selected = CurrentMcpConfigView.derive(
+        root, lock, modules, trust_transitive_self_defined=False, include_dependency_mcp=False
+    )
+    assert selected.problems == ()
+    assert selected.configs == {}
     lock.mcp_omissions = selected.omission_evidence(lock)
-    assert set(lock.mcp_omissions) == {"service"}
+    assert lock.mcp_omissions == {
+        "service": {
+            "declaration": selected.declaration_fingerprints["service"],
+            "reason": "only-apm",
+        }
+    }
     original_evidence = lock.mcp_omissions
     setattr(dependency, field, "different-inventory-value")
     lock_path = tmp_path / "apm.lock.yaml"
     lock.write(lock_path)
     restored = LockFile.read(lock_path)
     assert restored is not None
-    current = CurrentMcpConfigView.derive(root, restored, modules)
+    current = CurrentMcpConfigView.derive(
+        root, restored, modules, trust_transitive_self_defined=True
+    )
+    assert current.problems == ()
+    assert set(current.configs) == {"service"}
+    assert current.configs["service"]["command"] == "inert"
     assert (
         current.declaration_fingerprints["service"] == original_evidence["service"]["declaration"]
     )
@@ -61,7 +75,10 @@ def test_omission_evidence_never_uses_inventory_as_identity(tmp_path: Path, fiel
     different_identity.local_path = str(other_package)
     restored.dependencies.clear()
     restored.add_dependency(different_identity)
-    changed = CurrentMcpConfigView.derive(root, restored, modules)
+    changed = CurrentMcpConfigView.derive(
+        root, restored, modules, trust_transitive_self_defined=True
+    )
+    assert changed.configs == current.configs
     assert (
         changed.declaration_fingerprints["service"] != original_evidence["service"]["declaration"]
     )
