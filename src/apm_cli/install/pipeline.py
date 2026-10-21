@@ -457,6 +457,8 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
         has_orphan_deps=_has_orphan_deps,
         lockfile_only=lockfile_only,
         apm_dir=apm_dir,
+        apm_package=apm_package,
+        logger=logger,
     ):
         return InstallResult()
 
