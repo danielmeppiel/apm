@@ -85,6 +85,9 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     root_redirect = _first_line(adapter, "_root_redirect = install_root_redirect(")
     dedicated_mcp = _last_line_re(adapter, re.compile(r"^[ \t]*_handle_mcp_install\("))
     local_bundle = _first_line(adapter, "if len(packages) == 1 and not mcp_name")
+    acquisition = _first_line(integration, "prepare_integration_materialization(source)")
+    hydrated_check = _first_line(integration, "InstallService.enforce_hydrated_mcp(")
+    deployment = _first_line(integration, "run_integration_template(source,")
 
     duplicates = _duplicate_definition_lines(
         provider,
@@ -99,20 +102,17 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         _present_re(owner, re.compile(r"^    def enforce_frozen\("))
         and _present_re(owner, re.compile(r"^    def reject_frozen_mutation\("))
         and _present_re(owner, re.compile(r"^    def reject_missing_frozen_root\("))
-        and _present_re(owner, re.compile(r"^    def enforce_materialized_versions\("))
-        and _present(owner, "current.package_type = ctx.package_types.get(key)")
-        and _present(owner, "expected = locked.manifest_version")
-        and _present(owner, "actual = current.manifest_version")
-        and _present(owner, "expected != actual")
+        and _present_re(owner, re.compile(r"^    def enforce_hydrated_mcp\("))
+        and _present(owner, "current.pending_servers(lockfile)")
+        and _present(owner, "current.diff(lockfile.mcp_configs)")
+        and _present(owner, "allow_pending=False,")
+        and _present(owner, "active_package_keys=active_package_keys,")
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
 
     def _before(first: int | None, second: int | None) -> bool:
         return first is not None and second is not None and first < second
 
-    acquired = _first_line(integration, "prepare_integration_materialization(source)")
-    version_guard = _first_line(integration, "InstallService.enforce_materialized_versions(ctx)")
-    deployment = _first_line(integration, "deltas = run_integration_template(")
     failed = (
         not owner_methods
         or preflight is None
@@ -126,8 +126,13 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or local_bundle is None
         or not _before(add_guard, dedicated_mcp)
         or not _before(add_guard, local_bundle)
-        or not _before(acquired, version_guard)
-        or not _before(version_guard, deployment)
+        or not _present(adapter, "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,")
+        or not _present(integration, "if ctx.frozen and ctx.existing_lockfile is not None:")
+        or not _present(
+            integration, "active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),"
+        )
+        or not _before(acquisition, hydrated_check)
+        or not _before(hydrated_check, deployment)
         or bool(duplicates)
     )
     if not failed:

@@ -175,31 +175,30 @@ def test_first_install_after_checkout_records_current_manifest_snapshot(
 
 @pytest.mark.parametrize("source", ["local", "git-subdirectory"])
 @pytest.mark.parametrize("cold", [False, True], ids=["warm", "cold"])
-def test_frozen_rejects_contradictory_manifest_version_before_deployment(
+def test_frozen_replays_pins_without_using_inventory_version(
     tmp_path: Path, apm_binary_path: Path, source: str, cold: bool
 ) -> None:
-    """Frozen must refuse contradictory metadata without replacing old deployment."""
+    """Inventory alone does not veto replay or rewrite the committed lock."""
     scenario = _branch_switch(tmp_path, apm_binary_path, source)
     manifest = scenario.root / "apm.yml"
     lockfile = scenario.root / "apm.lock.yaml"
     lock = load_yaml(lockfile)
     lock["dependencies"][0]["version"] = "1.0.0"
     dump_yaml(lock, lockfile)
-    baseline = (manifest.read_bytes(), lockfile.read_bytes(), scenario.deployed_skill.read_bytes())
+    baseline = (manifest.read_bytes(), lockfile.read_bytes())
     if cold:
         shutil.rmtree(scenario.root / "apm_modules")
         shutil.rmtree(scenario.cache_root)
     result = scenario.install("--frozen")
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert "version" in result.stdout + result.stderr
-    assert "1.0.0" in result.stdout + result.stderr
-    assert "1.1.0" in result.stdout + result.stderr
-    assert "demo" in result.stdout + result.stderr
-    assert (
-        manifest.read_bytes(),
-        lockfile.read_bytes(),
-        scenario.deployed_skill.read_bytes(),
-    ) == baseline
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (manifest.read_bytes(), lockfile.read_bytes()) == baseline
+    replayed_lock = load_yaml(lockfile)["dependencies"][0]
+    assert replayed_lock["version"] == "1.0.0"
+    assert load_yaml(scenario.installed_manifest)["version"] == "1.1.0"
+    assert scenario.deployed_skill.read_text().endswith("Body 1.1.0.\n")
+    if scenario.commit:
+        assert replayed_lock["resolved_commit"] == scenario.commit
+        assert replayed_lock["resolved_ref"] == "release-new"
 
     recovered = scenario.install()
     assert recovered.returncode == 0, recovered.stdout + recovered.stderr

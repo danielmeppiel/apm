@@ -12,28 +12,17 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from apm_cli.deps.lockfile import LockedDependency, LockFile
-from apm_cli.install.errors import FrozenInstallError
-from apm_cli.install.service import InstallService
 from apm_cli.install.sources import CachedDependencySource
-from apm_cli.models.apm_package import APMPackage
-from apm_cli.models.dependency.reference import DependencyReference
-
-pytestmark = pytest.mark.component
 
 
 def _make_source(
     *,
     lockfile_only: bool,
     install_path: Path,
-    frozen: bool = False,
 ) -> CachedDependencySource:
     ctx = MagicMock()
     ctx.targets = []
     ctx.lockfile_only = lockfile_only
-    ctx.frozen = frozen
     ctx.logger = MagicMock()
     ctx.callback_downloaded = {}
     ctx.existing_lockfile = None
@@ -107,33 +96,3 @@ class TestCachedSourceLockfileOnly:
             "non-lockfile_only with empty targets should exit early "
             "without populating installed_packages"
         )
-
-    def test_frozen_empty_targets_retains_current_version_evidence(self, tmp_path: Path) -> None:
-        """No deployment targets must not bypass frozen manifest-version verification."""
-        install_path = tmp_path / "pkg"
-        install_path.mkdir()
-        manifest = install_path / "apm.yml"
-        manifest.write_text("name: demo\nversion: 1.0.0\n", encoding="utf-8")
-        APMPackage.from_apm_yml(manifest, source_path=install_path)
-        manifest.write_text("name: demo\nversion: 1.1.0\n", encoding="utf-8")
-        src = _make_source(lockfile_only=False, frozen=True, install_path=install_path)
-        src.dep_ref = DependencyReference.parse("owner/demo#release-new")
-        src.dep_key = src.dep_ref.get_canonical_dependency_string()
-        src.dep_locked_chk = LockedDependency.from_dependency_ref(
-            src.dep_ref,
-            resolved_commit="a" * 40,
-            depth=1,
-            resolved_by=None,
-            package_version="1.0.0",
-        )
-        src.ctx.existing_lockfile = LockFile()
-        src.ctx.existing_lockfile.add_dependency(src.dep_locked_chk)
-
-        materialization = src.acquire()
-
-        assert materialization is not None
-        assert materialization.package_info is None
-        assert len(src.ctx.installed_packages) == 1
-        assert src.ctx.installed_packages[0].package_version == "1.1.0"
-        with pytest.raises(FrozenInstallError, match="dependency versions contradict"):
-            InstallService.enforce_materialized_versions(src.ctx)

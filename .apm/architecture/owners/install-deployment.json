@@ -70,11 +70,11 @@
     },
     {
       "id": "materialized-manifest-evidence",
-      "decision": "Acquired manifest metadata and manifest-authoritative lock version evidence",
-      "owner": "install/source_helpers.py (materialized_manifest_snapshot) delegates manifest interpretation to APMPackage.from_mapping and lock version authority to deps/lockfile.py (LockedDependency.manifest_version)",
+      "decision": "Acquired manifest metadata snapshot",
+      "owner": "install/source_helpers.py (materialized_manifest_snapshot) delegates manifest interpretation to APMPackage.from_mapping; existing lock construction retains resolver version precedence",
       "selectors": [
         "src/apm_cli/install/source_helpers.py",
-        "src/apm_cli/deps/lockfile.py"
+        "src/apm_cli/install/sources.py"
       ],
       "guards": ["install-deployment-manifest-snapshot"]
     },

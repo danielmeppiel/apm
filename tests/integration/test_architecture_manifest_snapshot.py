@@ -1,4 +1,4 @@
-"""Mutation probes for acquired metadata and its pre-deployment frozen gate."""
+"""Mutation probes for acquired manifest metadata."""
 
 from pathlib import Path
 
@@ -10,7 +10,6 @@ pytestmark = pytest.mark.component
 
 ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_RULE = "install-deployment-manifest-snapshot"
-FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
 
 
 @pytest.mark.parametrize(
@@ -48,33 +47,9 @@ FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
         ),
         (
             SNAPSHOT_RULE,
-            "src/apm_cli/deps/lockfile.py",
-            'if self.source == "registry" or self.constraint:',
-            'if self.source == "registry":',
-        ),
-        (
-            SNAPSHOT_RULE,
             "src/apm_cli/install/source_helpers.py",
             "package_type == PackageType.MARKETPLACE_PLUGIN",
             "False",
-        ),
-        (
-            FROZEN_RULE,
-            "src/apm_cli/install/phases/integrate.py",
-            "InstallService.enforce_materialized_versions(ctx)",
-            "pass",
-        ),
-        (
-            FROZEN_RULE,
-            "src/apm_cli/install/service.py",
-            "current.package_type = ctx.package_types.get(key)",
-            "current.package_type = ctx.package_types.get(current.get_canonical_dependency_string())",
-        ),
-        (
-            FROZEN_RULE,
-            "src/apm_cli/install/service.py",
-            "expected != actual:",
-            "False:",
         ),
     ],
 )

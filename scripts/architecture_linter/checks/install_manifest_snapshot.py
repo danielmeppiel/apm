@@ -1,4 +1,4 @@
-"""Keep acquired-manifest evidence behind its snapshot and lock owners."""
+"""Keep acquired-manifest metadata behind its snapshot and parsing owners."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from scripts.architecture_linter.models import Violation
 GUARD_MANIFEST_SNAPSHOT = "install-deployment-manifest-snapshot"
 _SNAPSHOT = "src/apm_cli/install/source_helpers.py"
 _SOURCES = "src/apm_cli/install/sources.py"
-_LOCK = "src/apm_cli/deps/lockfile.py"
 
 
 def check_manifest_snapshot(provider: FactsProvider) -> tuple[Violation, ...]:
@@ -25,26 +24,21 @@ def check_manifest_snapshot(provider: FactsProvider) -> tuple[Violation, ...]:
     rule = GUARD_MANIFEST_SNAPSHOT
     snapshot, snapshot_failures = _facts_for(provider, _SNAPSHOT, rule)
     sources, source_failures = _facts_for(provider, _SOURCES, rule)
-    lock, lock_failures = _facts_for(provider, _LOCK, rule)
-    findings = list(snapshot_failures) + list(source_failures) + list(lock_failures)
+    findings = list(snapshot_failures) + list(source_failures)
     if findings:
         return tuple(findings)
 
-    for name, owner in (
-        ("materialized_manifest_snapshot", _SNAPSHOT),
-        ("manifest_version", _LOCK),
-    ):
-        findings.extend(
-            _duplicate_definition_lines(
-                provider,
-                rule_id=rule,
-                prefix=_SRC_PREFIX,
-                pattern=re.compile(rf"^[ \t]*def {name}\("),
-                owner=owner,
-                message="Acquired manifest evidence must use its canonical owner",
-                respect_exempt=False,
-            )
+    findings.extend(
+        _duplicate_definition_lines(
+            provider,
+            rule_id=rule,
+            prefix=_SRC_PREFIX,
+            pattern=re.compile(r"^[ \t]*def materialized_manifest_snapshot\("),
+            owner=_SNAPSHOT,
+            message="Acquired manifest evidence must use its canonical owner",
+            respect_exempt=False,
         )
+    )
 
     required_snapshot_calls = {"load_yaml", "APMPackage.from_mapping"}
     snapshot_calls = {
@@ -73,16 +67,13 @@ def check_manifest_snapshot(provider: FactsProvider) -> tuple[Violation, ...]:
         or not _present(snapshot, "source_path=package.source_path")
         or not _present(snapshot, "package_type == PackageType.MARKETPLACE_PLUGIN")
         or consumers != required_consumers
-        or not _present(lock, 'if self.source == "registry" or self.constraint:')
-        or not _present(lock, 'if self.package_type == "marketplace_plugin":')
-        or not _present(lock, "return self.version or None")
     ):
         findings.append(
             _summary(
                 rule,
                 _SNAPSHOT,
                 "Materialization must capture current manifest metadata through from_mapping "
-                "and retain resolver-authoritative lock versions",
+                "and preserve source anchors and native projections",
             )
         )
     return tuple(findings)

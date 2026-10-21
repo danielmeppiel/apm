@@ -441,14 +441,9 @@ class CachedDependencySource(DependencySource):
         # Skip integration entirely if no targets. The template leaves this
         # dependency absent from the integration outcome so cleanup and
         # lockfile reconciliation preserve its prior deployment claims.
-        # Lockfile-only and frozen modes need captured metadata even without
-        # deployment targets.
-        if (
-            not ctx.targets
-            and not ctx.lockfile_only
-            and not ctx.frozen
-            and native_validation is None
-        ):
+        # In lockfile_only mode, skip this early return so installed_packages
+        # is populated before we return without deploying any files.
+        if not ctx.targets and not ctx.lockfile_only and native_validation is None:
             return Materialization(
                 package_info=None,
                 install_path=install_path,

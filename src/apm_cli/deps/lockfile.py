@@ -431,20 +431,6 @@ class LockedDependency:
             virtual_path=self.virtual_path,
         )
 
-    @property
-    def manifest_version(self) -> str | None:
-        """Return version evidence only when the package manifest is authoritative.
-
-        Registry versions and Git-semver selections describe resolver decisions,
-        not a requirement that the selected package declare the same version.
-        Legacy plugin versions belong to normalization, not an authored apm.yml.
-        """
-        if self.source == "registry" or self.constraint:
-            return None
-        if self.package_type == "marketplace_plugin":
-            return None
-        return self.version or None
-
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dict for YAML output."""
         result: dict[str, Any] = {"repo_url": self.repo_url}
