@@ -27,6 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apm_cli import config
 from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.copilot_plugins.capability import (
     native_registration_scope,
@@ -48,6 +49,9 @@ from apm_cli.copilot_plugins.settings import (
 )
 from apm_cli.core.scope import InstallScope
 from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
+from apm_cli.install.dry_run_plan import ProspectiveInstallPlan
+from apm_cli.install.template import preflight_agent_plugin_dry_run
+from apm_cli.models.apm_package import APMPackage
 from tests.integration.test_native_plugin_audit_lifecycle import (
     _run_install,
     _snapshot_tree,
@@ -55,8 +59,51 @@ from tests.integration.test_native_plugin_audit_lifecycle import (
 )
 from tests.spec_conformance._helpers import assert_spec_contains
 from tests.unit.copilot_plugins._builders import read_json, write_agent_plugin
+from tests.utils.artifact_snapshot import ArtifactSnapshot
+from tests.utils.local_package import LocalPackageFactory
 
 _COPILOT_TARGET = SimpleNamespace(name="copilot")
+
+
+@pytest.mark.req("req-tg-011")
+def test_transitive_native_preview_preflight_preserves_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bind the existing native dry-run nonmutation clause to transitive preflight."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("APM_HOME", str(home / ".apm"))
+    monkeypatch.setattr(config, "CONFIG_DIR", str(home / ".apm"))
+    monkeypatch.setattr(config, "CONFIG_FILE", str(home / ".apm" / "config.json"))
+    monkeypatch.setattr(config, "_config_cache", None)
+    factory = LocalPackageFactory(tmp_path / "sources")
+    write_agent_plugin(tmp_path / "sources" / "native", name="native", with_mcp=False)
+    factory.create("parent", dependencies=("../native",))
+    consumer = factory.create("consumer", dependencies=("../parent",), targets=("copilot",))
+    package = APMPackage.from_apm_yml(consumer.manifest_path, create_config=False)
+    ctx = SimpleNamespace(
+        project_root=consumer.root,
+        apm_dir=consumer.root,
+        scope=InstallScope.PROJECT,
+        target="copilot",
+        create_config=False,
+        only_packages=None,
+        update=False,
+        refresh=False,
+        frozen=False,
+        logger=None,
+    )
+    monkeypatch.chdir(consumer.root)
+    before = ArtifactSnapshot.capture(tmp_path)
+    plan = ProspectiveInstallPlan.from_install_context(
+        package, ctx, should_install_apm=True, should_install_mcp=False
+    )
+    assert not plan.dependency_preview_errors
+    assert len(plan.selected_apm_dependencies) == 2
+    preflight_agent_plugin_dry_run(ctx, list(plan.selected_apm_dependencies), apm_package=package)
+    assert ArtifactSnapshot.capture(tmp_path) == before
+    assert not (home / ".apm" / "config.json").exists()
 
 
 @pytest.mark.req("req-tg-011")
