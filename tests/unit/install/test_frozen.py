@@ -42,6 +42,7 @@ def _make_request(*, project_dir: Path, manifest_deps: list[DependencyReference]
     pkg.package_path = project_dir / "apm.yml"
     pkg.get_apm_dependencies.return_value = manifest_deps
     pkg.get_dev_apm_dependencies.return_value = []
+    pkg.get_all_mcp_dependencies.return_value = []
     return InstallRequest(apm_package=pkg, frozen=True)
 
 
