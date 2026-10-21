@@ -285,18 +285,23 @@ def test_partial_directory_removal_finishes_independent_children(
     """Report the denied child after removing independent writable children."""
     root = tmp_path / "partial"
     root.mkdir()
-    denied = root / "denied"
-    denied.write_bytes(b"preserve")
-    (root / "writable").write_bytes(b"remove")
+    for name in ("first", "second"):
+        (root / name).write_bytes(b"preserve")
+    denied_names: list[str] = []
     unlink = os.unlink
 
     def deny_one(path: str, *args: object, **kwargs: object) -> None:
-        if Path(path).name == denied.name:
+        name = Path(path).name
+        if not denied_names:
+            denied_names.append(name)
+        if name == denied_names[0]:
             raise PermissionError(errno.EACCES, "child removal denied", str(path))
         unlink(path, *args, **kwargs)
 
     monkeypatch.setattr(os, "unlink", deny_one)
     with pytest.raises(PermissionError, match="child removal denied"):
         safe_rmtree(root, tmp_path)
+    denied = root / denied_names[0]
+    denied.chmod(0o600)
     assert denied.read_bytes() == b"preserve"
-    assert not (root / "writable").exists()
+    assert list(root.iterdir()) == [denied]

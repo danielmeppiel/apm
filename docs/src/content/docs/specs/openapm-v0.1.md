@@ -1190,7 +1190,8 @@ dependency replacement MUST preserve the following recovery guarantees:
 This proposal does not extend transaction coverage to arbitrary lifecycle
 scripts or promise successful filesystem operations under persistent OS or
 endpoint-policy denial. Validation-before-activation, pin verification,
-atomic replacement, and existing security requirements remain unchanged.
+atomic replacement, and existing security requirements remain unchanged,
+including [req-lk-013](#req-lk-013) and [req-lk-015](#req-lk-015) on retries.
 Under Section 9.2 this adds a conditional recovery obligation, not
 behavior-neutral errata; consumers without staged replacement acquire no
 new replacement capability.
