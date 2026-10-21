@@ -234,7 +234,11 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
     for path, function, required_call in (
         (_MCP_INTEGRATOR, "_install_self_defined_deps", "compare_native_mcp_connection"),
         (_MCP_INTEGRATOR, "run_mcp_install", "compare_native_mcp_connection"),
-        (_MCP_OWNERSHIP_OWNER, "require_removable_mcp_connections", "compare_native_mcp_connection"),
+        (
+            _MCP_OWNERSHIP_OWNER,
+            "require_removable_mcp_connections",
+            "compare_native_mcp_connection",
+        ),
         (
             "src/apm_cli/integration/mcp_integrator.py",
             "remove_stale",
@@ -251,6 +255,22 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
                     f"{function} must route native MCP ownership through {required_call}",
                 )
             )
+    cleanup = provider.file_facts("src/apm_cli/integration/mcp_integrator.py")
+    if (
+        sum(
+            call.scope == "remove_stale"
+            and call.qualname.rsplit(".", 1)[-1] == "require_removable_mcp_connections"
+            for call in getattr(cleanup, "calls", ())
+        )
+        != 3
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                "src/apm_cli/integration/mcp_integrator.py",
+                "Codex and both Claude cleanup scopes must verify their managed baseline",
+            )
+        )
     if not _present_re(
         owner, re.compile(r"^def migrate_legacy_project_target_servers\(")
     ) or not _present(consumer, "migrate_legacy_project_target_servers("):

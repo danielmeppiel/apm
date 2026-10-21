@@ -25,9 +25,7 @@ def test_managed_projection_is_nonmutating(tmp_path: Path, cwd: str) -> None:
     native = {**deepcopy(baseline), "cwd": cwd, "oauthAccount": {"accountUuid": "keep"}}
     before = deepcopy((native, baseline, requested))
 
-    projected = client.project_managed_server_config(
-        native, baseline=baseline, requested=requested
-    )
+    projected = client.project_managed_server_config(native, baseline=baseline, requested=requested)
 
     assert projected == {key: value for key, value in native.items() if key != "cwd"}
     assert projected is not native
@@ -42,9 +40,10 @@ def test_managed_projection_keeps_invalid_cwd(tmp_path: Path, cwd: object) -> No
     client = ClaudeClientAdapter(project_root=tmp_path)
     baseline = {"type": "stdio", "command": "python"}
     native = {**baseline, "cwd": cwd}
-    assert client.project_managed_server_config(
-        native, baseline=baseline, requested=baseline
-    ) is native
+    assert (
+        client.project_managed_server_config(native, baseline=baseline, requested=baseline)
+        is native
+    )
 
 
 @pytest.mark.parametrize(
@@ -62,9 +61,10 @@ def test_managed_projection_does_not_expand_eligibility(
     tmp_path: Path, baseline: dict, requested: dict, native: object
 ) -> None:
     client = ClaudeClientAdapter(project_root=tmp_path)
-    assert client.project_managed_server_config(
-        native, baseline=baseline, requested=requested
-    ) is native
+    assert (
+        client.project_managed_server_config(native, baseline=baseline, requested=requested)
+        is native
+    )
 
 
 @pytest.mark.parametrize("target", ["copilot", "codex"])
@@ -553,6 +553,10 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
+        self.stored_configs = {
+            "stale": {"name": "stale", "registry": False, "transport": "stdio", "command": "s"}
+        }
+        self.managed_entry = {"type": "stdio", "command": "s", "args": []}
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -563,7 +567,7 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         (self.root / ".claude").mkdir()
         mcp = self.root / ".mcp.json"
         mcp.write_text(
-            json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}),
+            json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": self.managed_entry}}),
             encoding="utf-8",
         )
         MCPIntegrator.remove_stale(
@@ -571,6 +575,7 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
             runtime="claude",
             project_root=self.root,
             scope=InstallScope.PROJECT,
+            stored_configs=self.stored_configs,
         )
         data = json.loads(mcp.read_text(encoding="utf-8"))
         self.assertIn("keep", data["mcpServers"])
@@ -599,10 +604,15 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         ):
             cfg = self.root / ".claude.json"
             cfg.write_text(
-                json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}),
+                json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": self.managed_entry}}),
                 encoding="utf-8",
             )
-            MCPIntegrator.remove_stale({"stale"}, runtime="claude", scope=InstallScope.USER)
+            MCPIntegrator.remove_stale(
+                {"stale"},
+                runtime="claude",
+                scope=InstallScope.USER,
+                stored_configs=self.stored_configs,
+            )
             data = json.loads(cfg.read_text(encoding="utf-8"))
             self.assertIn("keep", data["mcpServers"])
             self.assertNotIn("stale", data["mcpServers"])
@@ -614,7 +624,7 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         custom_claude_dir.mkdir()
         custom_cfg = custom_claude_dir / ".claude.json"
         custom_cfg.write_text(
-            json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}),
+            json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": self.managed_entry}}),
             encoding="utf-8",
         )
 
@@ -625,7 +635,12 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
                 encoding="utf-8",
             )
             with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(custom_claude_dir)}):
-                MCPIntegrator.remove_stale({"stale"}, runtime="claude", scope=InstallScope.USER)
+                MCPIntegrator.remove_stale(
+                    {"stale"},
+                    runtime="claude",
+                    scope=InstallScope.USER,
+                    stored_configs=self.stored_configs,
+                )
 
             custom_data = json.loads(custom_cfg.read_text(encoding="utf-8"))
             self.assertIn("keep", custom_data["mcpServers"])
@@ -646,7 +661,7 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
                     "projects": {"/path/to/project": {"allowedTools": ["Bash"]}},
                     "mcpServers": {
                         "keep": {"command": "k"},
-                        "stale": {"command": "s"},
+                        "stale": self.managed_entry,
                     },
                     "theme": "dark",
                 }
@@ -655,7 +670,12 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
         )
 
         with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(custom_claude_dir)}):
-            MCPIntegrator.remove_stale({"stale"}, runtime="claude", scope=InstallScope.USER)
+            MCPIntegrator.remove_stale(
+                {"stale"},
+                runtime="claude",
+                scope=InstallScope.USER,
+                stored_configs=self.stored_configs,
+            )
 
         data = json.loads(custom_cfg.read_text(encoding="utf-8"))
         self.assertEqual(data["projects"], {"/path/to/project": {"allowedTools": ["Bash"]}})
@@ -737,7 +757,7 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
 
         (self.root / ".claude").mkdir()
         proj = self.root / ".mcp.json"
-        proj.write_text(json.dumps({"mcpServers": {"stale": {"command": "s"}}}), encoding="utf-8")
+        proj.write_text(json.dumps({"mcpServers": {"stale": self.managed_entry}}), encoding="utf-8")
 
         with patch.object(Path, "home", return_value=self.root):
             user_cfg = self.root / ".claude.json"
@@ -745,7 +765,11 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
             user_cfg.write_text(user_raw, encoding="utf-8")
 
             MCPIntegrator.remove_stale(
-                {"stale"}, runtime="claude", project_root=self.root, scope=None
+                {"stale"},
+                runtime="claude",
+                project_root=self.root,
+                scope=None,
+                stored_configs=self.stored_configs,
             )
 
             self.assertNotIn(

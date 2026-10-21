@@ -750,14 +750,6 @@ class MCPIntegrator:
         from apm_cli.core.scope import InstallScope
         from apm_cli.install.mcp.ownership import require_removable_mcp_connections
 
-        for protected_runtime in sorted(target_runtimes & {"claude", "codex"}):
-            client = ClientFactory.create_client(
-                protected_runtime,
-                project_root=project_root,
-                user_scope=user_scope or scope is InstallScope.USER,
-            )
-            require_removable_mcp_connections(client, stale_names, stored_configs or {})
-
         # Scope filtering: at USER scope, only clean global-capable runtimes.
         if scope is InstallScope.USER:
             from apm_cli.factory import ClientFactory as _CF
@@ -827,13 +819,17 @@ class MCPIntegrator:
         if "codex" in target_runtimes:
             from apm_cli.factory import ClientFactory
 
-            codex_cfg = Path(
-                ClientFactory.create_client(
-                    "codex",
-                    project_root=project_root,
-                    user_scope=user_scope,
-                ).get_config_path()
+            codex_client = ClientFactory.create_client(
+                "codex",
+                project_root=project_root,
+                user_scope=user_scope,
             )
+            codex_cfg = Path(codex_client.get_config_path())
+            if _reject_symlink_config(
+                codex_cfg, "Codex CLI config", logger, fail_on_write_error=fail_on_write_error
+            ):
+                return
+            require_removable_mcp_connections(codex_client, stale_names, stored_configs or {})
             _clean_toml_mcp_config(
                 codex_cfg,
                 expanded_stale,
@@ -973,7 +969,20 @@ class MCPIntegrator:
 
         # Clean Claude Code project .mcp.json (only if .claude/ directory exists)
         if clean_claude_project:
-            if (project_root_path / ".claude").is_dir():
+            claude_project_enabled = (project_root_path / ".claude").is_dir()
+            if claude_project_enabled or stored_configs:
+                if _reject_symlink_config(
+                    project_root_path / ".mcp.json",
+                    ".mcp.json",
+                    logger,
+                    fail_on_write_error=fail_on_write_error,
+                ):
+                    return
+                project_client = ClientFactory.create_client(
+                    "claude", project_root=project_root_path, user_scope=False
+                )
+                require_removable_mcp_connections(project_client, stale_names, stored_configs or {})
+            if claude_project_enabled:
                 _clean_claude_config(
                     project_root_path / ".mcp.json",
                     expanded_stale,
@@ -1007,6 +1016,10 @@ class MCPIntegrator:
                     ) from exc
                 return
 
+            user_client = ClientFactory.create_client(
+                "claude", project_root=project_root_path, user_scope=True
+            )
+            require_removable_mcp_connections(user_client, stale_names, stored_configs or {})
             _clean_claude_config(
                 claude_cfg,
                 expanded_stale,

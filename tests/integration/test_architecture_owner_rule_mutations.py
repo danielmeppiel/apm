@@ -1768,7 +1768,7 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
         ),
         (
             "src/apm_cli/integration/mcp_integrator.py",
-            "require_removable_mcp_connections(client, stale_names, stored_configs or {})",
+            "require_removable_mcp_connections(codex_client, stale_names, stored_configs or {})",
             "None",
         ),
         (
@@ -1802,8 +1802,14 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
         ),
     ],
     ids=[
-        "legacy-resolver", "install-routing", "removal-routing", "removal-baseline",
-        "second-owner", "projection-bypass", "projection-external", "projection-cleanup",
+        "legacy-resolver",
+        "install-routing",
+        "removal-routing",
+        "removal-baseline",
+        "second-owner",
+        "projection-bypass",
+        "projection-external",
+        "projection-cleanup",
     ],
 )
 def test_native_mcp_ownership_boundary_mutations(path: str, old: str, new: str) -> None:

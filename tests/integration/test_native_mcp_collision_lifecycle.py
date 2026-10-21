@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -200,8 +201,10 @@ def _success(result: CommandResult) -> None:
 
 
 @pytest.fixture(params=[False, True], ids=["project", "user"])
-def scenario(tmp_path: Path, apm_binary_path: Path, request: pytest.FixtureRequest) -> _Scenario:
-    """Create isolated project and user state for real CLI lifecycle checks."""
+def scenario_factory(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> Callable[[ApmLifecycleRunner], _Scenario]:
+    """Create isolated state; each test injects its canonical installed CLI."""
     isolated = IsolatedApmEnvironment.create(tmp_path / "native", base_env=dict(os.environ))
     project = isolated.work_root / "consumer"
     project.mkdir()
@@ -215,17 +218,19 @@ def scenario(tmp_path: Path, apm_binary_path: Path, request: pytest.FixtureReque
         },
         root / "apm.yml",
     )
-    return _Scenario(
-        isolated, project, root, request.param, ApmLifecycleRunner((str(apm_binary_path),))
-    )
+    return lambda runner: _Scenario(isolated, project, root, request.param, runner)
 
 
 @pytest.mark.parametrize("foreign_target", ["claude", "codex"])
 @pytest.mark.parametrize("identical", [False, True], ids=["differing", "identical"])
 def test_direct_collision_repeat_force_frozen_and_prune(
-    scenario: _Scenario, foreign_target: str, identical: bool
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario],
+    apm_binary_path: Path,
+    foreign_target: str,
+    identical: bool,
 ) -> None:
     """Direct adds never adopt foreign matches or overwrite differing connections."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
     requested = _http()["url"]
     scenario.write(foreign_target, requested if identical else "http://127.0.0.1:9/personal")
     before = scenario.path(foreign_target).read_bytes()
@@ -252,9 +257,12 @@ def test_direct_collision_repeat_force_frozen_and_prune(
 
 @pytest.mark.parametrize("modified_target", ["claude", "codex"])
 def test_managed_connection_user_edits_block_replay_and_removal(
-    scenario: _Scenario, modified_target: str
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario],
+    apm_binary_path: Path,
+    modified_target: str,
 ) -> None:
     """An old ownership name cannot authorize overwriting or deleting edited content."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
     scenario.declare([_http()])
     _success(scenario.install(targets=modified_target))
     scenario.write(modified_target, "http://127.0.0.1:9/personal")
@@ -274,9 +282,12 @@ def test_managed_connection_user_edits_block_replay_and_removal(
 
 @pytest.mark.parametrize("foreign_target", ["claude", "codex"])
 def test_historical_false_claim_preserves_foreign_connection(
-    scenario: _Scenario, foreign_target: str
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario],
+    apm_binary_path: Path,
+    foreign_target: str,
 ) -> None:
     """Historical ownership of both targets is not trusted over differing native bytes."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
     other = "codex" if foreign_target == "claude" else "claude"
     scenario.declare([_http()])
     _success(scenario.install(targets=other))
@@ -295,8 +306,11 @@ def test_historical_false_claim_preserves_foreign_connection(
     assert "notes" in scenario.lock().mcp_target_servers[foreign_target]
 
 
-def test_managed_package_root_override_and_target_narrowing(scenario: _Scenario) -> None:
+def test_managed_package_root_override_and_target_narrowing(
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario], apm_binary_path: Path
+) -> None:
     """A root override updates the unchanged old target and writes the new target."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
     package = LocalPackageFactory(scenario.isolated.work_root / "packages").create(
         "notes-package", mcp_dependencies=(_http("http://127.0.0.1:8000/package"),)
     )
@@ -316,9 +330,12 @@ def test_managed_package_root_override_and_target_narrowing(scenario: _Scenario)
 
 @pytest.mark.parametrize("target", ["claude", "codex"])
 def test_package_uninstall_preserves_user_modified_connection(
-    scenario: _Scenario, target: str
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario],
+    apm_binary_path: Path,
+    target: str,
 ) -> None:
     """Package removal cannot delete a user's edited connection under an old claim."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
     package = LocalPackageFactory(scenario.isolated.work_root / "packages").create(
         "notes-package", mcp_dependencies=(_http(),)
     )

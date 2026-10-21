@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from apm_cli.adapters.client.claude import ClaudeClientAdapter
+from apm_cli.install.errors import RequiredIntegrationError
 from apm_cli.install.mcp.ownership import (
     NativeMcpConnectionState,
     adopt_legacy_mcp_target_servers,
@@ -15,8 +17,6 @@ from apm_cli.install.mcp.ownership import (
     migrate_legacy_project_target_servers,
     require_removable_mcp_connections,
 )
-from apm_cli.adapters.client.claude import ClaudeClientAdapter
-from apm_cli.install.errors import RequiredIntegrationError
 from apm_cli.integration.mcp_integrator import MCPIntegrator
 from apm_cli.models.dependency.mcp import MCPDependency
 
@@ -28,8 +28,12 @@ def managed_claude(tmp_path: Path) -> ManagedClaude:
     """Use real model rendering and native reads for the ownership decision."""
     client = ClaudeClientAdapter(project_root=tmp_path)
     stored = {
-        "name": "managed", "registry": False, "transport": "stdio",
-        "command": "python", "args": ["-m", "fixture_server"], "env": {"KEEP": "value"},
+        "name": "managed",
+        "registry": False,
+        "transport": "stdio",
+        "command": "python",
+        "args": ["-m", "fixture_server"],
+        "env": {"KEEP": "value"},
     }
     native = client.render_server_config(
         MCPIntegrator._build_self_defined_info(MCPDependency.from_dict(stored))
@@ -51,7 +55,8 @@ def _compare_managed_claude(
     before = path.read_bytes()
     info = (
         MCPIntegrator._build_self_defined_info(MCPDependency.from_dict(requested))
-        if requested is not None else None
+        if requested is not None
+        else None
     )
     result = compare_native_mcp_connection(
         client, "managed", requested_info=info, stored_config=stored, managed=managed
@@ -62,27 +67,34 @@ def _compare_managed_claude(
 
 def _remote_request() -> dict:
     return {
-        "name": "managed", "registry": False, "transport": "http",
+        "name": "managed",
+        "registry": False,
+        "transport": "http",
         "url": "https://example.invalid/mcp",
     }
 
 
 @pytest.mark.parametrize("update", [False, True])
-def test_native_only_cwd_keeps_verified_managed_state(managed_claude: ManagedClaude, update: bool) -> None:
+def test_native_only_cwd_keeps_verified_managed_state(
+    managed_claude: ManagedClaude, update: bool
+) -> None:
     client, stored, native = managed_claude
     requested = _remote_request() if update else deepcopy(stored)
     before = deepcopy((native, stored, requested))
     result = _compare_managed_claude(client, stored, native, requested)
     expected = (
         NativeMcpConnectionState.UPDATE_MANAGED
-        if update else NativeMcpConnectionState.MATCHING_MANAGED
+        if update
+        else NativeMcpConnectionState.MATCHING_MANAGED
     )
     assert result is expected
     assert (native, stored, requested) == before
 
 
 @pytest.mark.parametrize("native_cwd", ["/declared", "/edited", None])
-def test_declared_cwd_remains_part_of_baseline(managed_claude: ManagedClaude, native_cwd: str | None) -> None:
+def test_declared_cwd_remains_part_of_baseline(
+    managed_claude: ManagedClaude, native_cwd: str | None
+) -> None:
     client, stored, native = managed_claude
     stored["cwd"] = "/declared"
     if native_cwd is None:
@@ -91,7 +103,8 @@ def test_declared_cwd_remains_part_of_baseline(managed_claude: ManagedClaude, na
         native["cwd"] = native_cwd
     expected = (
         NativeMcpConnectionState.UPDATE_MANAGED
-        if native_cwd == "/declared" else NativeMcpConnectionState.CONFLICT
+        if native_cwd == "/declared"
+        else NativeMcpConnectionState.CONFLICT
     )
     assert _compare_managed_claude(client, stored, native, _remote_request()) is expected
 
@@ -111,14 +124,15 @@ def test_request_cannot_acquire_native_only_cwd(managed_claude: ManagedClaude, s
     client, stored, native = managed_claude
     requested = {**stored, "cwd": "/fixture-cwd" if same else "/replacement"}
     expected = (
-        NativeMcpConnectionState.MATCHING_FOREIGN
-        if same else NativeMcpConnectionState.CONFLICT
+        NativeMcpConnectionState.MATCHING_FOREIGN if same else NativeMcpConnectionState.CONFLICT
     )
     assert _compare_managed_claude(client, stored, native, requested) is expected
 
 
 @pytest.mark.parametrize("request_kind", ["repeat", "changed", "exact-native"])
-def test_foreign_cwd_never_reaches_projection(managed_claude: ManagedClaude, request_kind: str) -> None:
+def test_foreign_cwd_never_reaches_projection(
+    managed_claude: ManagedClaude, request_kind: str
+) -> None:
     client, stored, native = managed_claude
     requested = _remote_request() if request_kind == "changed" else dict(stored)
     if request_kind == "exact-native":
@@ -130,13 +144,16 @@ def test_foreign_cwd_never_reaches_projection(managed_claude: ManagedClaude, req
     projection.assert_not_called()
     expected = (
         NativeMcpConnectionState.MATCHING_FOREIGN
-        if request_kind == "exact-native" else NativeMcpConnectionState.CONFLICT
+        if request_kind == "exact-native"
+        else NativeMcpConnectionState.CONFLICT
     )
     assert result is expected
 
 
 @pytest.mark.parametrize("baseline_kind", ["missing", "invalid", "registry"])
-def test_unverified_baseline_never_reaches_projection(managed_claude: ManagedClaude, baseline_kind: str) -> None:
+def test_unverified_baseline_never_reaches_projection(
+    managed_claude: ManagedClaude, baseline_kind: str
+) -> None:
     client, stored, native = managed_claude
     baseline = {
         "missing": None,
@@ -156,7 +173,10 @@ def test_removal_never_projects_native_only_cwd(managed_claude: ManagedClaude) -
     with patch.object(
         client, "project_managed_server_config", wraps=client.project_managed_server_config
     ) as projection:
-        assert _compare_managed_claude(client, stored, native, None) is NativeMcpConnectionState.CONFLICT
+        assert (
+            _compare_managed_claude(client, stored, native, None)
+            is NativeMcpConnectionState.CONFLICT
+        )
         path = Path(client.get_config_path())
         before = path.read_bytes()
         with pytest.raises(RequiredIntegrationError, match="managed baseline"):
@@ -168,22 +188,35 @@ def test_removal_never_projects_native_only_cwd(managed_claude: ManagedClaude) -
 @pytest.mark.parametrize(
     ("key", "value"),
     [
-        ("command", "personal"), ("args", ["personal"]), ("env", {"KEEP": "edited"}),
-        ("url", "https://personal.invalid/mcp"), ("headers", {"X-Personal": "value"}),
+        ("command", "personal"),
+        ("args", ["personal"]),
+        ("env", {"KEEP": "edited"}),
+        ("url", "https://personal.invalid/mcp"),
+        ("headers", {"X-Personal": "value"}),
         ("extra-key", {"keep": True}),
     ],
 )
-def test_projection_keeps_other_native_drift_visible(managed_claude: ManagedClaude, key: str, value: object) -> None:
+def test_projection_keeps_other_native_drift_visible(
+    managed_claude: ManagedClaude, key: str, value: object
+) -> None:
     client, stored, native = managed_claude
     native[key] = value
-    assert _compare_managed_claude(client, stored, native, _remote_request()) is NativeMcpConnectionState.CONFLICT
+    assert (
+        _compare_managed_claude(client, stored, native, _remote_request())
+        is NativeMcpConnectionState.CONFLICT
+    )
 
 
-def test_failed_projected_baseline_does_not_project_foreign_matching(managed_claude: ManagedClaude) -> None:
+def test_failed_projected_baseline_does_not_project_foreign_matching(
+    managed_claude: ManagedClaude,
+) -> None:
     client, stored, native = managed_claude
     native["command"] = "personal"
     requested = {**stored, "command": "personal"}
-    assert _compare_managed_claude(client, stored, native, requested) is NativeMcpConnectionState.CONFLICT
+    assert (
+        _compare_managed_claude(client, stored, native, requested)
+        is NativeMcpConnectionState.CONFLICT
+    )
 
 
 @pytest.mark.parametrize(
@@ -193,7 +226,10 @@ def test_failed_projected_baseline_does_not_project_foreign_matching(managed_cla
 def test_invalid_native_cwd_stays_a_conflict(managed_claude: ManagedClaude, cwd: object) -> None:
     client, stored, native = managed_claude
     native["cwd"] = cwd
-    assert _compare_managed_claude(client, stored, native, _remote_request()) is NativeMcpConnectionState.CONFLICT
+    assert (
+        _compare_managed_claude(client, stored, native, _remote_request())
+        is NativeMcpConnectionState.CONFLICT
+    )
 
 
 def test_legacy_vscode_ownership_migrates_to_active_copilot_runtime() -> None:
