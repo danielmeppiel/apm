@@ -89,22 +89,13 @@ For Cursor credential repair, edit `.cursor/mcp.json` at project scope or
 `~/.cursor/mcp.json` with `--global`; replace only the affected values with
 native `${env:NAME}` references and preserve other fields and servers.
 
-For self-defined Claude/Codex MCP connections, a same-name native entry must
-match the requested config or an unchanged APM-managed baseline. Otherwise
-install preserves it, identifies the conflicting target, and exits nonzero;
-successful writes to other targets remain managed. An identical foreign
-connection is left unowned. `--force` does not authorize takeover, and
-`--frozen` does not certify a conflicting connection. Rename or remove only
-the conflicting native entry you intend to replace, then rerun the original
-command with the same scope and targets. Cleanup also preserves modified or
-unverifiable historical entries and asks for manual reconciliation; do not
-delete the lockfile or unrelated native settings to bypass it. This concerns
-connection settings, not data held by the MCP service.
-
-An already managed Claude stdio connection may retain a valid native-only `cwd`
-when both old and requested declarations omit it. This comparison exception
-allows managed updates, not foreign adoption or removal. Native edits to a
-declared `cwd` remain conflicts; switching to HTTP removes the incompatible stdio fields.
+Self-defined Claude/Codex MCP conflicts preserve differing native entries and
+exit `1`; successful writes, including earlier registry writes, stay managed.
+`--force` cannot take over a foreign connection; `--frozen` cannot certify it.
+Rename or remove only the conflicting native entry, then retry with the same
+scope and targets. Do not delete the lockfile to bypass ownership checks.
+See [MCP conflict recovery](https://microsoft.github.io/apm/consumer/install-mcp-servers/#resolve-a-connection-name-conflict)
+and [cleanup receipts and partial-failure ownership](https://microsoft.github.io/apm/reference/lockfile-spec/#canonical-deployment-rows).
 
 `apm install --dry-run` includes required indirect APM dependencies in its
 counts using local source metadata and unchanged installed remote metadata.

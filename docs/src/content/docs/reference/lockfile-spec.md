@@ -182,7 +182,7 @@ deployments:
 | `mcp_servers` | list of strings | no | Names of MCP servers managed as of the last install or update, including transitively contributed servers. |
 | `mcp_configs` | map | no | `server_name -> resolved config dict` baseline used to detect MCP drift. |
 | `mcp_omissions` | map | no | Install-time dependency MCP exclusions: each server maps to a `declaration` fingerprint and `reason` (`only-apm` or `untrusted-transitive`). The fingerprint binds canonical dependency identity, source pin, dependency depth and authored declaration before plugin-root expansion, using the same manifest snapshot as the expanded config. It does not use self-asserted inventory name or version. An admitted baseline supersedes old omission evidence, but remains subject to normal drift checks. Audit never treats this as native ownership or as an exemption for root or previously admitted MCP. Missing or stale evidence cannot establish deliberate omission; see [config-consistency](../baseline-checks/#config-consistency) for reconciliation. |
-| `mcp_target_servers` | map of string lists | no | `target -> server names` for MCP entries APM successfully wrote. Reinstall and uninstall use this ownership record to remove only APM-managed entries. An explicitly empty map authorizes no cleanup. Older lockfiles without this field adopt an existing self-defined native entry only when it exactly matches the stored `mcp_configs` baseline; registry-resolved and user-edited entries remain unowned. |
+| `mcp_target_servers` | map of string lists | no | `target -> server names` for MCP entries APM successfully wrote. An empty map authorizes no cleanup. Older lockfiles lacking this field can recover ownership only for self-defined native entries matching their stored `mcp_configs` baseline; registry-resolved and user-edited entries remain unowned. A missing lockfile grants no ownership of existing native entries. |
 | `mcp_config_provenance` | map | no | `server_name -> declaring package` for transitively contributed MCP servers. Used to identify the former owner in `config-consistency` diagnostics; it never exempts a lock-only entry. |
 | `lsp_servers` | list of strings | no | Names of all LSP servers in current APM-managed state, including package- and bundle-contributed servers. |
 | `lsp_configs` | map | no | `server_name -> resolved config dict` retained for owner-aware lifecycle reconciliation. It is not an `apm audit` drift baseline. |
@@ -207,6 +207,20 @@ runtime entry -- with its full ownership history:
 | `owners` | list of strings | Every dependency key that has ever claimed this locator, oldest to newest. |
 | `active_owner` | string | The current claimant. Always one of `owners`; a row where it is not is malformed. |
 | `content_hash` | string or null | `sha256:<hex>` digest of the deployed content, when known. |
+
+Fresh Claude/Codex MCP registry writes store a SHA-256 fingerprint of the
+normalized native entry actually written in the MCP URI row's existing
+`content_hash`. Cleanup verifies against this retained receipt without a
+registry lookup. Older registry rows with null hashes remain unverified and
+protected. This records no duplicate secret values and requires no new
+lockfile field or version.
+
+Partial self-defined conflicts in ordinary installs or bundle application
+preserve prior retirement/deferred-cleanup entries and claims and unrelated
+owners, without restoring ownership revoked by the current attempt. Registry
+writes preceding a self-defined install conflict retain their receipts and
+ownership even when install exits `1`. Bundle MCP declarations support only
+self-defined connections, not registry references.
 
 `owners` and `active_owner` must each resolve to a member of the **valid
 owner universe** for that lockfile: every current key in `dependencies`,

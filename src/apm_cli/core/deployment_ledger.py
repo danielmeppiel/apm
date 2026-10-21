@@ -546,16 +546,54 @@ class DeploymentLedgerCodec:
         return frozenset(value for value in values if value in covered)
 
     @staticmethod
+    def mcp_native_hashes(lockfile: LockFile) -> dict[str, dict[str, str]]:
+        """Project retained MCP URI content hashes keyed by ``runtime → server → hash``.
+
+        Returns only rows whose ``content_hash`` is a well-formed
+        ``sha256:<64-lowercase-hex>`` envelope.  Malformed or absent
+        hashes are silently excluded (fail closed).
+        """
+        ledger = DeploymentLedgerCodec.from_lockfile(lockfile)
+        result: dict[str, dict[str, str]] = {}
+        for record in ledger.records.values():
+            locator = record.locator
+            if (
+                locator.kind is not LocatorKind.URI
+                or locator.target != "mcp"
+                or locator.runtime is None
+                or record.content_hash is None
+                or not _is_canonical_bundle_hash(record.content_hash)
+            ):
+                continue
+            result.setdefault(locator.runtime, {})[locator.value] = record.content_hash
+        return result
+
+    @staticmethod
     def replace_mcp_target_servers(
         lockfile: LockFile,
         target_servers: dict[str, list[str]],
+        *,
+        native_hashes: dict[str, dict[str, str]] | None = None,
     ) -> None:
-        """Update the MCP compatibility view and invalidate its projection."""
+        """Update the MCP compatibility view and invalidate its projection.
+
+        *native_hashes* controls content-hash retention on MCP URI rows:
+
+        * ``None`` (default) — carry forward existing hashes for coordinates
+          that survive in *target_servers*.  This is the backward-compatible
+          path; no hash data is created or destroyed.
+        * Explicit ``dict[runtime, dict[server, sha256-envelope]]`` — the map
+          is authoritative.  Coordinates present in the map receive the
+          supplied hash (validated); coordinates absent from the map receive
+          ``None``.  No fallback to prior hashes.
+        """
         lockfile.mcp_target_servers = {
             runtime: list(servers) for runtime, servers in target_servers.items()
         }
         lockfile._mcp_target_servers_present = True
         DeploymentLedgerCodec.refresh_from_legacy(lockfile)
+        if native_hashes is not None:
+            DeploymentLedgerCodec._apply_mcp_native_hashes(lockfile, native_hashes)
 
     @staticmethod
     def replace_lsp_target_servers(
@@ -568,6 +606,40 @@ class DeploymentLedgerCodec:
         }
         lockfile._lsp_target_servers_present = True
         DeploymentLedgerCodec.refresh_from_legacy(lockfile)
+
+    @staticmethod
+    def _apply_mcp_native_hashes(
+        lockfile: LockFile,
+        native_hashes: dict[str, dict[str, str]],
+    ) -> None:
+        """Replace MCP URI content hashes from an authoritative map.
+
+        Coordinates present in *native_hashes* receive the supplied hash
+        (validated — malformed envelopes are rejected, stored as ``None``).
+        Coordinates absent from the map receive ``None``.
+        """
+        records = dict(lockfile.deployment_ledger.records)
+        changed = False
+        for key, record in list(records.items()):
+            locator = record.locator
+            if (
+                locator.kind is not LocatorKind.URI
+                or locator.target != "mcp"
+                or locator.runtime is None
+            ):
+                continue
+            supplied = (native_hashes.get(locator.runtime) or {}).get(locator.value)
+            new_hash = supplied if _is_canonical_bundle_hash(supplied) else None
+            if new_hash != record.content_hash:
+                records[key] = DeploymentRecord(
+                    locator=locator,
+                    owners=record.owners,
+                    active_owner=record.active_owner,
+                    content_hash=new_hash,
+                )
+                changed = True
+        if changed:
+            lockfile.deployment_ledger = DeploymentLedger(records=records)
 
     @staticmethod
     def replace_context_local_files(context: Any, files: list[str]) -> None:
@@ -593,10 +665,18 @@ class DeploymentLedgerCodec:
         """Invalidate compatibility rows while preserving imperative provenance."""
         if prior_bundle_paths is None:
             prior_bundle_paths = DeploymentLedgerCodec.local_bundle_paths(lockfile)
+        prior_ledger = DeploymentLedgerCodec.from_lockfile(lockfile)
+        # URI write receipts cannot be reconstructed from legacy views.
+        has_uri_receipts = any(
+            r.locator.kind is LocatorKind.URI and r.content_hash is not None
+            for r in prior_ledger.records.values()
+        )
         lockfile.deployment_ledger = DeploymentLedger(records={})
         lockfile._deployments_present = False
-        if prior_bundle_paths:
-            DeploymentLedgerCodec._rebuild_from_legacy(lockfile, prior_bundle_paths)
+        if prior_bundle_paths or has_uri_receipts:
+            DeploymentLedgerCodec._rebuild_from_legacy(
+                lockfile, prior_bundle_paths, prior_ledger=prior_ledger
+            )
 
     @staticmethod
     def rename_local_deployed_path(
@@ -608,6 +688,7 @@ class DeploymentLedgerCodec:
         if old_value not in lockfile.local_deployed_files:
             return
         prior_bundle_paths = DeploymentLedgerCodec.local_bundle_paths(lockfile)
+        prior_ledger = DeploymentLedgerCodec.from_lockfile(lockfile)
         was_local_bundle = old_value in prior_bundle_paths
         lockfile.local_deployed_files = [
             value for value in lockfile.local_deployed_files if value != old_value
@@ -622,6 +703,7 @@ class DeploymentLedgerCodec:
             DeploymentLedgerCodec._rebuild_from_legacy(
                 lockfile,
                 frozenset(renamed_bundle_paths),
+                prior_ledger=prior_ledger,
             )
         else:
             DeploymentLedgerCodec.invalidate_legacy_projection(lockfile, prior_bundle_paths)
@@ -675,11 +757,23 @@ class DeploymentLedgerCodec:
                     if previous is not None and previous.active_owner in record.owners
                     else record.active_owner
                 )
+                # URI locators (MCP/LSP servers) are re-synthesized with
+                # content_hash=None by from_lockfile().  Carry forward the
+                # prior hash so a rebuild cycle does not silently drop a
+                # baseline recorded by a successful native write.
+                content_hash = record.content_hash
+                if (
+                    content_hash is None
+                    and previous is not None
+                    and previous.content_hash is not None
+                    and locator.kind is LocatorKind.URI
+                ):
+                    content_hash = previous.content_hash
                 preserved = DeploymentRecord(
                     locator=preferred or previous.locator,
                     owners=record.owners,
                     active_owner=active_owner,
-                    content_hash=record.content_hash,
+                    content_hash=content_hash,
                 )
                 records[preserved.locator.key] = preserved
             lockfile.deployment_ledger = DeploymentLedger(records=records)
