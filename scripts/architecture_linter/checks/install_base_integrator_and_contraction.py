@@ -353,7 +353,7 @@ def _absent_dependency_claim_messages(provider: FactsProvider, rule_id: str) -> 
             "from apm_cli.security.primitive_discovery import primitive_surfaces",
             "completed.skill_values & completed.current_values & successful_by_value.keys()",
             'if surface.kind != "skills"',
-            "roots.intersection((self.project_root / value).parents)",
+            "roots.intersection(candidate_path.parents)",
             "proof.locator.target in completed.targets",
         ):
             if not _present(state, required):
@@ -409,12 +409,47 @@ def _absent_dependency_claim_messages(provider: FactsProvider, rule_id: str) -> 
         and node.value.id == "verified_absent"
         for node in index.walk(block)
     )
-    probe = index.function("_verified_absent_dependency_values")
+    probe_path = "src/apm_cli/install/helpers/absence_observation.py"
+    _, failures = _facts_for(provider, probe_path, rule_id)
+    findings.extend(failures)
+    if failures:
+        return findings
+    probe_index = provider.tree_index(probe_path)
+    probe = (
+        probe_index.function("verified_absent_dependency_values")
+        if probe_index is not None
+        else None
+    )
     probe_calls = (
-        {_call_name(node) for node in index.walk(probe) if isinstance(node, ast.Call)}
+        {_call_name(node) for node in probe_index.walk(probe) if isinstance(node, ast.Call)}
         if probe is not None
         else set()
     )
+    routed = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "apm_cli.install.helpers.absence_observation"
+        and any(
+            alias.name == "verified_absent_dependency_values" and alias.asname is None
+            for alias in node.names
+        )
+        for node in index.walk(block)
+    ) and any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "verified_absent"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "verified_absent_dependency_values"
+        for node in index.walk(block)
+    )
+    if not routed:
+        findings.append(
+            _summary(
+                rule_id, _CONTRACTION_MANIFEST, "absence observations must use the read-only helper"
+            )
+        )
     if not excludes_absent or not {"validate_deploy_path", "lstat"} <= probe_calls:
         findings.append(
             _summary(
@@ -424,9 +459,7 @@ def _absent_dependency_claim_messages(provider: FactsProvider, rule_id: str) -> 
             )
         )
     if probe_calls.intersection({"unlink", "rmtree", "remove_stale_deployed_files"}):
-        findings.append(
-            _summary(rule_id, _CONTRACTION_MANIFEST, "absence probing must remain read-only")
-        )
+        findings.append(_summary(rule_id, probe_path, "absence probing must remain read-only"))
     return findings
 
 

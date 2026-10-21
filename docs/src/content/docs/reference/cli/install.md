@@ -142,9 +142,10 @@ still cleans up its managed files, subject to the usual user-edit protections.
   dependency entry even after its file disappears. Missing bytes, a saved hash,
   or a skills-directory prefix alone do not prove that the dependency no longer
   deploys that path. Automatic repair of these obsolete claims is not yet
-  available; review the dependency's current source, selection, and ownership
-  when investigating the audit report. Audit is read-only, and `--frozen` is
-  not a metadata-repair command. Still-present content does not become safe
+  available; check which files the dependency currently deploys when
+  investigating the audit report. Audit reports these claims without repairing
+  ownership metadata; `--frozen` does not repair them either.
+  Still-present content does not become safe
   to delete or adopt merely because its ownership is unclear.
 
 - **Immutable dependency conflicts.** Install fails when two paths require

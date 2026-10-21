@@ -152,8 +152,9 @@ rewriting the lock. Normal non-frozen installs can establish missing baselines.
 Normal `apm install` can retain historical dependency claims for missing files;
 automatic repair of obsolete claims is not yet available. Missing bytes, a
 saved hash, or a directory prefix alone do not establish obsolescence.
-Review the current dependency source, selection, and ownership when investigating
-an audit report. Audit is read-only, and `--frozen` does not repair these claims.
+Check which files the dependency currently deploys when investigating an audit
+report. Audit reports these claims without repairing ownership metadata;
+`--frozen` does not repair them either.
 Unclear ownership does not authorize deleting or adopting still-present content.
 
 Claude MCP rewrites remove the previous transport's fields while preserving

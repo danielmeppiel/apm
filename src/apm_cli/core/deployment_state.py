@@ -397,12 +397,13 @@ class DeploymentReconciler:
             - successful_by_value.keys()
             - failed_values
         )
+        allowed_targets = completed.targets | {UNATTRIBUTED_TARGET}
         protected = {
             record.locator.value
             for record in previous.records.values()
             if record.owners != (completed.owner,)
             or record.locator.kind != LocatorKind.PROJECT_RELATIVE
-            or record.locator.target not in completed.targets | {UNATTRIBUTED_TARGET}
+            or record.locator.target not in allowed_targets
         }
         candidates -= protected
         if not candidates:
@@ -411,8 +412,9 @@ class DeploymentReconciler:
         unresolved = candidates - proven_skill_values
         if unresolved:
             self.diagnostics.warn(
-                "Historical dependency claims retained: their skill domain is not proven. "
-                "Review dependency source/selection and ownership; use --verbose for paths.",
+                "Historical dependency claims retained: APM cannot confirm these paths "
+                "belong to a current skill. Use --verbose for retained paths and check "
+                "which files the dependency currently deploys.",
                 package=completed.owner,
                 detail=", ".join(sorted(unresolved)),
             )
@@ -437,6 +439,7 @@ class DeploymentReconciler:
             for surface in primitive_surfaces(self.project_root, processed)
             if surface.kind == "skills"
         ]
+        # Other targets' non-skill paths remain protected, even outside this run's skill scope.
         other_surfaces = [
             surface
             for surface in primitive_surfaces(
@@ -445,24 +448,28 @@ class DeploymentReconciler:
             if surface.kind != "skills"
         ]
         markers = completed.skill_values & completed.current_values & successful_by_value.keys()
-        roots = {
-            (self.project_root / marker).parent
-            for marker in markers
-            if all(
-                proof.owners == frozenset({completed.owner})
-                and proof.locator.kind == LocatorKind.PROJECT_RELATIVE
-                and proof.locator.target in completed.targets
-                for proof in successful_by_value[marker]
-            )
-            and any(surface.contains(self.project_root / marker) for surface in skill_surfaces)
-            and not any(surface.contains(self.project_root / marker) for surface in other_surfaces)
-        }
-        return frozenset(
-            value
-            for value in candidates
-            if roots.intersection((self.project_root / value).parents)
-            and not any(surface.contains(self.project_root / value) for surface in other_surfaces)
-        )
+        roots = set()
+        for marker in markers:
+            marker_path = self.project_root / marker
+            if (
+                all(
+                    proof.owners == frozenset({completed.owner})
+                    and proof.locator.kind == LocatorKind.PROJECT_RELATIVE
+                    and proof.locator.target in completed.targets
+                    for proof in successful_by_value[marker]
+                )
+                and any(surface.contains(marker_path) for surface in skill_surfaces)
+                and not any(surface.contains(marker_path) for surface in other_surfaces)
+            ):
+                roots.add(marker_path.parent)
+        proven = set()
+        for value in candidates:
+            candidate_path = self.project_root / value
+            if roots.intersection(candidate_path.parents) and not any(
+                surface.contains(candidate_path) for surface in other_surfaces
+            ):
+                proven.add(value)
+        return frozenset(proven)
 
     def _record_from_proofs(
         self,

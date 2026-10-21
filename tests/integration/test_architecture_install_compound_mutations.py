@@ -68,6 +68,36 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
         _replace("dropped -= verified_absent", "dropped -= frozenset()"),
     ),
     CompoundMutation(
+        "absent-claim-observation-routing",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace(
+            "verified_absent = verified_absent_dependency_values(",
+            "verified_absent = unverified_values(",
+        ),
+    ),
+    CompoundMutation(
+        "absent-claim-observation-import",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/manifest_reconcile.py",
+        _replace(
+            "from apm_cli.install.helpers.absence_observation import",
+            "from apm_cli.install.helpers.rogue_observation import",
+        ),
+    ),
+    CompoundMutation(
+        "absent-claim-observation-validation",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/helpers/absence_observation.py",
+        _replace("BaseIntegrator.validate_deploy_path(", "unvalidated_path("),
+    ),
+    CompoundMutation(
+        "absent-claim-observation-read-only",
+        CONTRACTION_RULE,
+        "src/apm_cli/install/helpers/absence_observation.py",
+        _replace("(project_root / path).lstat()", "(project_root / path).unlink()"),
+    ),
+    CompoundMutation(
         "absent-claim-skill-domain",
         CONTRACTION_RULE,
         "src/apm_cli/core/deployment_state.py",

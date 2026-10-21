@@ -585,51 +585,6 @@ def reconcile_dropped_merge_hook_targets(
     )
 
 
-def _verified_absent_dependency_values(
-    *,
-    project_root: Path,
-    completed: CompletedReintegration,
-    prior_files: list[str],
-    current_files: list[str],
-    targets: list[TargetProfile],
-    cleanup_retained_hashes: dict[str, str | None] | None,
-    diagnostics: DiagnosticCollector,
-    user_scope: bool,
-) -> frozenset[str]:
-    """Supply safe absence observations, not deletion or ownership authority."""
-    from apm_cli.integration.base_integrator import BaseIntegrator
-
-    processed = [target for target in targets if target.name in completed.targets]
-    candidates = (
-        set(prior_files)
-        - set(current_files)
-        - completed.current_values
-        - (cleanup_retained_hashes or {}).keys()
-    )
-    absent = set()
-    for path in candidates:
-        if (
-            "://" in path
-            or Path(path).is_absolute()
-            or not BaseIntegrator.validate_deploy_path(
-                path, project_root, targets=processed, user_scope=user_scope
-            )
-        ):
-            continue
-        try:
-            (project_root / path).lstat()
-        except FileNotFoundError:
-            absent.add(path)
-        except OSError as exc:
-            diagnostics.warn(
-                f"Could not confirm whether {path} is absent; ownership retained. "
-                "Check path permissions, then rerun apm install.",
-                package=completed.owner,
-                detail=str(exc),
-            )
-    return frozenset(absent)
-
-
 def reconcile_deployed_block(  # noqa: PLR0913 -- deployed-state chokepoint wrapper; each knob is orthogonal
     *,
     project_root: Path,
@@ -665,6 +620,7 @@ def reconcile_deployed_block(  # noqa: PLR0913 -- deployed-state chokepoint wrap
     ``user_scope`` permits cleanup of registered user-root compatibility paths.
     """
     from apm_cli.core.deployment_state import DeploymentIntent
+    from apm_cli.install.helpers.absence_observation import verified_absent_dependency_values
 
     verified_absent = frozenset()
     if (
@@ -673,7 +629,7 @@ def reconcile_deployed_block(  # noqa: PLR0913 -- deployed-state chokepoint wrap
         and current_run_trusted
         and apply_disk_deletion
     ):
-        verified_absent = _verified_absent_dependency_values(
+        verified_absent = verified_absent_dependency_values(
             project_root=project_root,
             completed=completed_reintegration,
             prior_files=prior_files,

@@ -7,6 +7,7 @@ from hashlib import sha256
 from os import stat_result
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -24,9 +25,16 @@ from apm_cli.core.deployment_state import (
     NativePayloadValidation,
 )
 from apm_cli.deps.lockfile import LockedDependency, LockFile
+from apm_cli.install.context import InstallContext
+from apm_cli.install.helpers.absence_observation import verified_absent_dependency_values
 from apm_cli.install.manifest_reconcile import reconcile_deployed_block, union_preserving
 from apm_cli.install.phases.lockfile import LockfileBuilder
+from apm_cli.install.sources import CachedDependencySource, Materialization
+from apm_cli.install.template import run_integration_template
+from apm_cli.integration.base_integrator import BaseIntegrator
 from apm_cli.integration.targets import KNOWN_TARGETS, PrimitiveMapping
+from apm_cli.models.apm_package import APMPackage, PackageInfo
+from apm_cli.models.dependency import DependencyReference
 from apm_cli.utils.diagnostics import DiagnosticCollector
 
 pytestmark = pytest.mark.component
@@ -341,7 +349,7 @@ def test_absent_claim_requires_proven_nonoverlapping_skill_domain(
     assert result.removed == ()
     warnings = diagnostics.by_category()["warning"]
     assert len(warnings) == 1
-    assert "skill domain is not proven" in warnings[0].message
+    assert "APM cannot confirm these paths belong to a current skill" in warnings[0].message
     assert prior.locator.value in warnings[0].detail
 
 
@@ -379,7 +387,7 @@ def test_absent_other_primitive_claim_is_not_authorized_by_skill_completion(
     assert not (tmp_path / value).exists()
     warnings = diagnostics.by_category()["warning"]
     assert len(warnings) == 1
-    assert "skill domain is not proven" in warnings[0].message
+    assert "APM cannot confirm these paths belong to a current skill" in warnings[0].message
     assert value in warnings[0].detail
 
 
@@ -429,6 +437,127 @@ def test_absence_probe_error_retains_claim_with_diagnostic(
     assert ledger.records[_record().locator.key] == _record()
     assert len(ledger.records) == 2
     assert diagnostics.count_for_package(_OWNER, "warning") == 1
+
+
+@pytest.mark.parametrize("guard", ["uri", "absolute", "rejected"])
+def test_absence_observation_rejects_non_deploy_paths_before_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, guard: str
+) -> None:
+    value = {
+        "uri": "cowork://skills/demo/extra.md",
+        "absolute": (tmp_path / "outside-deploy" / "extra.md").as_posix(),
+        "rejected": _OBSOLETE,
+    }[guard]
+    # Isolate URI/absolute exclusions from the canonical validator's own policy.
+    validate = Mock(return_value=guard != "rejected")
+    probe = Mock(side_effect=FileNotFoundError)
+    monkeypatch.setattr(BaseIntegrator, "validate_deploy_path", validate)
+    monkeypatch.setattr(Path, "lstat", probe)
+
+    observed = verified_absent_dependency_values(
+        project_root=tmp_path,
+        completed=_completed(),
+        prior_files=[value],
+        current_files=[_MARKER],
+        targets=[KNOWN_TARGETS["codex"]],
+        cleanup_retained_hashes=None,
+        diagnostics=DiagnosticCollector(),
+        user_scope=False,
+    )
+
+    assert observed == frozenset()
+    probe.assert_not_called()
+    if guard == "rejected":
+        validate.assert_called_once_with(
+            value, tmp_path, targets=[KNOWN_TARGETS["codex"]], user_scope=False
+        )
+    else:
+        validate.assert_not_called()
+
+
+def test_refused_absence_observation_preserves_all_lock_views(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(BaseIntegrator, "validate_deploy_path", Mock(return_value=False))
+
+    files, hashes, ledger = _block(tmp_path)
+
+    assert files == [_MARKER, _OBSOLETE]
+    assert hashes == {_MARKER: _HASH, _OBSOLETE: _HASH}
+    assert ledger.records[_record().locator.key] == _record()
+    assert len(ledger.records) == 2
+
+
+@pytest.mark.parametrize("receipt", ["matching", "wrong-owner", "missing", "none", "wrong-type"])
+def test_template_accepts_only_typed_owner_matched_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: str
+) -> None:
+    """Fixture receipts prove consumer intake, not an available production producer."""
+    from apm_cli.install import template
+
+    completed = _completed()
+    other = replace(completed, owner="example/other")
+    ctx = InstallContext(
+        project_root=tmp_path,
+        apm_dir=tmp_path / ".apm",
+        targets=[KNOWN_TARGETS["codex"]],
+        diagnostics=DiagnosticCollector(),
+        integrators={
+            name: Mock() for name in ("prompt", "agent", "skill", "instruction", "command", "hook")
+        },
+        package_completed_reintegrations={other.owner: other},
+    )
+    package = PackageInfo(
+        package=APMPackage(name="dependency", version="1.0.0"),
+        install_path=tmp_path / "dependency",
+    )
+    source = CachedDependencySource(
+        ctx,
+        DependencyReference(repo_url=_OWNER),
+        package.install_path,
+        _OWNER,
+        resolved_ref=None,
+        dep_locked_chk=None,
+    )
+    integration_result: dict[str, object] = dict.fromkeys(
+        (
+            "prompts",
+            "agents",
+            "skills",
+            "sub_skills",
+            "instructions",
+            "commands",
+            "hooks",
+            "canvases",
+            "links_resolved",
+        ),
+        0,
+    )
+    integration_result.update(skills=1, deployed_files=[_MARKER])
+    if receipt != "missing":
+        integration_result["completed_reintegration"] = {
+            "matching": completed,
+            "wrong-owner": other,
+            "none": None,
+            "wrong-type": SimpleNamespace(owner=_OWNER),
+        }[receipt]
+    integrate = Mock(return_value=integration_result)
+    monkeypatch.setattr(template, "integrate_package_primitives", integrate)
+    monkeypatch.setattr(template, "_effective_allow", lambda _ctx: None)
+
+    deltas = run_integration_template(
+        source,
+        materialization=Materialization(package, package.install_path, _OWNER),
+    )
+
+    integrate.assert_called_once()
+    assert deltas["skills"] == 1
+    assert deltas["installed"] == 1
+    assert ctx.diagnostics.error_count == 0
+    assert ctx.package_deployed_files == {_OWNER: [_MARKER]}
+    assert ctx.package_completed_reintegrations == (
+        {other.owner: other, _OWNER: completed} if receipt == "matching" else {other.owner: other}
+    )
 
 
 @pytest.mark.parametrize(

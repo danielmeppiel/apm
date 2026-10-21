@@ -46,6 +46,7 @@
       "owner": "install/manifest_reconcile.py routes target contraction and absent dependency claims through core/deployment_state.py (DeploymentReconciler)",
       "selectors": [
         "src/apm_cli/install/manifest_reconcile.py",
+        "src/apm_cli/install/helpers/absence_observation.py",
         "src/apm_cli/core/deployment_state.py"
       ],
       "guards": ["install-deployment-target-file-contraction"]
