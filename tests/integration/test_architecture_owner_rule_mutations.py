@@ -538,6 +538,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="MCP config view stops deriving scope from the aggregated declaration owner.",
     ),
     MutationCase(
+        guard_id="hooks-integrations-mcp-omission-evidence",
+        rule_id="mutation_writes.mcp_omission_evidence",
+        path="src/apm_cli/integration/mcp_config_view.py",
+        old='"dependency": dependency.get_unique_key(),',
+        new='"dependency": dependency.name,',
+        intent="Omission evidence binds only a display name instead of canonical dependency identity.",
+    ),
+    MutationCase(
         guard_id="hooks-integrations-mcp-package-launcher",
         rule_id="mutation_writes.mcp_package_launcher",
         path="src/apm_cli/adapters/client/base.py",

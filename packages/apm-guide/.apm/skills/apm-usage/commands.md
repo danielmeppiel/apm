@@ -499,6 +499,14 @@ Native Copilot Agent Plugins replay through the canonical package loader, with o
 
 Bare `apm audit` uses the warmed local cache and skips drift with an informational message when the cache is absent; run `apm install` before relying on non-CI drift. `apm audit --ci` is stricter: in a project with `apm.yml` and `apm.lock.yaml` but no `apm_modules/`, it prepares a lock-pinned scratch install for `skill-subset-consistency`, `config-consistency`, and drift without touching the checkout. No checkout install is required first, but local dependency sources must be available at their declared paths. Windows long and native 8.3 spellings of the same project retain project scope; they do not require a global install. Auditing the actual user metadata workspace (`~/.apm`) still refuses missing modules and requires `apm install --global`. Missing gitignored deployed outputs do not fail `deployed-files-present`, so repos that gitignore them can use audit-only CI too. Without committed deployed bytes, that pattern lacks deployed-byte integrity and drift coverage; use full-install CI when outputs need to be materialized.
 
+`config-consistency` respects dependency MCP deliberately omitted by `apm install --only apm` or the secure default refusal of transitive self-defined MCP. Install records evidence bound to that dependency and authored declaration, before plugin-root expansion; empty MCP fields alone are not evidence. Direct MCP admission supersedes old omission evidence for that server. Root and previously admitted MCP still participate in drift checks, and a later skills-only install preserves their baseline. Unknown, damaged or stale evidence requires repeating the intended selection: use `apm install --only apm`, or `apm install --global --target agent-skills --only apm` for global skills-only. Do not enable MCP or add `--trust-transitive-mcp` merely to pass audit. The MCP consistency check does not rewrite the lockfile or runtime configuration. See the [config-consistency reference](https://microsoft.github.io/apm/reference/baseline-checks/#config-consistency) for the full contract.
+
+`apm install --only apm --frozen` also preserves the admitted MCP baseline and
+exact lockfile and native-configuration bytes without selecting MCP integration.
+Existing frozen source and consent checks still apply: a baseline that already
+admitted transitive MCP requires the same explicit `--trust-transitive-mcp`.
+Omission evidence does not grant consent.
+
 For project-local content, replay uses the same package interpretation as install.
 A sibling `skills/<name>/SKILL.md` alongside `.apm/` is not promoted to a local
 skill or reported as `unintegrated`. Other supported source layouts and actual
@@ -688,6 +696,11 @@ Use `--target agent-skills` to deploy skills to `.agents/skills/` -- the cross-t
 ### Skill routing convergence
 
 By default, Copilot, Cursor, OpenCode, Codex, Gemini, Antigravity, and Windsurf deploy skills to `.agents/skills/` (the agentskills.io standard). Claude, Grok Build, and Kiro retain native per-client routing (`.claude/skills/`, `.grok/skills/`, `.kiro/skills/`). Use `--legacy-skill-paths` (or `APM_LEGACY_SKILL_PATHS=1`) to restore the previous per-client layout (`.github/skills/`, `.cursor/skills/`, `.gemini/skills/`, etc.). Legacy per-client skill paths recorded in `apm.lock.yaml` are auto-migrated to `.agents/skills/` on the next `apm install`; foreign / hand-authored skills outside the lockfile are never touched.
+
+`apm install --target kiro` also delivers Kiro CLI prompts as body-only
+`.kiro/prompts/<name>.md`; add `--global` for `~/.kiro/prompts/<name>.md`.
+This prompt mapping is qualified with Kiro CLI 2.33.0 V3, not the IDE.
+See `package-authoring.md` for native arguments and frontmatter limitations.
 
 Experimental flags MUST NOT gate security-critical behaviour (content scanning, path validation, lockfile integrity, token handling, MCP trust, collision detection). Flags are ergonomic/UX toggles only.
 

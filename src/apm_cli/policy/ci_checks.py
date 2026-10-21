@@ -494,7 +494,7 @@ def _check_config_consistency(
         if prepared_replay is not None
         else project_root / APM_MODULES_DIR,
         trust_transitive_self_defined=True,
-    )
+    ).with_recorded_omissions(lock)
     stored_configs = lock.mcp_configs or {}
     diff = view.diff(stored_configs)
 
@@ -531,7 +531,11 @@ def _check_config_consistency(
     return CheckResult(
         name="config-consistency",
         passed=False,
-        message=(f"{len(details)} MCP config inconsistenc(ies) -- run 'apm install' to reconcile"),
+        message=(
+            f"{len(details)} MCP config inconsistenc(ies) -- "
+            "repeat 'apm install' with the intended selection "
+            "('--only apm' for skills-only) to reconcile"
+        ),
         details=details,
     )
 

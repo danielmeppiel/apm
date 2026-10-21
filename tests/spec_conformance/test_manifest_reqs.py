@@ -22,14 +22,16 @@ import tomllib
 
 from apm_cli.adapters.client.base import MCPClientAdapter
 from apm_cli.adapters.client.opencode import OpenCodeClientAdapter
+from apm_cli.core.scope import InstallScope
 from apm_cli.deps.plugin_parser import normalize_plugin_directory
 from apm_cli.install.phases.finalize import _hint_project_compile_needed
 from apm_cli.install.target_filter import resolve_effective_package_targets
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.hook_integrator import HookIntegrator
+from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.skill_integrator import SkillIntegrator
 from apm_cli.integration.targets import KNOWN_TARGETS
-from apm_cli.models.apm_package import APMPackage
+from apm_cli.models.apm_package import APMPackage, PackageInfo
 from apm_cli.utils.diagnostics import (
     CATEGORY_AGENT_LOSSY_COMPILATION,
     CATEGORY_ERROR,
@@ -712,6 +714,39 @@ def test_consumer_deploys_skills_to_agents_skills():
     assert_spec_contains(
         ".agents/skills/<name>/SKILL.md",
     )
+
+
+@pytest.mark.req("req-tg-002")
+@pytest.mark.parametrize("scope", [InstallScope.PROJECT, InstallScope.USER])
+def test_kiro_prompt_uses_registered_root_and_filename(tmp_path: Path, scope: InstallScope) -> None:
+    """The Kiro registry partition applies to both project and user delivery."""
+    package_root = tmp_path / "package"
+    source = package_root / ".apm/prompts/review.prompt.md"
+    source.parent.mkdir(parents=True)
+    source_bytes = b"---\nname: not-the-command\ndescription: Review\n---\nReview ${1}\n"
+    source.write_bytes(source_bytes)
+    package = PackageInfo(
+        package=APMPackage(name="prompt-kit", version="1.0.0", package_path=package_root),
+        install_path=package_root,
+    )
+    selected = tmp_path / scope.value
+    (selected / ".kiro").mkdir(parents=True)
+    unselected = tmp_path / "other/.kiro/prompts/personal.md"
+    unselected.parent.mkdir(parents=True)
+    unselected.write_bytes(b"Personal prompt\n")
+
+    result = PromptIntegrator().integrate_prompts_for_target(
+        KNOWN_TARGETS["kiro"].for_scope(scope), package, selected
+    )
+
+    deployed = selected / ".kiro/prompts/review.md"
+    assert result.files_integrated == 1
+    assert result.target_paths == [deployed]
+    assert deployed.read_bytes() == b"Review ${1}\n"
+    assert sorted(path.name for path in deployed.parent.iterdir()) == ["review.md"]
+    assert list(unselected.parent.iterdir()) == [unselected]
+    assert unselected.read_bytes() == b"Personal prompt\n"
+    assert source.read_bytes() == source_bytes
 
 
 @pytest.mark.req("req-tg-004")

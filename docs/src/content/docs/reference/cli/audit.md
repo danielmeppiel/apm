@@ -232,6 +232,9 @@ discovered/untracked when appropriate, without failing the prompt check.
 `tracked` means a file claim exists, not that every entry in a shared file
 is APM-owned or hash-verified. Hash and ownership checks remain independent.
 
+User-scope replay preserves the `~/.apm/apm_modules/` layout in relative
+asset links, so intact global prompts do not report drift from a scratch-path difference.
+
 The target registry supplies the following project patterns. Patterns are
 recursive inside their named directory; skill entry points are `SKILL.md`,
 not every file in a skill bundle.
@@ -241,7 +244,7 @@ not every file in a skill bundle.
 | Copilot | `.github/instructions/*.instructions.md`, `prompts/*.prompt.md`, `agents/*.agent.md`, `.github/copilot-instructions.md`; shared skills | `.github/hooks/*.json`; commands are non-prompt |
 | Claude | `.claude/rules/*.md`, `agents/*.md`, `commands/*.md`, `skills/**/SKILL.md` | `.claude/hooks/*.json`, `.claude/settings.json`; nested `prompt`/`agent` handlers' `prompt` field |
 | Cursor | `.cursor/rules/*.mdc`, `agents/*.md`, `commands/*.md`; shared skills | `.cursor/hooks/*.json`, `.cursor/hooks.json`; flat command handlers and prompt handlers' `prompt` field; nested handlers are unsupported |
-| Kiro | `.kiro/steering/*.md`, `agents/*.md`, `skills/**/SKILL.md` | `.kiro/hooks/*.json`; v1 `hooks[].action.prompt` for agent actions |
+| Kiro | `.kiro/steering/*.md`, `agents/*.md`, `prompts/*.md`, `skills/**/SKILL.md` | `.kiro/hooks/*.json`; v1 `hooks[].action.prompt` for agent actions |
 | Gemini | `.gemini/commands/*.toml`: `prompt`; shared skills | `.gemini/hooks/*.json`, `.gemini/settings.json`; nested command handlers |
 | Codex | `.codex/agents/*.toml`: `developer_instructions`; shared skills | `.codex/hooks.json`; nested command handlers |
 | Antigravity | `.agents/rules/*.md`, skills | `.agents/hooks.json`; named containers, nested tool events and flat other events |
