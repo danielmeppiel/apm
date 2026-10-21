@@ -324,6 +324,16 @@ def test_replacement_local_file_children_keep_selected_anchor_and_frozen_baselin
     assert json.loads(audit.stdout)["passed"] is True
     assert _snapshot(fixture.consumer.root) == stable
 
+    actual = sibling.with_name("actual.instructions.md")
+    sibling.rename(actual)
+    sibling.symlink_to(actual)
+    audit = fixture.run("audit", "--ci", "--no-policy", "--format", "json")
+    assert audit.returncode != 0, audit.stdout + audit.stderr
+    assert "symlink" in (audit.stdout + audit.stderr).lower()
+    assert _snapshot(fixture.consumer.root) == stable
+    sibling.unlink()
+    actual.rename(sibling)
+
     fixture.replace(None)
     fixture.install()
     fixture.assert_bytes("UPSTREAM")

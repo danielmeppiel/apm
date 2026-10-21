@@ -279,8 +279,7 @@ def _materialize_install_path(
                 f"local source missing for {lock_dep.local_path!r}: expected {candidate}"
             )
         if candidate.is_file():
-            from apm_cli.deps.virtual_file import materialize_virtual_file_package
-            from apm_cli.install.phases.local_content import read_local_package_source
+            from apm_cli.install.phases.local_content import materialize_local_file_for_replay
 
             # Resolve the declaring directory through the same anchor owner.
             # Keep the original spelling for admission so file symlinks cannot
@@ -291,15 +290,9 @@ def _materialize_install_path(
                 project_root,
                 parent_index=parent_index,
             )
-            dependency = lock_dep.to_dependency_ref()
-            source = read_local_package_source(dependency, source_base)
-            if source.content is None:
-                raise ValueError(f"Local single-file source changed kind during audit: {candidate}")
-            replay_path = dependency.get_install_path(apm_modules_dir)
-            materialize_virtual_file_package(
-                dependency, replay_path, source.path.name, source.content
+            return materialize_local_file_for_replay(
+                lock_dep.to_dependency_ref(), source_base, apm_modules_dir
             )
-            return replay_path
         return candidate
 
     dep_ref = lock_dep.to_dependency_ref()
