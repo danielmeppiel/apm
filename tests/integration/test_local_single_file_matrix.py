@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -16,9 +19,13 @@ from tests.integration.test_govern_core_contract import (
     _policy_status_args,
     _write_policy_leaf,
 )
+from tests.integration.test_public_github_anonymous_lifecycle_e2e import _child_environment
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
 from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
+from tests.utils.git_credential_shim import GitCredentialShimFactory
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
+from tests.utils.local_git_http_server import LocalGitHttpServerFactory
+from tests.utils.local_git_repository import LocalGitRepositoryFactory
 from tests.utils.local_package import LocalPackage, LocalPackageFactory
 
 pytestmark = [pytest.mark.e2e, pytest.mark.requires_apm_binary]
@@ -545,6 +552,137 @@ def test_failed_source_preserves_owned_output(
     finally:
         if source.exists():
             source.chmod(0o600)
+
+
+@pytest.mark.parametrize(("kind", "directory"), _KINDS)
+def test_direct_file_symlink_retarget_preserves_owned_state(
+    tmp_path: Path, apm_binary_path: Path, kind: str, directory: str
+) -> None:
+    """An explicit CLI re-install cannot follow a retargeted selected leaf."""
+    scenario = _scenario(tmp_path, apm_binary_path)
+    source = _source(scenario, kind)
+    reference = f"./ai/{source.name}"
+    scenario.run("install", reference, *_INSTALL)
+    root = scenario.project.root
+    locked = _assert_state(root, root / ".github", source, reference, directory, user=False)
+    personal = root / ".github" / directory / "personal.md"
+    personal.write_bytes(b"User-owned content.\n")
+    manifest_before = scenario.project.manifest_path.read_bytes()
+    lock_before = (root / "apm.lock.yaml").read_bytes()
+    native_before = ArtifactSnapshot.capture(root / ".github")
+    modules_before = ArtifactSnapshot.capture(root / "apm_modules")
+    outside = scenario.isolated.home / f"outside.{kind}.md"
+    outside.write_bytes(_content("outside must not be adopted"))
+    source.unlink()
+    source.symlink_to(outside)
+
+    result = scenario.run("install", reference, *_INSTALL, expected=1)
+
+    diagnostic = " ".join((result.stdout + result.stderr).split())
+    assert "Local single-file dependency is a symlink" in diagnostic
+    assert scenario.project.manifest_path.read_bytes() == manifest_before
+    assert (root / "apm.lock.yaml").read_bytes() == lock_before
+    assert load_yaml(root / "apm.lock.yaml") == locked
+    assert_unchanged(native_before, ArtifactSnapshot.capture(root / ".github"))
+    assert_unchanged(modules_before, ArtifactSnapshot.capture(root / "apm_modules"))
+    assert (root / ".github" / directory / source.name).read_bytes() == _content()
+    assert personal.read_bytes() == b"User-owned content.\n"
+    assert outside.read_bytes() == _content("outside must not be adopted")
+    assert source.is_symlink() and source.readlink() == outside
+    assert source.with_name("companion.txt").read_bytes() == b"Do not collect me."
+
+
+@pytest.mark.parametrize(("kind", "directory"), _KINDS)
+@pytest.mark.parametrize("escape", ["absolute", "parent-traversal"])
+def test_remote_parent_cannot_adopt_local_file_or_erase_prior_ownership(
+    tmp_path: Path, apm_binary_path: Path, kind: str, directory: str, escape: str
+) -> None:
+    """Authenticated acquisition does not authorize consumer-filesystem paths."""
+    scenario = _scenario(tmp_path, apm_binary_path)
+    source = _source(scenario, kind)
+    reference = f"./ai/{source.name}"
+    scenario.run("install", reference, *_INSTALL)
+    root = scenario.project.root
+    locked = _assert_state(root, root / ".github", source, reference, directory, user=False)
+    personal = root / ".github" / directory / "personal.md"
+    personal.write_bytes(b"User-owned content.\n")
+    outside = scenario.isolated.home / f"private.{kind}.md"
+    outside.write_bytes(_content("consumer-only bytes"))
+    child = outside.as_posix() if escape == "absolute" else f"../../../../../home/{outside.name}"
+    remote_root = root / "apm_modules" / "fixture-local-file" / "remote-parent"
+    assert (remote_root / child).resolve() == outside.resolve()
+    parent = LocalPackageFactory(scenario.isolated.package_root).create(
+        "remote-parent", dependencies=({"path": child},), targets=("copilot",)
+    )
+    repositories = LocalGitRepositoryFactory(scenario.isolated.repository_root, env=scenario.env)
+    repository = repositories.create("remote-parent", source_tree=parent.root)
+    repositories.commit(repository, message="remote selected-file escape fixture")
+    remote = "fixture-local-file/remote-parent"
+    scenario.factory.replace_apm_dependencies(scenario.project, (reference, f"{remote}#main"))
+    manifest_before = scenario.project.manifest_path.read_bytes()
+    native_before = ArtifactSnapshot.capture(root / ".github")
+    local_module = root / "apm_modules" / "_local" / source.name
+    local_before = ArtifactSnapshot.capture(local_module)
+    git = shutil.which("git")
+    assert git is not None
+    # Keep sibling fixture shims outside the consumer's trusted-executable exclusion root.
+    subprocess.run(
+        (git, "init", "--quiet", str(root)),
+        env=scenario.env,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    token = "fixture-local-file-private-token"
+    server_factory = LocalGitHttpServerFactory(
+        scenario.isolated.repository_root, real_git=Path(git), env=scenario.env
+    )
+    with server_factory.start(
+        (repository,), private_repositories=(repository,), password=token
+    ) as server:
+        shim = GitCredentialShimFactory(scenario.isolated.root / "shim").create(
+            base_env=scenario.env,
+            real_git=Path(git),
+            remote_map={remote: server.remote_url(repository)},
+            credential="must-not-reach-helper",
+            gh_credential=token,
+        )
+        scenario.env = _child_environment(scenario.isolated, shim, proxy_url=server.proxy_url)
+        scenario.env["APM_TEST_LOOPBACK_PORTS"] = str(urlparse(server.proxy_url).port)
+        # Existing containment handling omits the unsafe child, not the valid parent.
+        result = scenario.run("install", *_INSTALL, "--parallel-downloads", "0")
+        assert any(
+            observation.accepted and observation.authorization_present
+            for observation in server.observations
+        ), result.stdout + result.stderr + f"\nshim_events={shim.events()!r}"
+    diagnostic = " ".join((result.stdout + result.stderr).split())
+    assert "Refusing to install local_path dependency" in diagnostic
+    assert "declared by remote package 'remote-parent'" in diagnostic
+    if escape == "absolute":
+        assert "absolute paths inside remote packages are not allowed" in diagnostic
+    else:
+        assert "outside" in diagnostic
+    assert token not in result.stdout + result.stderr
+    assert scenario.project.manifest_path.read_bytes() == manifest_before
+    current = load_yaml(root / "apm.lock.yaml")
+    assert {row["repo_url"] for row in current["dependencies"]} == {
+        f"_local/{source.name}",
+        remote,
+    }
+    assert current["deployments"] == locked["deployments"]
+    assert [row for row in current["dependencies"] if row.get("local_path") == reference] == locked[
+        "dependencies"
+    ]
+    assert not any(row.get("local_path") == child for row in current["dependencies"])
+    assert_unchanged(native_before, ArtifactSnapshot.capture(root / ".github"))
+    assert_unchanged(local_before, ArtifactSnapshot.capture(local_module))
+    assert (root / ".github" / directory / source.name).read_bytes() == _content()
+    assert personal.read_bytes() == b"User-owned content.\n"
+    assert outside.read_bytes() == _content("consumer-only bytes")
+    assert source.read_bytes() == _content()
+    assert source.with_name("companion.txt").read_bytes() == b"Do not collect me."
+    assert not (root / "apm_modules" / "_local" / outside.name).exists()
 
 
 @pytest.mark.parametrize(("kind", "directory"), _KINDS)
