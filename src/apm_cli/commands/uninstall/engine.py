@@ -1436,6 +1436,9 @@ def _remove_stale_mcp_from_recorded_targets(
         )
 
     failures: list[tuple[str, Exception]] = []
+    from ...core.deployment_ledger import DeploymentLedgerCodec
+
+    native_hashes = DeploymentLedgerCodec.mcp_native_hashes(lockfile)
     for runtime, managed_servers in sorted(target_servers.items()):
         scoped_stale = stale_servers.intersection(managed_servers)
         if not scoped_stale:
@@ -1449,6 +1452,7 @@ def _remove_stale_mcp_from_recorded_targets(
                 scope=scope,
                 fail_on_write_error=True,
                 stored_configs=lockfile.mcp_configs,
+                native_hashes=native_hashes,
             )
         except Exception as exc:
             failures.append((runtime, exc))

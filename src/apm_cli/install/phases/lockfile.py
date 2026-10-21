@@ -560,6 +560,9 @@ class LockfileBuilder:
                 DeploymentLedgerCodec.replace_mcp_target_servers(
                     lockfile,
                     copy.deepcopy(target_servers),
+                    native_hashes=DeploymentLedgerCodec.mcp_native_hashes(
+                        self.ctx.existing_lockfile
+                    ),
                 )
             if self.ctx.logger:
                 server_count = len(lockfile.mcp_servers)
