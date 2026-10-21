@@ -118,7 +118,7 @@ APM implements the proposed staged-replacement recovery capability (req-lk-023).
 | [req-pl-018](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-018) | MUST | 6.3.1 | governance | active | 1 | - |
 | [req-pl-019](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-019) | MUST | 6.8.1 | governance | active | 14 | - |
 | [req-pl-020](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-020) | MUST | 6.8.1 | governance | active | 3 | - |
-| [req-pl-021](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-021) | MUST | 6.1 | governance | active | 4 | - |
+| [req-pl-021](docs/src/content/docs/specs/openapm-v0.1.md#req-pl-021) | MUST | 6.1 | governance | active | 5 | - |
 | [req-pr-001](docs/src/content/docs/specs/openapm-v0.1.md#req-pr-001) | MUST | 8.2 | consumer | active | 1 | - |
 | [req-pr-002](docs/src/content/docs/specs/openapm-v0.1.md#req-pr-002) | MUST | 8.3 | consumer | active | 2 | - |
 | [req-pr-003](docs/src/content/docs/specs/openapm-v0.1.md#req-pr-003) | MUST | 8.3 | consumer | active | 1 | - |

@@ -747,6 +747,18 @@ class TestDiscoverPolicy(unittest.TestCase):
         mock_fetch.assert_not_called()
 
     @patch("apm_cli.policy.discovery._fetch_github_contents")
+    def test_override_tilde_path_expands_home(self, mock_fetch):
+        with tempfile.TemporaryDirectory() as home:
+            (Path(home) / "pol.yml").write_text(VALID_POLICY_YAML, encoding="utf-8")
+            with patch.dict(os.environ, {"HOME": home, "USERPROFILE": home}):
+                found = discover_policy(Path(home), policy_override="~/pol.yml", no_cache=True)
+                missing = discover_policy(Path(home), policy_override="~/nope.yml", no_cache=True)
+        self.assertTrue(found.found)
+        self.assertEqual(missing.outcome, "absent")
+        self.assertEqual(missing.error, "Policy file not found: ~/nope.yml")
+        mock_fetch.assert_not_called()
+
+    @patch("apm_cli.policy.discovery._fetch_github_contents")
     def test_override_existing_directory_reports_not_a_file(self, mock_fetch):
         with tempfile.TemporaryDirectory() as tmpdir:
             result = discover_policy(Path(tmpdir), policy_override=tmpdir, no_cache=True)

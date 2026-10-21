@@ -296,7 +296,7 @@ def discover_policy_with_chain(
         if pin is not None:
             expected_hash = pin.normalized
 
-    local_override = bool(policy_override and Path(policy_override).is_file())
+    local_override = bool(policy_override and Path(policy_override).expanduser().is_file())
     if cache_only and not local_override and not policy_cache_available(project_root):
         if expected_hash is not None:
             return _unverifiable_cache_pin(expected_hash, "")
@@ -748,7 +748,7 @@ def discover_policy(
     must always be treated fail-closed by callers.
     """
     if policy_override:
-        path = Path(policy_override)
+        path = Path(policy_override).expanduser()
         if path.exists() and path.is_file():
             return _load_from_file(path, expected_hash=expected_hash)
         if _is_unambiguous_local_policy_path(policy_override):

@@ -861,3 +861,26 @@ def test_explicit_policy_ref_served_from_stale_cache_counts_as_resolved(tmp_path
 
     assert result.exit_code == 0, result.output
     assert "could not be loaded" not in result.stderr
+
+
+@pytest.mark.req("req-pl-021")
+def test_explicit_policy_ref_under_operator_disable_is_disclosed(tmp_path, monkeypatch):
+    import json
+
+    from click.testing import CliRunner
+
+    from apm_cli.commands.audit import audit
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("APM_POLICY_DISABLE", "1")
+    _req_pl_021_project(tmp_path)
+    (tmp_path / "policy.yml").write_text("name: p\nversion: '1.0'\nenforcement: block\n")
+
+    result = CliRunner().invoke(
+        audit,
+        ["--ci", "--no-drift", "--policy", "policy.yml", "-f", "json"],
+        catch_exceptions=False,
+    )
+
+    assert "--policy policy.yml ignored" in result.stderr
+    assert json.loads(result.stdout)["policy"]["enforced"] is False

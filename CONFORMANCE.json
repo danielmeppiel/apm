@@ -995,12 +995,13 @@
       "keyword": "MUST",
       "section": "6.1",
       "status": "active",
-      "test_count": 4,
+      "test_count": 5,
       "tests": [
         "tests/spec_conformance/test_policy_reqs.py::test_explicit_policy_ref_served_from_stale_cache_counts_as_resolved",
         "tests/spec_conformance/test_policy_reqs.py::test_explicit_policy_ref_that_cannot_load_fails_closed[malformed]",
         "tests/spec_conformance/test_policy_reqs.py::test_explicit_policy_ref_that_cannot_load_fails_closed[missing-file]",
-        "tests/spec_conformance/test_policy_reqs.py::test_explicit_policy_ref_that_cannot_load_fails_closed[unreachable]"
+        "tests/spec_conformance/test_policy_reqs.py::test_explicit_policy_ref_that_cannot_load_fails_closed[unreachable]",
+        "tests/spec_conformance/test_policy_reqs.py::test_explicit_policy_ref_under_operator_disable_is_disclosed"
       ]
     },
     {
