@@ -616,7 +616,10 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
 
     try:
         with native_registration_scope(targets):
-            with _ReadOnlyProjectGuard(project_root, protected_subpaths):
+            with (
+                integrators["skill"].ownership_snapshot(replay_lockfile=lock),
+                _ReadOnlyProjectGuard(project_root, protected_subpaths),
+            ):
                 for lock_dep in lock.get_all_dependencies():
                     if lock_dep.local_path == _SELF_KEY:
                         # Synthesized self-entry: project's own local content.
