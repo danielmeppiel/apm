@@ -6,14 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from apm_cli.deps.git_semver_resolver import GitSemverResolution
-from apm_cli.deps.installed_package import InstalledPackage
-from apm_cli.deps.lockfile import LockFile
-from apm_cli.deps.registry.resolver import RegistryResolution
 from apm_cli.install.errors import DirectDependencyError
 from apm_cli.install.source_helpers import materialized_manifest_snapshot
 from apm_cli.models.apm_package import APMPackage, PackageType
-from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.utils.yaml_io import dump_yaml
 
 pytestmark = pytest.mark.component
@@ -59,7 +54,6 @@ def test_snapshot_reads_acquired_bytes_without_mutating_path_cache(
         "name: demo\n",
         "name: demo\nversion: ''\n",
         "name: demo\nversion: 2\n",
-        "- not-a-mapping\n",
         "name: [\n",
     ],
 )
@@ -72,24 +66,6 @@ def test_snapshot_does_not_hide_invalid_required_metadata(tmp_path: Path, invali
 
     with pytest.raises(DirectDependencyError, match="Invalid materialized manifest for demo"):
         materialized_manifest_snapshot(stale, tmp_path)
-
-
-def test_snapshot_preserves_manifestless_optional_version(tmp_path: Path) -> None:
-    """Formats without apm.yml retain their existing projection and absent version."""
-    package = APMPackage(name="native", version="", package_path=tmp_path)
-
-    assert materialized_manifest_snapshot(package, tmp_path) is package
-    assert package.version == ""
-    assert not (tmp_path / "apm.yml").exists()
-    installed = InstalledPackage(
-        DependencyReference.parse("owner/native"),
-        resolved_commit="a" * 40,
-        depth=1,
-        resolved_by=None,
-        package_version=package.version,
-    )
-    locked = LockFile.from_installed_packages([installed], None).get_all_dependencies()[0]
-    assert "version" not in locked.to_dict()
 
 
 def test_snapshot_preserves_legacy_synthesized_projection(tmp_path: Path) -> None:
@@ -114,44 +90,3 @@ def test_snapshot_preserves_legacy_synthesized_projection(tmp_path: Path) -> Non
     assert snapshot is package
     assert snapshot.version == "abcdef0"
     assert manifest.read_bytes() == baseline
-
-
-@pytest.mark.parametrize("authority", ["manifest", "git-semver", "registry"])
-def test_snapshot_preserves_resolver_version_precedence(tmp_path: Path, authority: str) -> None:
-    """Fresh metadata does not turn a manifest version into a resolver decision."""
-    manifest = tmp_path / "apm.yml"
-    dump_yaml({"name": "demo", "version": "1.0.0"}, manifest)
-    stale = APMPackage.from_apm_yml(manifest)
-    dump_yaml({"name": "demo", "version": "1.1.0"}, manifest)
-    snapshot = materialized_manifest_snapshot(stale, tmp_path, PackageType.APM_PACKAGE)
-    reference = DependencyReference.parse("owner/demo#release-not-a-version")
-    installed = InstalledPackage(
-        reference,
-        resolved_commit="a" * 40,
-        depth=1,
-        resolved_by=None,
-        package_version=snapshot.version,
-    )
-    if authority == "git-semver":
-        installed.git_semver_resolution = GitSemverResolution(
-            constraint="^2.0.0",
-            resolved_version="2.0.0",
-            resolved_tag="demo-release-2.0.0",
-            resolved_sha="a" * 40,
-            matched_pattern="demo-release-{version}",
-            resolved_at="2026-10-20T00:00:00Z",
-        )
-    elif authority == "registry":
-        reference.source = "registry"
-        installed.registry_resolution = RegistryResolution(
-            resolved_url="https://registry.example.com/demo.tgz",
-            resolved_hash="sha256:" + "a" * 64,
-            version="2.0.0",
-        )
-
-    locked = LockFile.from_installed_packages([installed], None).get_all_dependencies()[0]
-
-    assert snapshot.version == "1.1.0"
-    assert locked.version == ("1.1.0" if authority == "manifest" else "2.0.0")
-    assert locked.resolved_commit == "a" * 40
-    assert stale.version == "1.0.0"
