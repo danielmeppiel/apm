@@ -54,11 +54,15 @@ backfills one from the other:
 - `name` and `version` must be non-empty strings. Quote numeric versions so
   YAML does not parse them as numbers.
 
-For alias-aware OpenAPM v0.1, amendment 0.1.41 selects
-`https://microsoft.github.io/apm/specs/schemas/manifest-v0.1.41.schema.json`
-as the `$schema` identity; see [schema status](../../../../../docs/src/content/docs/specs/openapm-v0.1.md#appendix-a-normative-json-schemas-inline).
-Omit `$schema` for APM's current working draft. Unknown identities fail closed;
-clients without 0.1.41 support cannot read that explicit opt-in.
+The corrected OpenAPM v0.1 candidate uses
+`https://microsoft.github.io/apm/specs/schemas/manifest-v0.1.48.schema.json`
+as its explicit `$schema` identity. Adopt it only after publication and with a
+CLI that recognizes it; see [schema status](../../../../../docs/src/content/docs/specs/openapm-v0.1.md#appendix-a-normative-json-schemas-inline).
+It accepts existing Git-plus-path, registry ID/version and self-defined MCP
+forms in both dependency blocks while retaining alias and connection checks.
+The older v0.1 and 0.1.41 URLs keep their bytes and their erroneous rejections.
+Omit `$schema` for APM's current working draft; do not silently assign this
+subset to schema-less manifests. Unknown identities still fail closed.
 
 Populate both descriptions when you ship a HYBRID package. `apm pack`
 warns when `apm.yml.description` is missing so listings do not
