@@ -42,7 +42,11 @@ lockfile-exists -> ref-consistency -> deployment-ledger-owners
 
 After the baseline passes, it replays the install in a scratch directory
 and diffs against the working tree to surface `unintegrated`, `modified`,
-`orphaned`, and `unrecorded` files. Root-local primitives use the same
+`orphaned`, `unrecorded`, and `unmanaged-conflict` files. An unmanaged skill
+conflict is not managed drift: ordinary reinstall now refuses that selected
+plan before deployment. Rename the local skill or choose a valid existing
+skill/target selection first; audit does not adopt, overwrite, or delete it.
+Root-local primitives use the same
 source discovery scope as a normal install; the scratch directory is
 only the deployment destination. `unrecorded` means replay produced the
 same normalized bytes as the project but no exact or directory

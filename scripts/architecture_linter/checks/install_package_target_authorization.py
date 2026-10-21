@@ -773,6 +773,68 @@ def _uninstall_collection_drives_dispatch(
     )
 
 
+def _prepared_selector_binding(
+    index: TreeIndex, function: ast.AST, assignment: NameAssignment
+) -> bool:
+    """Follow the prepared plan back to the same canonical target selection."""
+    if _attribute_chain(assignment.value) != ("deployment_plan", "target_selection"):
+        return False
+    plans = tuple(assignments_to(index, function, "deployment_plan"))
+    if len(plans) != 1:
+        return False
+    value = plans[0].value
+    if not (
+        isinstance(value, ast.BoolOp)
+        and isinstance(value.op, ast.Or)
+        and len(value.values) == 2
+        and isinstance(value.values[0], ast.Name)
+        and value.values[0].id == "deployment_plan"
+        and isinstance(value.values[1], ast.Call)
+        and dotted_name(value.values[1].func) == "prepare_package_deployment"
+        and _binding_reaches_node(
+            index,
+            function,
+            name="deployment_plan",
+            assignment=plans[0].node,
+            use=assignment.node,
+        )
+        and not _carrier_is_mutated(
+            index,
+            function,
+            name="deployment_plan",
+            assignment=plans[0].node,
+            before=assignment.node,
+        )
+        and not binding_nodes(index, "prepare_package_deployment", nodes=index.own_scope(function))
+    ):
+        return False
+    prepare = _find_named_function(index, "prepare_package_deployment")
+    if prepare is None or not _resolver_import_is_canonical(index, prepare, "package"):
+        return False
+    selections = tuple(assignments_to(index, prepare, "selection"))
+    if len(selections) != 1 or not _direct_selector_call(selections[0].value):
+        return False
+    returns = [
+        node
+        for node in index.own_scope(prepare)
+        if isinstance(node, ast.Return) and not is_statically_dead(index, node)
+    ]
+    return bool(returns) and all(
+        isinstance(node.value, ast.Call)
+        and dotted_name(node.value.func) == "PackageDeploymentPlan"
+        and bool(node.value.args)
+        and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "selection"
+        and _binding_reaches_node(
+            index, prepare, name="selection", assignment=selections[0].node, use=node
+        )
+        and not _carrier_is_mutated(
+            index, prepare, name="selection", assignment=selections[0].node, before=node
+        )
+        for node in returns
+    )
+
+
 def _consumer_routes_through_selector(
     index: TreeIndex,
     function_name: str,
@@ -787,7 +849,13 @@ def _consumer_routes_through_selector(
         for assignment in assignments_to(index, function, "target_selection")
         if not is_statically_dead(index, assignment.node)
     )
-    if len(selection_assignments) != 1 or not _direct_selector_call(selection_assignments[0].value):
+    if len(selection_assignments) != 1 or not (
+        _direct_selector_call(selection_assignments[0].value)
+        or (
+            dispatch_kind == "package"
+            and _prepared_selector_binding(index, function, selection_assignments[0])
+        )
+    ):
         return False
     selection_assignment = selection_assignments[0].node
     dispatch_calls = _live_dispatch_calls(index, function, dispatch_kind)

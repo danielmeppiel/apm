@@ -45,6 +45,11 @@ from .target_filter import (
 from .target_filter import resolve_effective_package_targets
 
 if TYPE_CHECKING:
+    from apm_cli.codex_plugins.admission import CodexNativePlugin
+    from apm_cli.install.deployable_source_plan import DeployableSourcePlan
+    from apm_cli.install.target_filter import EffectivePackageTargets
+    from apm_cli.integration.targets import TargetProfile
+
     from ..core.command_logger import InstallLogger
     from ..core.scope import InstallScope
     from ..install.context import InstallContext
@@ -80,6 +85,100 @@ class IntegratorBundle:
     # keep working. Production sites (template.py, integrate_local_content,
     # drift.py) pass a real CanvasIntegrator; when None the loop skips canvas.
     canvas: BaseIntegrator | None = None
+
+
+@dataclass(frozen=True)
+class PackageDeploymentPlan:
+    """Authorized package selection shared by batch preflight and deployment."""
+
+    target_selection: EffectivePackageTargets
+    approvals: tuple[bool, bool, bool, bool, bool] = (False, False, False, False, False)
+    skip_bin: bool = False
+    bin_skip_reason: str | None = None
+    codex_native: CodexNativePlugin | None = None
+    source_plan: DeployableSourcePlan | None = None
+
+    @property
+    def projection_targets(self) -> list[TargetProfile]:
+        """Keep native Codex bundles opaque to loose primitive adapters."""
+        return [] if self.codex_native is not None else list(self.target_selection.targets)
+
+
+def prepare_package_deployment(  # noqa: PLR0913
+    package_info: Any,
+    project_root: Path,
+    *,
+    targets: Any,
+    diagnostics: DiagnosticCollector | None,
+    package_name: str = "",
+    logger: InstallLogger | None = None,
+    scope: InstallScope | None = None,
+    skill_subset: tuple | None = None,
+    ctx: InstallContext | None = None,
+    policy: Any = None,
+    is_first_party: bool = False,
+    allow_executables: builtins.dict[str, builtins.dict[str, bool]] | None = None,
+    dep_target_subset: list[str] | None = None,
+    trust_bin: bool | None = None,
+    bin_skip_reason_override: str | None = None,
+    read_only: bool = False,
+) -> PackageDeploymentPlan:
+    """Resolve deployment authorization without writing native target content."""
+    import sys
+
+    from apm_cli.codex_plugins.admission import plan_native_codex_plugin
+    from apm_cli.install.deployable_source_plan import DeployableSourcePlan
+
+    selection = resolve_effective_package_targets(
+        targets, dep_target_subset, package_info, diagnostics, package_name
+    )
+    _log_package_target_restriction(logger, selection)
+    if not selection.targets:
+        return PackageDeploymentPlan(selection)
+    approvals = check_executable_approval(package_name, package_info, allow_executables, ctx=ctx)
+    hooks, bin_approved, mcp, canvas, lsp = approvals
+    skip_bin, reason = _resolve_bin_skip(
+        bin_approved, trust_bin, non_interactive=not sys.stdout.isatty()
+    )
+    if skip_bin and bin_skip_reason_override is not None:
+        reason = bin_skip_reason_override
+    codex_native = plan_native_codex_plugin(
+        package_info,
+        package_name,
+        list(selection.targets),
+        scope=scope,
+        skill_subset=skill_subset,
+        approvals={
+            "hooks": hooks,
+            "mcp": mcp,
+            "bin": bin_approved and not skip_bin,
+            "canvas": canvas,
+            "lsp": lsp,
+        },
+        ctx=ctx,
+        read_only=read_only,
+    )
+    projection_targets = [] if codex_native is not None else list(selection.targets)
+    source_plan = DeployableSourcePlan.create(
+        package_info,
+        projection_targets,
+        skill_subset=skill_subset,
+        hooks_approved=hooks,
+        canvas_approved=canvas or is_first_party,
+        skip_bin=skip_bin,
+        diagnostics=diagnostics,
+        package_name=package_name,
+        native_plugin_root=codex_native.source_root if codex_native else None,
+        plugin_bin_deployable=_plugin_bin_deployable(
+            package_info,
+            projection_targets,
+            project_root=project_root,
+            scope=scope,
+            policy=policy,
+            skip_bin=skip_bin,
+        ),
+    )
+    return PackageDeploymentPlan(selection, approvals, skip_bin, reason, codex_native, source_plan)
 
 
 def _log_hook_display_payloads(
@@ -233,6 +332,7 @@ def integrate_package_primitives(  # noqa: PLR0913
     dep_target_subset: list[str] | None = None,
     trust_bin: bool | None = None,
     bin_skip_reason_override: str | None = None,
+    deployment_plan: PackageDeploymentPlan | None = None,
 ) -> dict:
     """Run the full integration pipeline for a single package.
 
@@ -299,17 +399,28 @@ def integrate_package_primitives(  # noqa: PLR0913
 
     # SECURITY: package intent may only narrow the consumer-authorized active
     # target set. It never activates a target or expands dependency reach.
-    target_selection = resolve_effective_package_targets(
-        targets,
-        dep_target_subset,
+    deployment_plan = deployment_plan or prepare_package_deployment(
         package_info,
-        diagnostics,
-        package_name,
+        project_root,
+        targets=targets,
+        dep_target_subset=dep_target_subset,
+        diagnostics=diagnostics,
+        package_name=package_name,
+        logger=logger,
+        scope=scope,
+        skill_subset=skill_subset,
+        ctx=ctx,
+        policy=policy,
+        is_first_party=is_first_party,
+        allow_executables=allow_executables,
+        trust_bin=trust_bin,
+        bin_skip_reason_override=bin_skip_reason_override,
+        read_only=scratch_root is not None,
     )
+    target_selection = deployment_plan.target_selection
     targets = list(target_selection.targets)
     allowed_dep_targets = set(target_selection.consumer_allowed_targets)
     dep_targets_active = target_selection.consumer_restriction_active
-    _log_package_target_restriction(logger, target_selection)
 
     reconcile_package_targets = getattr(
         integrators.hook,
@@ -337,58 +448,18 @@ def integrate_package_primitives(  # noqa: PLR0913
         _mcp_approved,
         _canvas_approved,
         _lsp_approved,
-    ) = check_executable_approval(package_name, package_info, allow_executables, ctx=ctx)
-    import sys
-
-    _skip_bin, _bin_skip_reason_override = _resolve_bin_skip(
-        _bin_approved, trust_bin, non_interactive=not sys.stdout.isatty()
-    )
-    _bin_skip_reason_override = (
-        bin_skip_reason_override
-        if _skip_bin and bin_skip_reason_override is not None
-        else _bin_skip_reason_override
-    )
-    from apm_cli.codex_plugins.admission import finalize_codex_native, plan_native_codex_plugin
-    from apm_cli.install.deployable_source_plan import DeployableSourcePlan
+    ) = deployment_plan.approvals
+    _skip_bin = deployment_plan.skip_bin
+    _bin_skip_reason_override = deployment_plan.bin_skip_reason
+    from apm_cli.codex_plugins.admission import finalize_codex_native
     from apm_cli.install.helpers.security_scan import _pre_deploy_security_scan
 
-    codex_native = plan_native_codex_plugin(
-        package_info,
-        package_name,
-        targets,
-        scope=scope,
-        skill_subset=skill_subset,
-        approvals={
-            "hooks": _hooks_approved,
-            "mcp": _mcp_approved,
-            "bin": _bin_approved and not _skip_bin,
-            "canvas": _canvas_approved,
-            "lsp": _lsp_approved,
-        },
-        ctx=ctx,
-        read_only=scratch_root is not None,
-    )
+    codex_native = deployment_plan.codex_native
     # Compatibility-only Codex data is opaque to every loose target adapter.
-    projection_targets = [] if codex_native is not None else targets
-    source_plan = DeployableSourcePlan.create(
-        package_info,
-        projection_targets,
-        skill_subset=skill_subset,
-        hooks_approved=_hooks_approved,
-        canvas_approved=_canvas_approved or is_first_party,
-        skip_bin=_skip_bin,
-        diagnostics=diagnostics,
-        package_name=package_name,
-        native_plugin_root=codex_native.source_root if codex_native else None,
-        plugin_bin_deployable=_plugin_bin_deployable(
-            package_info,
-            projection_targets,
-            project_root=project_root,
-            scope=scope,
-            policy=policy,
-            skip_bin=_skip_bin,
-        ),
-    )
+    projection_targets = deployment_plan.projection_targets
+    source_plan = deployment_plan.source_plan
+    if source_plan is None:
+        raise RuntimeError("Selected targets require an authorized source plan")
     if not _pre_deploy_security_scan(
         source_plan,
         diagnostics,
@@ -711,7 +782,7 @@ def integrate_package_primitives(  # noqa: PLR0913
     return result
 
 
-def integrate_local_content(
+def integrate_local_content(  # noqa: PLR0913
     project_root: Path,
     *,
     targets: Any,
@@ -728,6 +799,7 @@ def integrate_local_content(
     scope: InstallScope | None = None,
     source_root: Path | None = None,
     ctx: InstallContext | None = None,
+    deployment_plan: PackageDeploymentPlan | None = None,
 ) -> dict:
     """Integrate primitives from the project's own .apm/ directory.
 
@@ -780,6 +852,7 @@ def integrate_local_content(
         scope=scope,
         ctx=ctx,
         is_first_party=True,
+        deployment_plan=deployment_plan,
     )
 
 

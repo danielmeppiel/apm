@@ -83,6 +83,15 @@
       "guards": ["install-deployment-source-plan"]
     },
     {
+      "id": "unmanaged-skill-preflight",
+      "decision": "Whole-plan unmanaged skill refusal before native deployment",
+      "owner": "integration/skill_preflight.py via SkillIntegrator; install/template.py applies the batch gate using services.prepare_package_deployment",
+      "selectors": [
+        "src/apm_cli/integration/skill_preflight.py"
+      ],
+      "guards": ["install-deployment-skill-preflight"]
+    },
+    {
       "id": "primitive-kind-classification",
       "decision": "Primitive artifact kind classification precedence",
       "owner": "install/primitive_classification.py (classify_plugin_manifest, classify_agent_source_file)",

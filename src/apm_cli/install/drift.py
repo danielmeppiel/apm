@@ -2,9 +2,10 @@
 
 Reproduces the integration step from the lockfile in an isolated scratch
 directory, then diffs the resulting tree against the working project to
-surface four kinds of divergence:
+surface five kinds of divergence:
 
 * ``modified``     -- a tracked deployed file's content differs.
+* ``unmanaged-conflict`` -- a selected skill differs at an unowned destination.
 * ``unintegrated`` -- a tracked deployed file is missing from the project.
 * ``orphaned``     -- a managed-directory file exists in the project but
   is not present in the scratch replay AND not tracked in the lockfile.
@@ -100,7 +101,7 @@ class DriftFinding:
     """A single divergence between the replay scratch tree and the project."""
 
     path: str
-    kind: str  # one of "modified" | "unintegrated" | "orphaned" | "unrecorded"
+    kind: str
     package: str = ""
     inline_diff: str = ""
 
@@ -822,9 +823,10 @@ def diff_scratch_against_project(
 ) -> list[DriftFinding]:
     """Compare the replay scratch tree against the project tree.
 
-    Four kinds of findings are emitted:
+    Five kinds of findings are emitted:
 
     * ``modified``     -- file exists in both, normalized content differs.
+    * ``unmanaged-conflict`` -- a replayed skill differs from an unowned file.
     * ``unintegrated`` -- file exists in scratch but not in project, and the
       path is part of the committed working tree when git tracking is known.
     * ``orphaned``     -- file exists in project + tracked in lockfile
@@ -918,6 +920,14 @@ def diff_scratch_against_project(
         project_files = {r: p for r, p in project_files.items() if not _is_canvas(r)}
 
     findings: list[DriftFinding] = []
+    from apm_cli.integration.base_integrator import BaseIntegrator
+    from apm_cli.utils.diagnostics import DiagnosticCollector
+
+    collision_diagnostics = DiagnosticCollector()
+    managed = set(tracked)
+    skill_roots = [
+        target.skills_deploy_path(project_root) for target in targets if target.supports("skills")
+    ]
 
     for rel, scratch_path in sorted(scratch_files.items()):
         project_path = project_files.get(rel)
@@ -932,6 +942,11 @@ def diff_scratch_against_project(
                 )
             )
             continue
+        unmanaged_skill = any(project_path.is_relative_to(root) for root in skill_roots) and (
+            BaseIntegrator.check_collision(
+                project_path, rel, managed, False, diagnostics=collision_diagnostics
+            )
+        )
         try:
             s_bytes = _normalize(scratch_path.read_bytes())
             p_bytes = _normalize(project_path.read_bytes())
@@ -958,17 +973,20 @@ def diff_scratch_against_project(
             findings.append(
                 DriftFinding(
                     path=rel,
-                    kind="modified",
+                    kind="unmanaged-conflict" if unmanaged_skill else "modified",
                     package=tracked.get(rel, ""),
                     inline_diff=f"(read error: {exc})",
                 )
             )
             continue
-        if s_bytes != p_bytes:
+        if s_bytes != p_bytes or (
+            unmanaged_skill
+            and not BaseIntegrator.is_content_identical_to_source(project_path, scratch_path)
+        ):
             findings.append(
                 DriftFinding(
                     path=rel,
-                    kind="modified",
+                    kind="unmanaged-conflict" if unmanaged_skill else "modified",
                     package=tracked.get(rel, ""),
                     inline_diff=_inline_diff_for(scratch_path, project_path),
                 )
@@ -977,8 +995,8 @@ def diff_scratch_against_project(
             # Content agrees, so nothing else in the audit will ever look at
             # this file again: no manifest entry means no hash baseline and no
             # Unicode scan. Reported only in the content-clean case -- when the
-            # bytes differ, ``modified`` already fails the check and 'apm
-            # install' is the same remedy for both.
+            # bytes differ, a content or ownership finding already reports
+            # the failure with its appropriate remedy.
             findings.append(DriftFinding(path=rel, kind="unrecorded", package=""))
 
     for rel in sorted(project_files.keys()):

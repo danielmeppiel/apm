@@ -754,6 +754,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Resolution staging owner drops a mandatory replacement-activation method.",
     ),
     MutationCase(
+        guard_id="install-deployment-skill-preflight",
+        rule_id="install-deployment-skill-preflight",
+        path="src/apm_cli/install/phases/integrate.py",
+        old="deployment_plans, local_plan = preflight_skill_materializations(ctx, materialized)",
+        new="deployment_plans, local_plan = {}, None",
+        intent="Integration bypasses whole-plan unmanaged skill preflight before native writes.",
+    ),
+    MutationCase(
         guard_id="install-deployment-skills-root-derivation",
         rule_id="install-deployment-skills-root-derivation",
         path="src/apm_cli/integration/skill_integrator.py",

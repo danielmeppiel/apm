@@ -26,6 +26,7 @@ from apm_cli.integration.skill_package_routing import (
 from apm_cli.integration.skill_package_routing import (
     should_install_skill as _should_install_skill,
 )
+from apm_cli.integration.skill_preflight import find_unmanaged_conflicts, selected_skill_sources
 from apm_cli.integration.skill_support import (
     SkillIntegrationResult,
     build_copy_ignore,
@@ -388,6 +389,9 @@ class SkillIntegrator(BaseIntegrator):
     - Markdown body with instructions and agent definitions
     - references/ subdirectory for prompt files
     """
+
+    selected_skill_sources = staticmethod(selected_skill_sources)
+    find_unmanaged_conflicts = find_unmanaged_conflicts
 
     def __init__(self) -> None:
         # Only successful writes establish same-run ownership, keyed by the
@@ -916,6 +920,7 @@ class SkillIntegrator(BaseIntegrator):
         skill_subset=None,
         skip_bin: bool = False,
         source_plan: "DeployableSourcePlan | None" = None,
+        source_paths: dict[str, Path] | None = None,
     ) -> tuple[int, list[Path]]:
         """Promote an instruction package's .apm/skills without a parent skill entry.
 
@@ -947,7 +952,11 @@ class SkillIntegrator(BaseIntegrator):
         all_deployed: list[Path] = []
         seen_skill_dirs: set[Path] = set()
         primary_selected = False
-        available_names = self._skill_names_in_directory(sub_skills_dir)
+        available_names = (
+            frozenset(source_paths)
+            if source_paths is not None
+            else self._skill_names_in_directory(sub_skills_dir)
+        )
 
         for target in targets:
             if not target.supports("skills"):
@@ -985,6 +994,7 @@ class SkillIntegrator(BaseIntegrator):
                 link_rewriter=self,
                 skip_bin=skip_bin,
                 source_plan=source_plan,
+                source_paths=source_paths,
             )
             if is_primary:
                 count = n
@@ -1015,6 +1025,7 @@ class SkillIntegrator(BaseIntegrator):
         targets=None,
         skip_bin: bool = False,
         source_plan: "DeployableSourcePlan | None" = None,
+        source_paths: dict[str, Path] | None = None,
     ) -> SkillIntegrationResult:
         """Copy a native Skill (with existing SKILL.md) to all active targets.
 
@@ -1231,6 +1242,7 @@ class SkillIntegrator(BaseIntegrator):
                 link_rewriter=self,
                 skip_bin=skip_bin,
                 source_plan=source_plan,
+                source_paths=source_paths,
             )
             all_target_paths.extend(sub_deployed)
 
@@ -1449,8 +1461,9 @@ class SkillIntegrator(BaseIntegrator):
         # Canonicalize only the root; preserve descendant links and caller metadata.
         package_info = copy(package_info)
         package_info.install_path = package_info.install_path.resolve()
+        selection = self.selected_skill_sources(package_info)
 
-        if not should_install_skill(package_info):
+        if selection.route == "subskills":
             # Non-skill packages may still ship sub-skills under .apm/skills/.
             sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
                 package_info,
@@ -1464,6 +1477,7 @@ class SkillIntegrator(BaseIntegrator):
                 skill_subset=skill_subset,
                 skip_bin=skip_bin,
                 source_plan=source_plan,
+                source_paths=selection.children,
             )
             return SkillIntegrationResult(
                 skill_created=False,
@@ -1476,20 +1490,15 @@ class SkillIntegrator(BaseIntegrator):
                 target_paths=sub_deployed,
             )
 
-        # Skip virtual FILE packages - they're individual files, not full packages
-        # Multiple virtual files from the same repo would collide on skill name
-        # BUT: subdirectory packages (like Claude Skills) SHOULD generate skills
-        if package_info.dependency_ref and package_info.dependency_ref.is_virtual:
-            # Allow subdirectory packages through - they are complete skill packages
-            if not package_info.dependency_ref.is_virtual_subdirectory():
-                return SkillIntegrationResult(
-                    skill_created=False,
-                    skill_updated=False,
-                    skill_skipped=True,
-                    skill_path=None,
-                    references_copied=0,
-                    links_resolved=0,
-                )
+        if selection.route == "none":
+            return SkillIntegrationResult(
+                skill_created=False,
+                skill_updated=False,
+                skill_skipped=True,
+                skill_path=None,
+                references_copied=0,
+                links_resolved=0,
+            )
 
         package_path = package_info.install_path
 
@@ -1520,7 +1529,7 @@ class SkillIntegrator(BaseIntegrator):
 
         # Check if this is a native Skill (already has SKILL.md at root)
         source_skill_md = package_path / "SKILL.md"
-        if source_skill_md.exists():
+        if selection.route == "native":
             if skill_subset:
                 from apm_cli.utils.console import _rich_warning
 
@@ -1541,24 +1550,16 @@ class SkillIntegrator(BaseIntegrator):
                     targets=targets,
                     skip_bin=skip_bin,
                     source_plan=source_plan,
+                    source_paths=selection.children,
                 ),
                 bin_paths,
                 bin_skip_reason,
             )
 
-        # SKILL_BUNDLE: promote skills from root-level skills/ directory.
-        # Routed through ``skill_source_paths`` -- the same helper backing
-        # ``available_skill_names`` -- so a ``--skill`` value can never be
-        # validated against a set other than the one that deploys.
-        #
-        # A plugin's resolved declaration IS its bundle, wherever the
-        # individual skills happen to sit, so it takes this path rather than
-        # the sub-skill path (#2537). For every other type the bundle is the
-        # root ``skills/`` directory, and ``.apm/skills/`` stays what it has
-        # always been: sub-skills promoted alongside a package that is not
-        # itself a skill.
+        # The shared selector retains normalized plugin declarations, including
+        # empty declarations, rather than re-discovering a raw skills tree.
         root_skills_dir = package_path / "skills"
-        _source_paths = self.skill_source_paths(package_path, package_info.package_type)
+        _source_paths = selection.children
         _is_plugin = package_info.package_type == _PackageType.MARKETPLACE_PLUGIN
         if _is_plugin and not _source_paths and not skill_subset_filter_tokens(skill_subset):
             self._note_plugin_declaration_deploys_no_skills(
@@ -1579,55 +1580,21 @@ class SkillIntegrator(BaseIntegrator):
                 bin_paths,
                 bin_skip_reason,
             )
-        source_dir_is_root = bool(_source_paths) and all(
-            source.parent == root_skills_dir for source in _source_paths.values()
-        )
-        if _is_plugin or (_source_paths and source_dir_is_root):
-            return self._merge_bin_paths(
-                self._integrate_skill_bundle(
-                    package_info,
-                    project_root,
-                    package_path / ".apm" / "skills" if _is_plugin else root_skills_dir,
-                    lockfile_root=lockfile_root,
-                    source_paths=_source_paths,
-                    diagnostics=diagnostics,
-                    managed_files=managed_files,
-                    force=force,
-                    logger=logger,
-                    targets=targets,
-                    skill_subset=skill_subset,
-                    skip_bin=skip_bin,
-                    source_plan=source_plan,
-                ),
-                bin_paths,
-                bin_skip_reason,
-            )
-
-        # No SKILL.md at root  -- not a skill package.
-        # Still promote any sub-skills shipped under .apm/skills/.
-        sub_skills_count, sub_deployed = self._promote_sub_skills_standalone(
-            package_info,
-            project_root,
-            lockfile_root=lockfile_root,
-            diagnostics=diagnostics,
-            managed_files=managed_files,
-            force=force,
-            logger=logger,
-            targets=targets,
-            skill_subset=skill_subset,
-            skip_bin=skip_bin,
-            source_plan=source_plan,
-        )
         return self._merge_bin_paths(
-            SkillIntegrationResult(
-                skill_created=False,
-                skill_updated=False,
-                skill_skipped=True,
-                skill_path=None,
-                references_copied=0,
-                links_resolved=0,
-                sub_skills_promoted=sub_skills_count,
-                target_paths=sub_deployed,
+            self._integrate_skill_bundle(
+                package_info,
+                project_root,
+                package_path / ".apm" / "skills" if _is_plugin else root_skills_dir,
+                lockfile_root=lockfile_root,
+                source_paths=_source_paths,
+                diagnostics=diagnostics,
+                managed_files=managed_files,
+                force=force,
+                logger=logger,
+                targets=targets,
+                skill_subset=skill_subset,
+                skip_bin=skip_bin,
+                source_plan=source_plan,
             ),
             bin_paths,
             bin_skip_reason,
