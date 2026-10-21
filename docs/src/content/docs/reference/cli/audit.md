@@ -25,6 +25,8 @@ subtrees for content integrity. Neither mode modifies those roots.
 Auditing the user metadata workspace (`~/.apm`) still requires its installed
 `apm_modules/`; if missing, restore it with `apm install --global`. Project
 scratch replay does not enable cold replay for global installations.
+Scratch replay preserves each scope's installed-source layout so relative
+links, including Kiro prompt links, compare against their deployed equivalents.
 
 Both modes also enforce the lockfile's canonical deployment ownership; see
 [Deployment-owner integrity](#deployment-owner-integrity).

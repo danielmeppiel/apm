@@ -39,7 +39,6 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
-from apm_cli.core.scope import InstallScope, get_deploy_root, get_modules_dir
 from apm_cli.core.target_detection import (
     read_manifest_target as _read_apm_yml_target,  # noqa: F401 -- compatibility re-export
 )
@@ -264,8 +263,8 @@ def _materialize_install_path(
         corrupt-lockfile condition and MUST fail loud -- it is not caught
         by the drift gate's cache-miss soft-skip.
     """
-    if lock_dep.source == "local":
-        if not lock_dep.local_path:
+    if lock_dep.is_local_source:
+        if not lock_dep.local_path and lock_dep.replacement is None:
             raise CacheMissError(f"local dep {lock_dep.repo_url!r} has no local_path in lockfile")
         candidate = resolve_local_dep_dir(
             lock_dep,
@@ -275,12 +274,18 @@ def _materialize_install_path(
             resolved_cache=resolved_cache,
         )
         if not candidate.exists():
+            if lock_dep.replacement is not None:
+                from apm_cli.deps.path_anchoring import LocalResolutionError
+
+                raise LocalResolutionError(
+                    f"local replacement source missing for {lock_dep.get_unique_key()}: "
+                    f"expected {candidate}. Restore the source before auditing."
+                )
             raise CacheMissError(
                 f"local source missing for {lock_dep.local_path!r}: expected {candidate}"
             )
         if candidate.is_file():
-            from apm_cli.deps.virtual_file import materialize_virtual_file_package
-            from apm_cli.install.phases.local_content import read_local_package_source
+            from apm_cli.install.phases.local_content import materialize_local_file_for_replay
 
             # Resolve the declaring directory through the same anchor owner.
             # Keep the original spelling for admission so file symlinks cannot
@@ -291,15 +296,9 @@ def _materialize_install_path(
                 project_root,
                 parent_index=parent_index,
             )
-            dependency = lock_dep.to_dependency_ref()
-            source = read_local_package_source(dependency, source_base)
-            if source.content is None:
-                raise ValueError(f"Local single-file source changed kind during audit: {candidate}")
-            replay_path = dependency.get_install_path(apm_modules_dir)
-            materialize_virtual_file_package(
-                dependency, replay_path, source.path.name, source.content
+            return materialize_local_file_for_replay(
+                lock_dep.to_dependency_ref(), source_base, apm_modules_dir
             )
-            return replay_path
         return candidate
 
     dep_ref = lock_dep.to_dependency_ref()
@@ -459,6 +458,8 @@ def _build_package_info(
             try:
                 pkg = APMPackage.from_apm_yml(apm_yml, source_path=install_path)
             except Exception:
+                if lock_dep.replacement is not None:
+                    raise
                 pkg = None
         if pkg is None:
             pkg = APMPackage(
@@ -525,7 +526,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         Surfaced verbatim when a locked dep cannot be materialized.
     """
     from apm_cli.deps.lockfile import _SELF_KEY, LockFile
-    from apm_cli.install.audit_target_roots import replay_target
+    from apm_cli.install.audit_target_roots import replay_modules_root, replay_target
     from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
     from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
@@ -555,10 +556,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
-    replay_scope = InstallScope.USER if config.user_scope else InstallScope.PROJECT
-    deployment_modules_dir = scratch_root / get_modules_dir(replay_scope).relative_to(
-        get_deploy_root(replay_scope)
-    )
+    deployment_modules_dir = replay_modules_root(scratch_root, user_scope=config.user_scope)
     codex_records = None
 
     live_targets = resolve_audit_targets(
@@ -644,7 +642,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                             registry_resolver=registry_resolver,
                             registries=registries,
                         )
-                        if lock_dep.source == "local":
+                        if lock_dep.is_local_source:
                             install_path = _normalize_legacy_local_plugin_for_replay(
                                 lock_dep,
                                 install_path,

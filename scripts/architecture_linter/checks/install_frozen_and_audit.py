@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 import re
 
+from scripts.architecture_linter.checks.contracts_dependency_policy import _unique_definitions
 from scripts.architecture_linter.checks.install_deployment_shared import (
     _INSTALL_ADAPTER,
     _SRC_PREFIX,
@@ -124,12 +125,25 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         and _present(owner, "active_package_keys=active_package_keys,")
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
+    enforce_body = _awk_body(
+        owner, re.compile(r"^    def enforce_frozen\("), re.compile(r"^    def ")
+    )
+    replacement_preflight = all(
+        _body_has(enforce_body, needle)
+        for needle in (
+            "lockfile_satisfies_replacements(",
+            "if not replacements_satisfied:",
+            "project_manifest_dependencies(request.apm_package,",
+            "InstallService._verify_frozen_local_content(request, lockfile, manifest_deps)",
+        )
+    )
 
     def _before(first: int | None, second: int | None) -> bool:
         return first is not None and second is not None and first < second
 
     failed = (
         not owner_methods
+        or not replacement_preflight
         or preflight is None
         or migration is None
         or not _before(preflight, migration)
@@ -426,6 +440,7 @@ def check_uninstall_reachability(provider: FactsProvider) -> tuple[Violation, ..
 
 
 _AUDIT_REPLAY_OWNER = "src/apm_cli/install/audit_replay.py"
+_AUDIT_ROOTS_OWNER = "src/apm_cli/install/audit_target_roots.py"
 
 
 def check_audit_replay(provider: FactsProvider) -> tuple[Violation, ...]:
@@ -439,6 +454,27 @@ def check_audit_replay(provider: FactsProvider) -> tuple[Violation, ...]:
     failures = list(drift_fail) + list(owner_fail) + list(audit_fail) + list(ci_fail)
     if failures:
         return tuple(failures)
+
+    findings.extend(
+        _unique_definitions(provider, rule_id, _AUDIT_ROOTS_OWNER, ("replay_modules_root",))
+    )
+    roots, roots_fail = _facts_for(provider, _AUDIT_ROOTS_OWNER, rule_id)
+    findings.extend(roots_fail)
+    replay_calls = _name_calls_in(drift, "run_replay")
+    projection_calls = _name_calls_in(roots, "replay_modules_root")
+    if (
+        "replay_modules_root" not in replay_calls
+        or {"get_modules_dir", "get_deploy_root"} & replay_calls
+        or not {"get_modules_dir", "get_deploy_root"} <= projection_calls
+        or not _present(roots, "InstallScope.USER if user_scope else InstallScope.PROJECT")
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                _AUDIT_ROOTS_OWNER,
+                "Audit deployment modules must use the canonical scope projection",
+            )
+        )
 
     run_replay_body = _awk_body(
         drift,
