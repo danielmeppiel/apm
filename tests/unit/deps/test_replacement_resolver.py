@@ -60,7 +60,12 @@ def test_read_only_replacement_uses_consumer_anchor_not_nested_parent(
     consumer = factory.create("consumer", dependencies=("../nested/parent",))
     _root_rules(
         consumer.root,
-        [{"for": {"git": _UPSTREAM}, "with": {"path": "../missing" if missing else "../local-base"}}],
+        [
+            {
+                "for": {"git": _UPSTREAM},
+                "with": {"path": "../missing" if missing else "../local-base"},
+            }
+        ],
     )
     graph = APMDependencyResolver(read_only=True).resolve_dependencies(consumer.root)
     assert graph.is_valid() is not missing, graph.resolution_errors
