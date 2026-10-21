@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from apm_cli.copilot_plugins.registrar import catalog_path_for
+from apm_cli.models.dependency.reference import DependencyReference
 from apm_cli.models.dependency.replacement import parse_replace_block
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
 from tests.unit.copilot_plugins._builders import write_agent_plugin
@@ -195,6 +196,77 @@ def test_replacement_same_named_ref_invalidates_upstream_cache_and_pin(
     fixture.install()
     fixture.assert_bytes("UPSTREAM")
     assert fixture.locked_entry()["resolved_commit"] == fixture.upstream_sha
+
+
+def test_replacement_monorepo_subpath_preserves_unmatched_siblings(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    packages = LocalPackageFactory(fixture.upstream.worktree / "packages")
+    base = packages.create("base", targets=("copilot",))
+    packages.add_instruction(base, "base", _content("UPSTREAM-SUBPATH"))
+    sibling = packages.create("other", targets=("copilot",))
+    packages.add_instruction(sibling, "other", _content("UNMATCHED-SIBLING"))
+    selector = {"git": _UPSTREAM, "path": "packages/base"}
+    packages.create("app", dependencies=({**selector, "ref": "main"},))
+    upstream_sha = fixture.repositories.commit(
+        fixture.upstream, message="Monorepo with a transitive package"
+    ).sha
+    patched = LocalPackageFactory(fixture.fork.worktree / "patched")
+    fork_base = patched.create("base", targets=("copilot",))
+    patched.add_instruction(fork_base, "base", _content("FORK-SUBPATH"))
+    fork_sha = fixture.repositories.commit(
+        fixture.fork, message="Replacement in a different subdirectory"
+    ).sha
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["dependencies"]["apm"] = [
+        {"git": _UPSTREAM, "path": f"packages/{name}", "ref": upstream_sha}
+        for name in ("app", "other")
+    ]
+    modules = fixture.consumer.root / "apm_modules"
+    expected_manifests = {
+        DependencyReference.parse_from_dict(
+            {"git": _UPSTREAM, "path": f"packages/{name}"}
+        ).get_install_path(modules)
+        / "apm.yml"
+        for name in ("app", "base", "other")
+    }
+    for source, marker in (
+        (None, "UPSTREAM-SUBPATH"),
+        ({"path": "../local-base"}, "LOCAL"),
+        ({"git": _FORK, "path": "patched/base", "ref": fork_sha}, "FORK-SUBPATH"),
+        (None, "UPSTREAM-SUBPATH"),
+    ):
+        if source is None:
+            manifest.pop("$schema", None)
+            manifest.pop("replace", None)
+        else:
+            manifest["$schema"] = _SCHEMA
+            manifest["replace"] = [{"for": selector, "with": source}]
+        dump_yaml(manifest, fixture.consumer.manifest_path)
+        fixture.install()
+        fixture.assert_bytes(marker)
+        assert (
+            fixture.consumer.root / ".github/instructions/other.instructions.md"
+        ).read_text() == _content("UNMATCHED-SIBLING")
+        assert set(modules.rglob("apm.yml")) == expected_manifests
+        entries = {
+            entry["virtual_path"]: entry
+            for entry in load_yaml(fixture.consumer.root / "apm.lock.yaml")["dependencies"]
+        }
+        assert set(entries) == {"packages/app", "packages/base", "packages/other"}
+        assert "replacement" not in entries["packages/app"]
+        assert "replacement" not in entries["packages/other"]
+        assert entries["packages/other"]["resolved_commit"] == upstream_sha
+        selected = entries["packages/base"]
+        if source is None:
+            assert "replacement" not in selected
+            assert selected["resolved_commit"] == upstream_sha
+        else:
+            assert selected["replacement"]["source"] == source
+            assert selected["replacement"]["requests"][0]["ref"] == "main"
+            if "git" in source:
+                assert selected["resolved_commit"] == fork_sha
 
 
 @pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
