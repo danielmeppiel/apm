@@ -134,6 +134,8 @@ def test_rebuilt_lock_carries_selected_version_only_for_same_pin(
         {"marketplace_plugin_name": "other-tool"},
         {"source_url": "https://catalog.example.test/marketplace.json"},
         {"source_digest": "sha256:" + "b" * 64},
+        pytest.param({"source": "local"}, id="changed-source"),
+        pytest.param({"host_type": "gitlab"}, id="changed-host-type"),
     ],
 )
 def test_marketplace_rediscovery_preserves_time_only_for_unchanged_selection(

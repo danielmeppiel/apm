@@ -346,6 +346,7 @@ def test_custom_pattern_closes_install_update_outdated_lifecycle(
         "tag-pattern-custom-install-replay",
     )
     assert replay.stdout or replay.stderr
+    assert _locked_dependency(consumer)["resolved_at"] == first_lock["resolved_at"]
     _assert_same_state(first_snapshot, _snapshot(consumer))
 
     repository_skill = scenario.package_repository.worktree / "skills" / _PACKAGE / "SKILL.md"
