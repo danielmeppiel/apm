@@ -254,7 +254,8 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
     assert evidence.exists(), result.stdout + result.stderr
     events = [json.loads(line) for line in evidence.read_text(encoding="utf-8").splitlines()]
     record_property("native_operations", json.dumps(events, sort_keys=True))
-    failures = [event for event in events if "winerror" in event]
+    held_paths = {event["path"] for event in events if event["operation"].startswith("held-")}
+    failures = [event for event in events if "winerror" in event and event["path"] in held_paths]
     assert failures and failures[0]["winerror"] in {5, 32}, events
     assert all(event["winerror"] in {5, 32, 145} for event in failures), events
     assert result.returncode == 1, result.stdout + result.stderr
@@ -285,12 +286,19 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
     assert failures[0]["error"] in output, output
     if mode != "transient":
         assert len(failures) >= 2, events
-        cleanup_failure = next(
-            event
-            for event in failures
-            if event["operation"] in {"unlink", "rmdir"} and event["winerror"] in {5, 32}
-        )
-        assert cleanup_failure["error"] in output, output
+        if mode == "restore-denied":
+            recovery_failure = next(
+                event
+                for event in failures
+                if event["operation"] == "replace" and "backups" in Path(event["path"]).parts
+            )
+        else:
+            recovery_failure = next(
+                event
+                for event in failures
+                if event["operation"] in {"unlink", "rmdir"} and event["winerror"] in {5, 32}
+            )
+        assert recovery_failure["error"] in output, output
         assert "recover" in output.lower(), output
     _success(_run(scenario, consumer, source.environment))
     _assert_pin(consumer, sha)

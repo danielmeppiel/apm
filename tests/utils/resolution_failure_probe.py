@@ -51,8 +51,11 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
     original_unlink = os.unlink
     handles: list[tuple[ctypes.CDLL, int]] = []
     activated = False
+    observed_root: Path | None = None
 
     def record(operation: str, path: Path, error: OSError | None = None) -> None:
+        if observed_root is None or not path.is_relative_to(observed_root):
+            return
         event = {"operation": operation, "path": str(path)}
         if error is not None:
             event.update(error=str(error), winerror=error.winerror)
@@ -64,9 +67,10 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
             release_directory(handles.pop())
 
     def replace(path: Path, target: Path) -> Path:
-        nonlocal activated
+        nonlocal activated, observed_root
         if Path(target) == destination and path.parent.name == "replacements" and not activated:
             activated = True
+            observed_root = path.parent.parent
             handles.append(hold_path(path))
             record("held-candidate", path)
             if mode == "restore-denied":
@@ -104,10 +108,12 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
         original_checkout = github_downloader.checkout_git_worktree
 
         def checkout(worktree: Path, ref: str, **kwargs: object) -> None:
+            nonlocal observed_root
             if worktree.parent.name == "replacements" and not handles:
                 if not (worktree / "apm.yml").is_file():
                     raise RuntimeError("Expected cloned package bytes before checkout denial")
                 index = worktree / ".git" / "index"
+                observed_root = worktree.parent.parent
                 handles.extend((hold_path(index), hold_path(worktree)))
                 record("held-download-index", index)
             try:
