@@ -231,16 +231,17 @@ MUTATIONS: tuple[CompoundMutation, ...] = (
     CompoundMutation(
         "target-consumer-rejects-rogue-resolver-import",
         TARGET_RULE,
-        "src/apm_cli/install/services.py",
+        "src/apm_cli/install/deployment_plan.py",
         _replace(
-            "from .target_filter import resolve_effective_package_targets\n",
+            "from .target_filter import log_package_target_restriction, resolve_effective_package_targets\n",
+            "from .target_filter import log_package_target_restriction\n"
             "from .rogue import resolve_effective_package_targets\n",
         ),
     ),
     CompoundMutation(
         "target-consumer-rejects-dead-canonical-evidence-for-rogue-binding",
         TARGET_RULE,
-        "src/apm_cli/install/services.py",
+        "src/apm_cli/install/deployment_plan.py",
         _replace(
             "    selection = resolve_effective_package_targets(\n",
             "    selection = rogue_resolve_effective_package_targets()\n"
