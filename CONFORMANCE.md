@@ -181,3 +181,4 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 
 ### req-mf-016
 - Path-shape negative test requires apm_cli's path-policy loader to be invokable from the test harness; the JSON Schema currently models `path` as a free-form string. Tracked as a follow-up: tighten the schema to forbid leading `/` and document the absolute-path rejection in the schema additionalProperties.
+
