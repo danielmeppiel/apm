@@ -213,14 +213,17 @@ normalized native entry actually written in the MCP URI row's existing
 `content_hash`. Cleanup verifies against this retained receipt without a
 registry lookup. Older registry rows with null hashes remain unverified and
 protected. This records no duplicate secret values and requires no new
-lockfile field or version.
+lockfile field or version. Full APM dependency lockfile rebuilds retain these
+receipts, including `apm install --only apm`.
 
 Partial self-defined conflicts in ordinary installs or bundle application
 preserve prior retirement/deferred-cleanup entries and claims and unrelated
 owners, without restoring ownership revoked by the current attempt. Registry
 writes preceding a self-defined install conflict retain their receipts and
 ownership even when install exits `1`. Bundle MCP declarations support only
-self-defined connections, not registry references.
+self-defined connections, not registry references. A registry conflict does
+not skip later registry groups or self-defined updates: successful writes
+and their stored baselines remain aligned before the command reports failure.
 
 `owners` and `active_owner` must each resolve to a member of the **valid
 owner universe** for that lockfile: every current key in `dependencies`,

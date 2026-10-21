@@ -21,7 +21,11 @@ from apm_cli.core.apm_yml import (
 )
 from apm_cli.core.null_logger import NullCommandLogger
 from apm_cli.core.target_catalog import accepted_target_values
-from apm_cli.install.errors import InstallFailureAlreadyRendered, RequiredIntegrationError
+from apm_cli.install.errors import (
+    InstallFailureAlreadyRendered,
+    MCPNativeConflictError,
+    RequiredIntegrationError,
+)
 from apm_cli.runtime.utils import find_runtime_binary
 from apm_cli.utils.console import STATUS_SYMBOLS
 from apm_cli.utils.yaml_io import load_yaml
@@ -188,7 +192,6 @@ def _install_registry_group(  # noqa: PLR0913
     """
     # Lazy import: only available after MCPIntegrator finishes loading.
     from apm_cli.factory import ClientFactory
-    from apm_cli.install.errors import MCPNativeConflictError
     from apm_cli.install.mcp.ownership import (
         NativeMcpConnectionState,
         compare_native_mcp_connection,
@@ -1064,7 +1067,6 @@ def _install_self_defined_deps(
     Mutates ``servers_to_update`` and ``successful_updates`` in-place.
     Returns the number of servers newly configured or updated.
     """
-    from apm_cli.install.errors import MCPNativeConflictError
     from apm_cli.install.mcp.ownership import (
         NativeMcpConnectionState,
         compare_native_mcp_connection,
@@ -1475,6 +1477,7 @@ def run_mcp_install(  # noqa: PLR0913
     # Use the new registry operations module for better server detection
     configured_count = 0
     written_connections: set[tuple[str, str]] = set()
+    native_conflicts: list[str] = []
 
     # --- Registry-based deps ---
     if registry_dep_names:
@@ -1520,26 +1523,29 @@ def run_mcp_install(  # noqa: PLR0913
                     )
                 else:
                     operations = MCPServerOperations(registry_url=group_registry_url)
-                configured_count += _install_registry_group(
-                    operations=operations,
-                    group_dep_names=group_dep_names,
-                    group_dep_map=group_dep_map,
-                    group_deps=group_deps_list,
-                    target_runtimes=target_runtimes,
-                    stored_mcp_configs=stored_mcp_configs,
-                    servers_to_update=servers_to_update,
-                    successful_updates=successful_updates,
-                    project_root=project_root,
-                    user_scope=user_scope,
-                    verbose=verbose,
-                    console=console,
-                    logger=logger,
-                    managed_target_servers=managed_target_servers,
-                    prevalidated_servers=group_prevalidated,
-                    fail_on_write_error=fail_on_write_error,
-                    native_hashes=native_hashes,
-                    written_connections=written_connections,
-                )
+                try:
+                    configured_count += _install_registry_group(
+                        operations=operations,
+                        group_dep_names=group_dep_names,
+                        group_dep_map=group_dep_map,
+                        group_deps=group_deps_list,
+                        target_runtimes=target_runtimes,
+                        stored_mcp_configs=stored_mcp_configs,
+                        servers_to_update=servers_to_update,
+                        successful_updates=successful_updates,
+                        project_root=project_root,
+                        user_scope=user_scope,
+                        verbose=verbose,
+                        console=console,
+                        logger=logger,
+                        managed_target_servers=managed_target_servers,
+                        prevalidated_servers=group_prevalidated,
+                        fail_on_write_error=fail_on_write_error,
+                        native_hashes=native_hashes,
+                        written_connections=written_connections,
+                    )
+                except MCPNativeConflictError as exc:
+                    native_conflicts.append(str(exc))
 
         except ImportError:
             logger.warning("Registry operations not available")
@@ -1548,21 +1554,29 @@ def run_mcp_install(  # noqa: PLR0913
 
     # --- Self-defined deps (registry: false) ---
     if self_defined_deps:
-        configured_count += _install_self_defined_deps(
-            self_defined_deps=self_defined_deps,
-            target_runtimes=target_runtimes,
-            stored_mcp_configs=stored_mcp_configs,
-            servers_to_update=servers_to_update,
-            successful_updates=successful_updates,
-            project_root=project_root,
-            user_scope=user_scope,
-            verbose=verbose,
-            console=console,
-            logger=logger,
-            managed_target_servers=managed_target_servers,
-            fail_on_write_error=fail_on_write_error,
-            native_hashes=native_hashes,
-            written_connections=written_connections,
+        try:
+            configured_count += _install_self_defined_deps(
+                self_defined_deps=self_defined_deps,
+                target_runtimes=target_runtimes,
+                stored_mcp_configs=stored_mcp_configs,
+                servers_to_update=servers_to_update,
+                successful_updates=successful_updates,
+                project_root=project_root,
+                user_scope=user_scope,
+                verbose=verbose,
+                console=console,
+                logger=logger,
+                managed_target_servers=managed_target_servers,
+                fail_on_write_error=fail_on_write_error,
+                native_hashes=native_hashes,
+                written_connections=written_connections,
+            )
+        except MCPNativeConflictError as exc:
+            native_conflicts.append(str(exc))
+
+    if native_conflicts:
+        raise MCPNativeConflictError(
+            "\n".join(native_conflicts), wrote_connections=bool(written_connections)
         )
 
     # Close the panel

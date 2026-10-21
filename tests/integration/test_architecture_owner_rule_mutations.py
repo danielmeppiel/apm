@@ -1927,6 +1927,11 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
             "state = noncanonical_comparison(\n                            client,\n"
             "                            dep,",
         ),
+        (
+            "src/apm_cli/install/phases/lockfile.py",
+            "native_hashes=DeploymentLedgerCodec.mcp_native_hashes(",
+            "native_hashes=DeploymentLedgerCodec.unverified_mcp_native_hashes(",
+        ),
     ],
     ids=[
         "legacy-resolver",
@@ -1942,6 +1947,7 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
         "actual-write-fingerprint",
         "bundle-deferred-claims",
         "registry-install-routing",
+        "rebuild-receipt-routing",
     ],
 )
 def test_native_mcp_ownership_boundary_mutations(path: str, old: str, new: str) -> None:

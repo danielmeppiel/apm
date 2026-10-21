@@ -91,6 +91,8 @@ native `${env:NAME}` references and preserve other fields and servers.
 
 Self-defined Claude/Codex MCP conflicts preserve differing native entries and
 exit `1`; successful writes, including earlier registry writes, stay managed.
+Registry conflicts do not skip nonconflicting self-defined updates. Full APM
+lockfile rebuilds, including `--only apm`, retain prior MCP write receipts.
 `--force` cannot take over a foreign connection; `--frozen` cannot certify it.
 Rename or remove only the conflicting native entry, then retry with the same
 scope and targets. Do not delete the lockfile to bypass ownership checks.

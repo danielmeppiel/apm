@@ -328,10 +328,22 @@ def check_mcp_ownership_migration(provider: FactsProvider) -> tuple[Violation, .
         ),
         ("src/apm_cli/adapters/client/claude.py", "configure_mcp_server", "mcp_native_hash"),
         ("src/apm_cli/adapters/client/codex.py", "configure_mcp_server", "mcp_native_hash"),
+        (
+            "src/apm_cli/install/phases/lockfile.py",
+            "_preserve_existing_mcp_state",
+            "DeploymentLedgerCodec.mcp_native_hashes",
+        ),
     ):
         facts, failures = _facts_for(provider, path, rule_id)
         findings.extend(failures)
-        if not failures and required_call not in _name_calls_in(facts, function):
+        if (
+            not failures
+            and required_call not in _name_calls_in(facts, function)
+            and not any(
+                call.scope == function and call.qualname == required_call
+                for call in getattr(facts, "calls", ())
+            )
+        ):
             findings.append(
                 _summary(
                     rule_id,

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 import tomlkit
@@ -531,6 +532,71 @@ def test_fresh_registry_write_can_be_retired_without_new_lookup(
     _success(scenario.install(targets=target))
     assert scenario.servers(target) == {}
     assert scenario.lock().mcp_target_servers == {}
+
+
+@pytest.mark.parametrize("target", ["claude", "codex"])
+def test_registry_receipt_survives_package_lock_rebuild(
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario], apm_binary_path: Path, target: str
+) -> None:
+    """An actual APM dependency exercises the full lockfile-builder path."""
+    from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
+
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
+    package = LocalPackageFactory(scenario.isolated.work_root / "packages").create("receipt-owner")
+    with _registry(scenario) as registry:
+        scenario.declare([{"name": "io.example/registered", "registry": registry.url}])
+        _success(scenario.install(str(package.root), targets=target))
+        assert scenario.lock().dependencies
+        receipts = DeploymentLedgerCodec.mcp_native_hashes(scenario.lock())
+        assert receipts[target]["io.example/registered"].startswith("sha256:")
+        native_before = scenario.path(target).read_bytes()
+        for flags in (("--only", "apm"), ()):
+            _success(scenario.install(*flags, targets=target))
+            assert DeploymentLedgerCodec.mcp_native_hashes(scenario.lock()) == receipts
+            assert scenario.lock().mcp_target_servers == {target: ["io.example/registered"]}
+            assert scenario.path(target).read_bytes() == native_before
+    scenario.declare([])
+    _success(scenario.install(targets=target))
+    assert scenario.servers(target) == {}
+    assert scenario.lock().dependencies
+
+
+@pytest.mark.parametrize("foreign_target", ["claude", "codex"])
+def test_registry_partial_conflict_does_not_skip_managed_self_defined_update(
+    scenario_factory: Callable[[ApmLifecycleRunner], _Scenario],
+    apm_binary_path: Path,
+    foreign_target: str,
+) -> None:
+    """A failed registry target cannot publish an unattempted self-defined baseline."""
+    scenario = scenario_factory(ApmLifecycleRunner((str(apm_binary_path),)))
+    scenario.declare([_http()])
+    _success(scenario.install())
+    personal = {"url": "http://127.0.0.1:9/personal"}
+    if foreign_target == "claude":
+        personal["type"] = "http"
+    scenario.edit(foreign_target, "registered", personal)
+    updated = _http("http://127.0.0.1:8000/updated")
+    with _registry(scenario) as registry:
+        scenario.declare([{"name": "io.example/registered", "registry": registry.url}, updated])
+        partial = scenario.install()
+        assert partial.returncode == 1, partial.stdout + partial.stderr
+        for target in ("claude", "codex"):
+            assert urlparse(scenario.servers(target)["notes"]["url"]) == urlparse(updated["url"])
+        assert scenario.servers(foreign_target)["registered"] == personal
+        assert urlparse(scenario.lock().mcp_configs["notes"]["url"]) == urlparse(updated["url"])
+        assert scenario.lock().mcp_target_servers[foreign_target] == ["notes"]
+        written_target = "codex" if foreign_target == "claude" else "claude"
+        assert scenario.lock().mcp_target_servers[written_target] == [
+            "io.example/registered",
+            "notes",
+        ]
+        scenario.edit(
+            foreign_target,
+            "registered",
+            {**personal, "url": "http://127.0.0.1:8000/registered"},
+        )
+        _success(scenario.install())
+        assert scenario.lock().mcp_target_servers[foreign_target] == ["notes"]
 
 
 @pytest.mark.parametrize("target", ["claude", "codex"])

@@ -217,6 +217,8 @@ even if Codex succeeds. Choose which connection to keep:
 
 An identical foreign connection stays byte-identical and unowned: APM revokes
 any stale ownership claim without attempting target retirement.
+Registry conflicts do not prevent nonconflicting self-defined updates; the
+command still exits `1` and retains ownership of its successful writes.
 `--force` grants no takeover permission; `--frozen` does not turn a conflicting
 connection into a successful install or repair lock intent. Prune, target
 narrowing, and uninstall likewise preserve entries that differ from a
