@@ -41,6 +41,36 @@ REQUEST_DEFAULTS_RULE = "install-deployment-request-defaults"
 
 MUTATIONS: tuple[CompoundMutation, ...] = (
     CompoundMutation(
+        "absent-claim-discovery-receipt",
+        BASE_RULE,
+        "src/apm_cli/install/services.py",
+        _replace("source_plan.skill_discovery_complete is True", "True"),
+    ),
+    CompoundMutation(
+        "absent-claim-materialization-receipt",
+        BASE_RULE,
+        "src/apm_cli/install/services.py",
+        _replace("skill_result.complete is True", "True"),
+    ),
+    CompoundMutation(
+        "absent-claim-receipt-owner",
+        BASE_RULE,
+        "src/apm_cli/install/services.py",
+        _replace(
+            'result["completed_reintegration"] = CompletedReintegration(\n            owner=package_name,',
+            "result[\"completed_reintegration\"] = CompletedReintegration(\n            owner='other',",
+        ),
+    ),
+    CompoundMutation(
+        "absent-claim-receipt-processed-targets",
+        BASE_RULE,
+        "src/apm_cli/install/services.py",
+        _replace(
+            'target.name for target in projection_targets if target.supports("skills")',
+            "target.name for target in projection_targets if True",
+        ),
+    ),
+    CompoundMutation(
         "absent-claim-canonical-decision",
         CONTRACTION_RULE,
         "src/apm_cli/core/deployment_state.py",

@@ -181,6 +181,7 @@ def check_base_integrator(provider: FactsProvider) -> tuple[Violation, ...]:
                 "Skill ownership must consume successful source members, not destination inventory",
             )
         )
+    failures.extend(_skill_completion_receipt_messages(provider, rule_id))
     return tuple(failures)
 
 
@@ -547,6 +548,48 @@ def _records_values_call(node: ast.AST) -> bool:
         and isinstance(node.func.value, ast.Attribute)
         and node.func.value.attr == "records"
     )
+
+
+def _skill_completion_receipt_messages(provider: FactsProvider, rule_id: str) -> list[Violation]:
+    """Bind absence authority to the public discovery and materialization producers."""
+    path = "src/apm_cli/install/services.py"
+    index = provider.tree_index(path)
+    function = index.function("integrate_package_primitives") if index is not None else None
+    expected = {
+        "owner": "package_name",
+        "targets": "frozenset((target.name for target in projection_targets if target.supports('skills')))",
+        "current_values": "frozenset(deployed)",
+        "skill_values": (
+            "frozenset((_deployed_path_entry(path, project_root, targets) "
+            "for path in skill_result.deployed_files))"
+        ),
+    }
+    for node in index.walk(function) if function is not None else ():
+        if not isinstance(node, ast.If) or ast.unparse(node.test) != (
+            "source_plan.skill_discovery_complete is True and skill_result.complete is True"
+        ):
+            continue
+        for statement in node.body:
+            if (
+                isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and ast.unparse(statement.targets[0]) == "result['completed_reintegration']"
+                and isinstance(statement.value, ast.Call)
+                and _call_name(statement.value) == "CompletedReintegration"
+                and {
+                    keyword.arg: ast.unparse(keyword.value) for keyword in statement.value.keywords
+                }
+                == expected
+            ):
+                return []
+    return [
+        _summary(
+            rule_id,
+            path,
+            "absent-claim receipts require positive public discovery/materialization, "
+            "the package owner, processed skill targets and source-backed members",
+        )
+    ]
 
 
 def _locator_field(node: ast.AST, field: str) -> bool:
@@ -969,6 +1012,9 @@ def _cleanup_claim_findings(provider: FactsProvider, rule_id: str) -> list[Viola
                 "DeploymentReconciler.reconcile_package_claims(",
                 "DeploymentReconciler.current_claimed_paths(current_claims)",
                 "files, _ = union_preserving(",
+                "intent=DeploymentIntent(",
+                "desired_owners=None,",
+                "authoritative_targets=owner not in failed_owners,",
             )
         )
     ):

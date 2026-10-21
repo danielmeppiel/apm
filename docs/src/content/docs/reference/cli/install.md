@@ -146,15 +146,18 @@ still cleans up its managed files, subject to the usual user-edit protections.
   the affected dependency, not a deletion location. Cleanup removes deployed
   files; a local dependency's source directory is not cleaned.
 
-- **Historical missing-file claims.** A normal install can retain a historical
-  dependency entry even after its file disappears. Missing bytes, a saved hash,
-  or a skills-directory prefix alone do not prove that the dependency no longer
-  deploys that path. Automatic repair of these obsolete claims is not yet
-  available; check which files the dependency currently deploys when
-  investigating the audit report. Audit reports these claims without repairing
-  ownership metadata; `--frozen` does not repair them either.
-  Still-present content does not become safe
-  to delete or adopt merely because its ownership is unclear.
+- **Historical missing-file claims.** Normal `apm install` retires an obsolete
+  dependency file claim and its hash when the file is already absent and
+  complete source discovery and successful skill deployment prove it is no
+  longer shipped within a current source-backed skill. This also repairs older
+  locks with `legacy` target records or no deployment ledger, without a lock
+  reset or uninstall/reinstall.
+  Other owners, unprocessed targets and incomplete deployments remain protected.
+  Missing bytes, a saved hash or a directory prefix alone are not proof;
+  unresolved claims still appear in audit. Still-present content with unclear
+  ownership is not deleted or adopted by this repair. Audit is read-only;
+  `--frozen` neither repairs these claims nor accepts changed local sources.
+  After ordinary repair, unchanged frozen replay remains supported.
 
 - **Immutable dependency conflicts.** Install fails when two paths require
   different immutable commits for one package identity, showing both paths and

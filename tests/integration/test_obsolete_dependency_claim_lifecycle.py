@@ -26,7 +26,9 @@ pytestmark = [
 
 @pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
 @pytest.mark.parametrize("historical", ["legacy", "compatibility", "concrete"])
-@pytest.mark.parametrize("already_absent", [False, True], ids=["source-removal", "already-absent"])
+@pytest.mark.parametrize(
+    "already_absent", [False, True], ids=["present-then-absent", "already-absent"]
+)
 def test_ordinary_install_retires_obsolete_absent_dependency_claims(
     tmp_path: Path,
     apm_binary_path: Path,
@@ -95,6 +97,16 @@ def test_ordinary_install_retires_obsolete_absent_dependency_claims(
         dump_yaml(baseline, lock_path)
 
     extra.unlink()
+    if not already_absent and historical != "concrete":
+        # Source removal alone cannot authorize deletion of an unattributed file.
+        run(*install)
+        retained = load_yaml(lock_path)
+        shared = ".agents/skills/demo/extra.md"
+        assert (deploy_root / shared).read_bytes() == b"Old dependency asset.\n"
+        assert shared in retained["dependencies"][0]["deployed_files"]
+        assert shared in retained["dependencies"][0]["deployed_file_hashes"]
+        assert any(row["value"] == shared for row in retained["deployments"])
+        (deploy_root / shared).unlink()
     if already_absent:
         for path in obsolete:
             (deploy_root / path).unlink()

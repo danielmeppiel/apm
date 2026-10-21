@@ -58,6 +58,7 @@
       "selectors": [
         "src/apm_cli/install/manifest_reconcile.py",
         "src/apm_cli/install/helpers/absence_observation.py",
+        "src/apm_cli/install/helpers/reconciliation_scope.py",
         "src/apm_cli/core/deployment_state.py"
       ],
       "guards": ["install-deployment-target-file-contraction"]
@@ -148,7 +149,7 @@
     {
       "id": "file-level-deploy-sync-cleanup",
       "decision": "File-level deploy / sync / cleanup",
-      "owner": "BaseIntegrator (successful source-member inventory and skip outcomes via copy_directory_files; SkillIntegrationResult completion after rewrite/hash; see integrators.instructions.md)",
+      "owner": "BaseIntegrator (successful source-member inventory and skip outcomes via copy_directory_files; SkillIntegrationResult completion after rewrite/hash; services consumes positive public completion into owner-scoped receipts; see integrators.instructions.md)",
       "selectors": [
         "src/apm_cli/integration/base_integrator.py",
         "src/apm_cli/install/services.py"

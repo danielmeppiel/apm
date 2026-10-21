@@ -692,6 +692,20 @@ def integrate_package_primitives(  # noqa: PLR0913
     deployed.extend(
         _deployed_path_entry(path, project_root, targets) for path in skill_result.deployed_files
     )
+    if source_plan.skill_discovery_complete is True and skill_result.complete is True:
+        from apm_cli.core.deployment_state import CompletedReintegration
+
+        result["completed_reintegration"] = CompletedReintegration(
+            owner=package_name,
+            targets=frozenset(
+                target.name for target in projection_targets if target.supports("skills")
+            ),
+            current_values=frozenset(deployed),
+            skill_values=frozenset(
+                _deployed_path_entry(path, project_root, targets)
+                for path in skill_result.deployed_files
+            ),
+        )
 
     # A3: warm-cache visibility. If nothing was integrated for any kind AND
     # no skill was created, emit one annotation so the user knows the dep

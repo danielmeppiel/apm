@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Document the proposed absent dependency-claim repair in `docs/src/content/docs/specs/openapm-v0.1.md` and add its inactive consumer safeguards; historical-lock repair remains unavailable until complete reintegration evidence is connected and qualified. (#3315)
+- Repair obsolete already-absent dependency file claims during ordinary install after complete source-backed skill reintegration, including historical locks, while preserving other owners, unprocessed targets, still-present content and frozen protections. (#3315)
 
 ### Fixed
 
