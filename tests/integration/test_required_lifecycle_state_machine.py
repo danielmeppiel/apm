@@ -504,7 +504,7 @@ def test_required_codex_legacy_header_noop_and_declaration_repair(
     apm_binary_path: Path,
     scope: str,
 ) -> None:
-    """An unchanged legacy render is not migrated; a source rewrite repairs it."""
+    """Legacy headers and native edits survive until the operator reconciles them."""
     scenario = _new_scenario(tmp_path / "codex-headers", apm_binary_path)
     consumer, manifest_path, config_path, opposite_path, args = _codex_header_lifecycle(
         scenario, scope
@@ -522,7 +522,8 @@ def test_required_codex_legacy_header_noop_and_declaration_repair(
         environment=scenario.environment,
         scenario_id="codex-legacy-header-install",
     )
-    # Seed the bytes emitted by the old formatter, retaining real install ownership.
+    baseline = config_path.read_bytes()
+    # Old header spelling plus a manual addition is not a verifiable managed baseline.
     legacy = tomlkit.parse(config_path.read_text(encoding="utf-8"))
     server = legacy["mcp_servers"]["runtime-headers"]
     del server["env_http_headers"]
@@ -530,13 +531,16 @@ def test_required_codex_legacy_header_noop_and_declaration_repair(
     server["startup_timeout_sec"] = 91
     config_path.write_text(tomlkit.dumps(legacy), encoding="utf-8")
     before = _codex_header_snapshot(manifest_path, config_path)
-    _run_success(
-        scenario,
-        consumer,
-        args,
-        environment=scenario.environment,
-        scenario_id="codex-legacy-header-unchanged-noop",
-    )
+    for flags in ((), ("--force",), ("--frozen",)):
+        result = scenario.runner.run(
+            (*args, *flags),
+            cwd=consumer.root,
+            env=scenario.environment,
+            scenario_id="codex-legacy-header-unchanged-conflict",
+        )
+        assert result.returncode != 0, _result_evidence(result)
+        assert "conflicts with the existing codex" in result.stdout
+        assert _codex_header_snapshot(manifest_path, config_path) == before
     unchanged = _codex_header_snapshot(manifest_path, config_path)
     assert unchanged.files == before.files
     assert unchanged.lockfile_bytes == before.lockfile_bytes
@@ -545,6 +549,21 @@ def test_required_codex_legacy_header_noop_and_declaration_repair(
     assert opposite_path.read_bytes() == opposite_bytes
 
     _rewrite_codex_headers(manifest_path, {"X-Runtime": "${env:APM_TEST_HEADER}"})
+    changed = _codex_header_snapshot(manifest_path, config_path)
+    for flags in ((), ("--force",)):
+        result = scenario.runner.run(
+            (*args, *flags),
+            cwd=consumer.root,
+            env=scenario.environment,
+            scenario_id="codex-legacy-header-declaration-conflict",
+        )
+        assert result.returncode != 0, _result_evidence(result)
+        assert "conflicts with the existing codex" in result.stdout
+        assert _codex_header_snapshot(manifest_path, config_path) == changed
+        assert opposite_path.read_bytes() == opposite_bytes
+        assert unrelated_file.read_bytes() == unrelated_bytes
+
+    config_path.write_bytes(baseline)
     _run_success(
         scenario,
         consumer,
@@ -558,7 +577,7 @@ def test_required_codex_legacy_header_noop_and_declaration_repair(
     assert "http_headers" not in server
     assert "bearer_token_env_var" not in server
     assert "env" not in server
-    # A changed declaration replaces its selected entry, including manual additions.
+    # Only the operator removed the manual addition before this managed update.
     assert "startup_timeout_sec" not in server
     assert scenario.environment["APM_TEST_HEADER"] not in config_path.read_text(encoding="utf-8")
     assert repaired["model"] == "user-selected-model"
