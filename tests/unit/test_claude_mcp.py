@@ -290,6 +290,203 @@ def test_normalize_sse_and_streamable_http(transport):
     assert "tools" not in out
 
 
+class TestClaudeTransportChange(unittest.TestCase):
+    """Redeclaring one server under another transport rewrites its shape."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / ".claude").mkdir()
+        self.adapter = ClaudeClientAdapter(project_root=self.root, user_scope=False)
+        self.mcp_path = self.root / ".mcp.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _entry(self, name="srv"):
+        return json.loads(self.mcp_path.read_text(encoding="utf-8"))["mcpServers"][name]
+
+    def test_remote_to_stdio_drops_url_and_headers(self):
+        """A remote entry redeclared as stdio keeps no URL or credential.
+
+        A surviving ``url`` also re-classifies the entry as remote, so the
+        stdio normalisation would never run and Copilot's ``type: "local"``
+        would reach disk.
+        """
+        self.adapter.update_config(
+            {
+                "srv": {
+                    "type": "http",
+                    "url": "https://example.com/mcp",
+                    "headers": {"Authorization": "Bearer secret"},
+                }
+            }
+        )
+        self.adapter.update_config(
+            {"srv": {"type": "local", "command": "npx", "args": ["-y", "srv-mcp"]}}
+        )
+        srv = self._entry()
+        self.assertEqual(srv["type"], "stdio")
+        self.assertEqual(srv["command"], "npx")
+        self.assertNotIn("url", srv)
+        self.assertNotIn("headers", srv)
+
+    def test_stdio_to_remote_drops_command_args_env_cwd(self):
+        self.adapter.update_config(
+            {
+                "srv": {
+                    "type": "local",
+                    "command": "npx",
+                    "args": ["-y", "srv-mcp"],
+                    "env": {"TOKEN": "secret"},
+                    "cwd": "/tmp/srv",
+                }
+            }
+        )
+        self.adapter.update_config({"srv": {"type": "http", "url": "https://example.com/mcp"}})
+        srv = self._entry()
+        self.assertEqual(srv["type"], "http")
+        self.assertEqual(srv["url"], "https://example.com/mcp")
+        for key in ("command", "args", "env", "cwd"):
+            self.assertNotIn(key, srv)
+
+    def test_transport_change_preserves_unmanaged_keys(self):
+        """Hand-authored keys describe no transport, so they survive."""
+        self.mcp_path.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "srv": {
+                            "type": "http",
+                            "url": "https://example.com/mcp",
+                            "oauthAccount": {"accountUuid": "abc"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.adapter.update_config({"srv": {"type": "local", "command": "npx"}})
+        srv = self._entry()
+        self.assertEqual(srv["oauthAccount"], {"accountUuid": "abc"})
+        self.assertNotIn("url", srv)
+
+    def test_mixed_entry_from_earlier_release_is_repaired(self):
+        """An entry already carrying both transports is cleaned, not matched.
+
+        Releases that merged unconditionally left entries describing both
+        transports at once. Such an entry classifies as remote on its own
+        ``url``, so a comparison against the update would call the transport
+        unchanged and keep the stdio keys forever.
+        """
+        self.mcp_path.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "srv": {
+                            "type": "http",
+                            "url": "https://example.com/mcp",
+                            "command": "npx",
+                            "args": ["-y", "srv-mcp"],
+                            "env": {"TOKEN": "leftover"},
+                            "cwd": "/tmp/srv",
+                            "oauthAccount": {"accountUuid": "abc"},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.adapter.update_config({"srv": {"type": "http", "url": "https://example.com/mcp"}})
+        srv = self._entry()
+        self.assertEqual(srv["type"], "http")
+        self.assertEqual(srv["oauthAccount"], {"accountUuid": "abc"})
+        for key in ("command", "args", "env", "cwd"):
+            self.assertNotIn(key, srv)
+
+    def test_mixed_entry_repaired_towards_stdio(self):
+        """The same repair applies when the update declares stdio."""
+        self.mcp_path.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "srv": {
+                            "type": "local",
+                            "url": "https://example.com/mcp",
+                            "headers": {"Authorization": "Bearer leftover"},
+                            "command": "npx",
+                            "args": ["-y", "srv-mcp"],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.adapter.update_config({"srv": {"type": "local", "command": "npx"}})
+        srv = self._entry()
+        self.assertEqual(srv["type"], "stdio")
+        self.assertNotIn("url", srv)
+        self.assertNotIn("headers", srv)
+
+    def test_unchanged_transport_still_shallow_merges(self):
+        """Without a transport change the entry keeps keys the update omits."""
+        self.mcp_path.write_text(
+            json.dumps(
+                {"mcpServers": {"srv": {"type": "stdio", "command": "old", "cwd": "/tmp/srv"}}}
+            ),
+            encoding="utf-8",
+        )
+        self.adapter.update_config({"srv": {"type": "local", "command": "new"}})
+        srv = self._entry()
+        self.assertEqual(srv["command"], "new")
+        self.assertEqual(srv["cwd"], "/tmp/srv")
+
+
+@pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
+@pytest.mark.parametrize(
+    ("previous", "update", "expected"),
+    [
+        (
+            {"type": "http", "url": "https://example.invalid/mcp", "headers": {"X-Key": "old"}},
+            {"headers": {"X-Key": "new"}},
+            {"type": "http", "url": "https://example.invalid/mcp", "headers": {"X-Key": "new"}},
+        ),
+        (
+            {"type": "sse", "url": "https://example.invalid/old"},
+            {"url": "https://example.invalid/new"},
+            {"type": "sse", "url": "https://example.invalid/new"},
+        ),
+        (
+            {"type": "stdio", "command": "python", "args": ["old"], "cwd": "/fixture"},
+            {"args": ["new"]},
+            {"type": "stdio", "command": "python", "args": ["new"], "cwd": "/fixture"},
+        ),
+    ],
+    ids=["http-headers", "sse-url", "stdio-args"],
+)
+def test_partial_updates_preserve_transport(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    user_scope: bool,
+    previous: dict,
+    update: dict,
+    expected: dict,
+) -> None:
+    """Partial and repeated writes preserve compatible fields and their order."""
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    (tmp_path / ".claude").mkdir()
+    adapter = ClaudeClientAdapter(project_root=tmp_path, user_scope=user_scope)
+    assert adapter.update_config({"srv": previous}) is True
+    config_path = Path(adapter.get_config_path())
+    initial_bytes = config_path.read_bytes()
+    assert adapter.update_config({"srv": previous}) is True
+    assert config_path.read_bytes() == initial_bytes
+    assert adapter.update_config({"srv": update}) is True
+    document = json.loads(config_path.read_text(encoding="utf-8"))
+    assert document["mcpServers"]["srv"] == expected
+    assert tuple(document["mcpServers"]["srv"]) == tuple(expected)
+
+
 class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
     """``MCPIntegrator.remove_stale`` for Claude project / user files."""
 
@@ -336,7 +533,10 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
     def test_remove_stale_claude_user_claude_json(self):
         from apm_cli.integration.mcp_integrator import MCPIntegrator
 
-        with patch.object(Path, "home", return_value=self.root):
+        with (
+            patch.object(Path, "home", return_value=self.root),
+            patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": ""}),
+        ):
             cfg = self.root / ".claude.json"
             cfg.write_text(
                 json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}),
@@ -346,6 +546,130 @@ class TestMCPIntegratorClaudeStaleCleanup(unittest.TestCase):
             data = json.loads(cfg.read_text(encoding="utf-8"))
             self.assertIn("keep", data["mcpServers"])
             self.assertNotIn("stale", data["mcpServers"])
+
+    def test_remove_stale_claude_user_honors_claude_config_dir(self):
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        custom_claude_dir = self.root / "custom-claude"
+        custom_claude_dir.mkdir()
+        custom_cfg = custom_claude_dir / ".claude.json"
+        custom_cfg.write_text(
+            json.dumps({"mcpServers": {"keep": {"command": "k"}, "stale": {"command": "s"}}}),
+            encoding="utf-8",
+        )
+
+        with patch.object(Path, "home", return_value=self.root):
+            default_cfg = self.root / ".claude.json"
+            default_cfg.write_text(
+                json.dumps({"mcpServers": {"default_srv": {"command": "d"}}}),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(custom_claude_dir)}):
+                MCPIntegrator.remove_stale({"stale"}, runtime="claude", scope=InstallScope.USER)
+
+            custom_data = json.loads(custom_cfg.read_text(encoding="utf-8"))
+            self.assertIn("keep", custom_data["mcpServers"])
+            self.assertNotIn("stale", custom_data["mcpServers"])
+
+            default_data = json.loads(default_cfg.read_text(encoding="utf-8"))
+            self.assertIn("default_srv", default_data["mcpServers"])
+
+    def test_remove_stale_claude_user_preserves_unrelated_settings(self):
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        custom_claude_dir = self.root / "custom-claude"
+        custom_claude_dir.mkdir()
+        custom_cfg = custom_claude_dir / ".claude.json"
+        custom_cfg.write_text(
+            json.dumps(
+                {
+                    "projects": {"/path/to/project": {"allowedTools": ["Bash"]}},
+                    "mcpServers": {
+                        "keep": {"command": "k"},
+                        "stale": {"command": "s"},
+                    },
+                    "theme": "dark",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(custom_claude_dir)}):
+            MCPIntegrator.remove_stale({"stale"}, runtime="claude", scope=InstallScope.USER)
+
+        data = json.loads(custom_cfg.read_text(encoding="utf-8"))
+        self.assertEqual(data["projects"], {"/path/to/project": {"allowedTools": ["Bash"]}})
+        self.assertEqual(data["theme"], "dark")
+        self.assertIn("keep", data["mcpServers"])
+        self.assertNotIn("stale", data["mcpServers"])
+
+    def test_remove_stale_claude_user_rejects_relative_claude_config_dir(self):
+        from apm_cli.install.errors import RequiredIntegrationError
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": "../relative-claude"}):
+            with self.assertRaises(RequiredIntegrationError):
+                MCPIntegrator.remove_stale(
+                    {"stale"},
+                    runtime="claude",
+                    scope=InstallScope.USER,
+                    fail_on_write_error=True,
+                )
+
+    def test_remove_stale_claude_user_rejects_symlink_config(self):
+        if os.name == "nt":
+            self.skipTest("Symlinks require elevated privileges on Windows")
+        from apm_cli.install.errors import RequiredIntegrationError
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        custom_claude_dir = self.root / "custom-claude"
+        custom_claude_dir.mkdir()
+        target = self.root / "target.json"
+        target_bytes = b'{"mcpServers": {"stale": {"command": "s"}}}'
+        target.write_bytes(target_bytes)
+        symlink_cfg = custom_claude_dir / ".claude.json"
+        symlink_cfg.symlink_to(target)
+
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(custom_claude_dir)}):
+            with self.assertRaises(RequiredIntegrationError) as ctx:
+                MCPIntegrator.remove_stale(
+                    {"stale"},
+                    runtime="claude",
+                    scope=InstallScope.USER,
+                    fail_on_write_error=True,
+                )
+            self.assertIn("symlinked MCP config", str(ctx.exception))
+
+        self.assertTrue(symlink_cfg.is_symlink())
+        self.assertEqual(target.read_bytes(), target_bytes)
+
+    def test_remove_stale_claude_user_rejects_symlinked_ancestor(self):
+        if os.name == "nt":
+            self.skipTest("Symlinks require elevated privileges on Windows")
+        from apm_cli.install.errors import RequiredIntegrationError
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+
+        real_dir = self.root / "real-claude"
+        real_dir.mkdir()
+        real_cfg = real_dir / ".claude.json"
+        target_bytes = b'{"mcpServers": {"stale": {"command": "s"}}}'
+        real_cfg.write_bytes(target_bytes)
+
+        symlink_dir = self.root / "symlink-claude"
+        symlink_dir.symlink_to(real_dir, target_is_directory=True)
+
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(symlink_dir)}):
+            with self.assertRaises(RequiredIntegrationError) as ctx:
+                MCPIntegrator.remove_stale(
+                    {"stale"},
+                    runtime="claude",
+                    scope=InstallScope.USER,
+                    fail_on_write_error=True,
+                )
+            self.assertIn("symlinked MCP config", str(ctx.exception))
+
+        self.assertTrue(symlink_dir.is_symlink())
+        self.assertEqual(real_cfg.read_bytes(), target_bytes)
 
     def test_remove_stale_scope_none_defaults_safely(self):
         """When scope is unspecified, only project .mcp.json is touched."""

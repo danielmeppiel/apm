@@ -120,7 +120,10 @@ class LocalDependencySource(DependencySource):
         from apm_cli.constants import APM_YML_FILENAME
         from apm_cli.core.scope import InstallScope
         from apm_cli.deps._shared import materialize_marketplace_manifest
-        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.installed_package import (
+            InstalledPackage,
+            extensions_from_resolved_package,
+        )
         from apm_cli.install.phases.local_content import _copy_local_package
         from apm_cli.models.apm_package import (
             APMPackage,
@@ -206,6 +209,9 @@ class LocalDependencySource(DependencySource):
         if logger:
             logger.download_complete(dep_ref.local_path, ref_suffix="local")
 
+        # Capture the validated copy before manifest synthesis or integration
+        # transforms it. Frozen preflight hashes this same materialization.
+        local_content_hash = _compute_hash(install_path)
         materialize_marketplace_manifest(dep_ref, install_path)
         validation = validate_apm_package(
             install_path,
@@ -261,10 +267,12 @@ class LocalDependencySource(DependencySource):
                 registry_config=None,
                 package_name=local_info.package.name if local_info.package else None,
                 package_version=local_info.package.version if local_info.package else None,
+                # req-ext-003: copy the dependency manifest's x-* keys.
+                extensions=extensions_from_resolved_package(local_info.package),
             )
         )
-        if install_path.is_dir() and not dep_ref.is_local:
-            ctx.package_hashes[dep_key] = _compute_hash(install_path)
+        if install_path.is_dir():
+            ctx.package_hashes[dep_key] = local_content_hash
 
         if local_info.package_type:
             ctx.package_types[dep_key] = local_info.package_type.value
@@ -344,7 +352,10 @@ class CachedDependencySource(DependencySource):
         from apm_cli.agent_plugins.errors import AgentPluginError
         from apm_cli.bundle.local_bundle import route_agent_plugin_package
         from apm_cli.constants import APM_YML_FILENAME
-        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.installed_package import (
+            InstalledPackage,
+            extensions_from_resolved_package,
+        )
         from apm_cli.install.legacy_plugin_compat import (
             preserve_normalized_marketplace_plugin_type,
             upgrade_cached_legacy_plugin,
@@ -383,8 +394,11 @@ class CachedDependencySource(DependencySource):
             _ref = _reg_res.version if _reg_res else (dep_ref.reference or "")
         else:
             _ref = dep_ref.reference or ""
-        # Prefer the lockfile SHA, then this run's callback SHA.
-        _sha = format_short_sha(dep_locked_chk.resolved_commit) if dep_locked_chk else ""
+        # Fresh callback bytes have their own identity, not the previous lock SHA.
+        _commit = ctx.callback_downloaded.get(dep_key) if self.fetched_this_run else None
+        if not _commit and dep_locked_chk:
+            _commit = dep_locked_chk.resolved_commit
+        _sha = format_short_sha(_commit) if _commit else ""
         if not _sha:
             _callback_sha = ctx.callback_downloaded.get(dep_key)
             if _callback_sha:
@@ -399,6 +413,8 @@ class CachedDependencySource(DependencySource):
             deltas["unpinned"] = 1
 
         native_validation = None
+        from apm_cli.codex_plugins.manifest import is_codex_compatibility_manifest
+
         try:
             native_detection = route_agent_plugin_package(install_path)
         except AgentPluginError as exc:
@@ -412,6 +428,11 @@ class CachedDependencySource(DependencySource):
             if not native_validation.is_valid or native_validation.package is None:
                 details = "; ".join(native_validation.errors) or "validator returned no package"
                 raise DirectDependencyError(f"Cached Agent Plugin is invalid: {details}")
+        elif is_codex_compatibility_manifest(install_path, detect_package_type(install_path)[1]):
+            native_validation = validate_apm_package(install_path, source_path=install_path)
+            if not native_validation.is_valid or native_validation.package is None:
+                details = "; ".join(native_validation.errors) or "validator returned no package"
+                raise DirectDependencyError(f"Cached Codex plugin is invalid: {details}")
 
         # Skip integration entirely if no targets. The template leaves this
         # dependency absent from the integration outcome so cleanup and
@@ -549,6 +570,8 @@ class CachedDependencySource(DependencySource):
                 package_version=cached_package_info.package.version
                 if cached_package_info.package
                 else None,
+                # req-ext-003: copy the dependency manifest's x-* keys.
+                extensions=extensions_from_resolved_package(cached_package_info.package),
             )
         )
         if install_path.is_dir():
@@ -602,7 +625,10 @@ class FreshDependencySource(DependencySource):
         self.progress = progress
 
     def acquire(self) -> Materialization | None:
-        from apm_cli.deps.installed_package import InstalledPackage
+        from apm_cli.deps.installed_package import (
+            InstalledPackage,
+            extensions_from_resolved_package,
+        )
         from apm_cli.drift import build_download_ref
         from apm_cli.utils.content_hash import compute_package_hash as _compute_hash
         from apm_cli.utils.path_security import safe_rmtree
@@ -795,6 +821,10 @@ class FreshDependencySource(DependencySource):
                     package_version=package_info.package.version
                     if package_info and package_info.package
                     else None,
+                    # req-ext-003: copy the dependency manifest's x-* keys.
+                    extensions=extensions_from_resolved_package(
+                        package_info.package if package_info else None
+                    ),
                 )
             )
             if install_path.is_dir():

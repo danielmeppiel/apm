@@ -6,12 +6,59 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import click
+
+from apm_cli.core.command_logger import CommandLogger
 from apm_cli.utils.console import STATUS_SYMBOLS
 
 if TYPE_CHECKING:
     from apm_cli.install.drift import DriftFinding
 
 _INLINE_DIFF_BYTE_CAP = 100 * 1024  # 100 KB
+
+
+class CheckLogger(CommandLogger):
+    """CheckLogger emits drift phase markers to stderr.
+
+    ``CommandLogger._rich_*`` writes to stdout (intended for human
+    install output).  Audit/drift output must stay on stderr so that
+    machine-parseable JSON/SARIF on stdout is never polluted.
+    """
+
+    def __init__(self, verbose: bool = False) -> None:
+        super().__init__("audit-drift", verbose=verbose)
+
+    def _emit(self, symbol_key: str, msg: str) -> None:
+        click.echo(f"{STATUS_SYMBOLS[symbol_key]} {msg}", err=True)
+
+    def replay_start(self) -> None:
+        self._emit("running", "Replaying install (cache-only)...")
+
+    def scratch_root(self, path: Path) -> None:
+        """Verbose-only: announce the scratch tmpdir to stderr.
+
+        Stays on stderr so JSON/SARIF stdout payloads remain
+        machine-parseable. Self-gates on ``self.verbose`` so the
+        normal-mode user never sees it.
+        """
+        if not self.verbose:
+            return
+        click.echo(
+            f"{STATUS_SYMBOLS['info']} drift scratch root: {path}",
+            err=True,
+        )
+
+    def diff_start(self) -> None:
+        self._emit("running", "Diffing scratch vs working tree...")
+
+    def replay_complete(self, n: int) -> None:
+        self._emit("check", f"Replayed {n} package(s)")
+
+    def clean(self) -> None:
+        self._emit("check", "No drift detected")
+
+    def findings(self, n: int) -> None:
+        self._emit("warning", f"Drift detected: {n} file(s)")
 
 
 def _inline_diff_for(scratch_path: Path, project_path: Path) -> str:

@@ -730,7 +730,8 @@ class TestClaudeClientAdapter:
     def test_get_config_path_user_scope(self) -> None:
         """User-scope returns ~/.claude.json path."""
         adapter = ClaudeClientAdapter(user_scope=True)
-        assert adapter.get_config_path() == str(Path.home() / ".claude.json")
+        # The adapter resolves symlinks (macOS /var -> /private/var).
+        assert Path(adapter.get_config_path()) == (Path.home() / ".claude.json").resolve()
 
     def test_get_current_config_missing_file(self, tmp_path: Path) -> None:
         """Returns empty mcpServers when config file does not exist."""
@@ -2712,7 +2713,13 @@ class TestCodexFormatServerConfig:
         assert result["command"] in ("npx", "npm")
 
     def test_format_server_config_remote_with_headers(self, tmp_path: Path) -> None:
-        """HTTP remote with headers gets http_headers in config."""
+        """HTTP remote with headers carries them into the config.
+
+        A header whose value is exactly ``${VAR}`` belongs in
+        ``env_http_headers``: Codex reads the variable at server start, whereas
+        ``http_headers`` is documented as static values and would send the
+        placeholder as literal text.
+        """
         adapter = CodexClientAdapter(project_root=tmp_path)
         server_info = {
             "id": "abc",
@@ -2728,8 +2735,8 @@ class TestCodexFormatServerConfig:
         result = adapter._format_server_config(server_info)
         assert result is not None
         assert "url" in result
-        # Headers resolved (or passed through) should be in http_headers
-        assert "http_headers" in result
+        assert result["env_http_headers"] == {"Authorization": "MY_TOKEN"}
+        assert "http_headers" not in result
 
     def test_format_server_config_hybrid_prefers_package(self, tmp_path: Path) -> None:
         """Hybrid server (remote + packages) prefers packages."""

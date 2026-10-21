@@ -32,8 +32,12 @@
     {
       "id": "deployment-provenance-state",
       "decision": "Deployment provenance / state",
-      "owner": "deployment_ledger.py",
-      "selectors": ["src/apm_cli/core/deployment_ledger.py"],
+      "owner": "deployment_ledger.py; read-only index: skill_support.build_skill_ownership_maps, exposed by SkillIntegrator._build_ownership_maps with integrate-phase snapshot lifetime",
+      "selectors": [
+        "src/apm_cli/core/deployment_ledger.py",
+        "src/apm_cli/integration/skill_support.py",
+        "src/apm_cli/install/pipeline.py"
+      ],
       "guards": ["install-deployment-provenance-state"]
     },
     {
@@ -66,9 +70,9 @@
     },
     {
       "id": "prospective-dry-run-install-plan",
-      "decision": "Prospective dry-run install plan",
-      "owner": "install/dry_run_plan.py (ProspectiveInstallPlan)",
-      "selectors": ["src/apm_cli/install/dry_run_plan.py"],
+      "decision": "Prospective dry-run install plan and interpreted package selection",
+      "owner": "install/dry_run_plan.py (ProspectiveInstallPlan) delegates selector identity and subtree filtering to install/package_selection.py and offline dependency closure to deps/apm_resolver.py",
+      "selectors": ["src/apm_cli/install/dry_run_plan.py", "src/apm_cli/install/package_selection.py"],
       "guards": ["install-deployment-prospective-dry-run-plan"]
     },
     {
@@ -155,7 +159,10 @@
       "id": "ci-audit-scratch-materialization",
       "decision": "CI audit scratch materialization",
       "owner": "install/audit_replay.py (prepare_ci_audit_replay)",
-      "selectors": ["src/apm_cli/install/audit_replay.py"],
+      "selectors": [
+        "src/apm_cli/install/audit_replay.py",
+        "src/apm_cli/install/project_package.py"
+      ],
       "guards": ["install-deployment-audit-replay"]
     },
     {
@@ -171,6 +178,16 @@
       "owner": "models/dependency/selection.py (via DependencyReference)",
       "selectors": ["src/apm_cli/models/dependency/selection.py"],
       "guards": ["install-deployment-uninstall-selection"]
+    },
+    {
+      "id": "skills-root-derivation",
+      "decision": "Target skills-root derivation",
+      "owner": "integration/targets.py (TargetProfile.skills_rel_root, TargetProfile.skills_deploy_path)",
+      "selectors": [
+        "src/apm_cli/install/deployed_paths.py",
+        "src/apm_cli/commands/uninstall/engine.py"
+      ],
+      "guards": ["install-deployment-skills-root-derivation"]
     }
   ]
 }

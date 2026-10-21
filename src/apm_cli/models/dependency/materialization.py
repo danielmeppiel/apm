@@ -270,10 +270,29 @@ def find_case_equivalent_materialization_path(
     dependency: DependencyReference,
     reader: MaterializationPathReader = _NATIVE_READER,
     candidate_relatives: Iterable[PurePosixPath] | None = None,
+    match_complete_path: bool = False,
 ) -> Path | None:
-    """Find the sole existing path whose components differ only by casing."""
+    """Find a case-equivalent path; optionally allow ambiguous parent prefixes.
+
+    Read-only consumers can match complete paths without treating distinct
+    repositories under case-variant owners as collisions. Relocation callers
+    retain strict prefix collision checks by default.
+    """
     desired_parts = _relative_parts(desired, apm_modules_dir)
     policy = _case_policy(dependency)
+    if match_complete_path and candidate_relatives is None:
+        candidates = [apm_modules_dir]
+        for index, desired_part in enumerate(desired_parts):
+            candidates = [
+                child
+                for parent in candidates
+                if reader.is_dir(parent)
+                for child in reader.iterdir(parent)
+                if _component_matches(index, desired_part, child.name, policy)
+            ]
+        candidate_relatives = (
+            PurePosixPath(*_relative_parts(candidate, apm_modules_dir)) for candidate in candidates
+        )
     if candidate_relatives is not None:
         matches = _candidate_matches(desired_parts, candidate_relatives, policy)
         if len(matches) > 1:

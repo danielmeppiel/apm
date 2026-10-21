@@ -127,16 +127,16 @@ Rule sync to Cursor (`.cursor/rules/`), Claude Code (`.claude/rules/`), Windsurf
 
 ## What to commit
 
-Commit `apm.yml`, `apm.lock.yaml`, and every target-owned directory APM writes
-to. These can include `.github/`, `.claude/`, `.grok/`, and `.agents/`.
-Committed deployed files give teammates agent context on clone, before they
-run `apm install`.
+Commit `apm.yml`, `apm.lock.yaml`, and target-owned outputs; keep `apm_modules/`
+gitignored. Committed agent files are reviewable and discoverable after clone,
+not necessarily self-contained: run `apm install` to restore linked package
+context. Keep those installed resources available while native agents or tools
+follow the deployed links; do not remove `apm_modules/` just because install
+has finished.
 
-Add `apm_modules/` to `.gitignore` -- it is the package cache and is rebuilt from
-the lockfile on every `apm install`. APM adds the entry automatically on first install.
-
-See the [Quickstart](../../quickstart/#what-to-commit) for the full table and
-rationale.
+See the [Quickstart](../../quickstart/#what-to-commit) for details, and
+[`apm_modules/` is derived](../../reference/lockfile-spec/#apm_modules-is-derived)
+for reinstall and safe cleanup guidance.
 
 ## Transitive dependencies and the lockfile
 
@@ -181,7 +181,7 @@ runnable scripts your manifest exposes (see
 ## Useful flags
 
 ```bash
-apm install --dry-run                  # resolve and print the plan; no writes
+apm install --dry-run                  # preview locally known dependencies
 apm install --target claude,cursor     # only deploy to these harnesses
 apm install --exclude gemini           # deploy to all targets except gemini
 apm install --only apm                 # skip MCP server integration this run
@@ -205,11 +205,26 @@ For project-scope installs, targets that require
 print a hint when dependency instructions require `apm compile`. The hint names
 the root context files that compile will update.
 
-For the full flag reference, run `apm install --help` or see
-[CLI commands](../../reference/cli/install/).
+`--dry-run` includes required indirect APM dependencies when metadata is
+available locally. Offline gaps make the preview incomplete and suppress
+orphan-removal predictions; stale-file integration cleanup is not previewed.
+See [preview limits](../../reference/cli/install/#preview-without-writing)
+and the full flag reference, or run `apm install --help`.
 
 ## When things go wrong
 
+- **Symlink checkout fallback.** If a checked-out file contains only a short
+  relative path (for example `../shared/config.yml`) instead of real content,
+  Git substituted a plain-text fallback for a symlink it could not create.
+  APM preserves Git's detected `core.symlinks` setting instead of letting an
+  inherited global value override it; this capability check is not
+  Windows-specific, but Windows non-admin accounts are the common case
+  without symlink-creation rights. Explicit command-scope Git settings still
+  take precedence; APM does not change your global Git configuration. A
+  successful checkout therefore does not guarantee that a package requiring
+  real symlinks works -- see "Skipped symlinked agent source" below for the
+  related install-time check on agent sources. Use a package that ships real
+  source files, or a symlink-capable environment.
 - **Critical security finding.** Install aborts with the offending
   characters and file path. Patch upstream when you can; use
   `--force` only when you can document the exception.

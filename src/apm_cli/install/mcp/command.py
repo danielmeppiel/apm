@@ -34,7 +34,12 @@ from .writer import add_mcp_to_apm_yml
 # code paths (package install vs. MCP install).
 APM_DEPS_AVAILABLE = False
 try:
-    from ...deps.lockfile import LockFile, get_lockfile_path, migrate_lockfile_if_needed
+    from ...deps.lockfile import (
+        LockFile,
+        LockfileConflictError,
+        get_lockfile_path,
+        migrate_lockfile_if_needed,
+    )
     from ...integration.mcp_integrator import MCPIntegrator
 
     APM_DEPS_AVAILABLE = True
@@ -257,6 +262,15 @@ def run_mcp_install(  # noqa: PLR0913
                     for target_name, server_names in old_target_servers.items()
                     if server_names & {mcp_name}
                 }
+                from ...integration.mcp_integrator_install import _validate_target_configs
+
+                _validate_target_configs(
+                    list(requested_target_servers),
+                    project_root=apm_dir,
+                    user_scope=user_scope,
+                    console=None,
+                    logger=logger,
+                )
                 # Legacy --runtime remains a direct override. Target values
                 # are projected through the shared decision below.
                 MCPIntegrator.install(
@@ -285,10 +299,36 @@ def run_mcp_install(  # noqa: PLR0913
                     target_name: set(server_names)
                     for target_name, server_names in old_target_servers.items()
                 }
-                for server_names in merged_target_servers.values():
-                    server_names.discard(mcp_name)
                 for target_name, server_names in requested_target_servers.items():
                     merged_target_servers.setdefault(target_name, set()).update(server_names)
+                retired_targets = {
+                    previous_target: {mcp_name}
+                    for previous_target, server_names in old_target_servers.items()
+                    if mcp_name in server_names
+                    and mcp_name not in requested_target_servers.get(previous_target, set())
+                }
+                if retired_targets:
+                    # Cleanup can fail after a destination write. Keep both deployments
+                    # durably owned until removal succeeds, so retry cannot orphan either.
+                    MCPIntegrator.update_lockfile(
+                        merged_names,
+                        _mcp_lock_path,
+                        mcp_configs=merged_configs,
+                        mcp_target_servers=merged_target_servers,
+                        mcp_config_provenance=merged_provenance,
+                        logger=logger,
+                        fail_on_write_error=True,
+                    )
+                    for previous_target, retired in retired_targets.items():
+                        MCPIntegrator.remove_stale(
+                            retired,
+                            runtime=previous_target,
+                            project_root=apm_dir,
+                            user_scope=user_scope,
+                            scope=scope,
+                            fail_on_write_error=True,
+                        )
+                        merged_target_servers[previous_target].difference_update(retired)
                 MCPIntegrator.update_lockfile(
                     merged_names,
                     _mcp_lock_path,
@@ -300,6 +340,12 @@ def run_mcp_install(  # noqa: PLR0913
                 )
             except InstallFailureAlreadyRendered:
                 raise
+            except LockfileConflictError as exc:
+                # The conflict diagnostic names only the lockfile path and the
+                # manual next step, so it carries no raw parser content.
+                logger.error(str(exc))
+                logger.error("MCP server written to apm.yml but tool integration failed.")
+                raise click.ClickException(f"MCP integration failed for '{mcp_name}'") from exc
             except Exception as exc:
                 # Keep the raw exception (which may contain internal paths,
                 # credentials, or stack-trace fragments) at verbose level

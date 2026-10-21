@@ -30,9 +30,8 @@ from apm_cli.install.errors import (
     InstallFailureAlreadyRendered,
     PolicyViolationError,
     RequiredIntegrationError,
-)
-from apm_cli.install.errors import (
-    frozen_install_tip as _frozen_install_tip,
+    install_failure_message,
+    log_frozen_install_error,
 )
 from apm_cli.install.gitlab_resolver import _try_resolve_gitlab_direct_shorthand
 from apm_cli.install.helpers.ref_reuse import is_git_semver_resolution_eligible
@@ -51,6 +50,7 @@ if TYPE_CHECKING:
 # this module and ``tests/unit/test_install_scanning.py``'s direct import
 # (``from apm_cli.commands.install import _pre_deploy_security_scan``) keep
 # working without modification.
+from apm_cli.deps.transport_selection import initial_transport_scheme as _initial_scheme
 from apm_cli.install.finalization import close_install_contexts
 from apm_cli.install.helpers.security_scan import _pre_deploy_security_scan  # noqa: F401
 from apm_cli.install.insecure_policy import (
@@ -117,6 +117,7 @@ from apm_cli.install.validation import (
 from apm_cli.install.validation import (
     _local_path_failure_reason,
     _local_path_no_markers_hint,  # noqa: F401 -- re-exported; test_architecture_invariants checks importability
+    _uses_clone_root_probe,
     _validate_package_exists,
 )
 from apm_cli.models.results import InstallDisposition, InstallResult
@@ -512,11 +513,13 @@ def _resolve_package_references(
                 # chain explicitly when the validator exhausted it
                 # (virtual subdirectory + explicit ref). Generic "not
                 # accessible" hides the failure mode for the precise
-                # case where the most diagnostics are available.
+                # case where the most diagnostics are available. A clone-root
+                # ``git ls-remote`` probe never ran that chain.
                 is_subdir_ref_chain = (
                     dep_ref.is_virtual
                     and dep_ref.is_virtual_subdirectory()
                     and bool(dep_ref.reference)
+                    and not _uses_clone_root_probe(dep_ref)
                 )
                 if is_subdir_ref_chain:
                     reason = (
@@ -527,6 +530,13 @@ def _resolve_package_references(
                     )
                     if not verbose:
                         reason += " (run with --verbose for the full probe log)"
+                elif _uses_clone_root_probe(dep_ref) and _initial_scheme(dep_ref) == "ssh":
+                    reason = (
+                        "git ls-remote over SSH failed -- verify that your SSH "
+                        "key has read access to the repository"
+                    )
+                    if not verbose:
+                        reason += " (run with --verbose for the git output)"
                 else:
                     reason = "not accessible or doesn't exist"
                     if not verbose:
@@ -647,6 +657,7 @@ def _validate_and_add_packages_to_apm_yml(
             source_path=apm_yml_path.parent,
             manifest_path=apm_yml_path,
             create_config=create_config,
+            warning_handler=None,  # The disk parse emits the manifest diagnostic.
         )
 
     outcome = _ValidationOutcome(
@@ -889,7 +900,8 @@ def _handle_mcp_install(  # noqa: PLR0913
     is_flag=True,
     help=(
         "Refuse to install when apm.lock.yaml is missing or out of sync with "
-        "apm.yml, including MCP config state (CI-safe; mutually exclusive with "
+        "apm.yml, including Git source, ref, host provider, transport, and MCP "
+        "config state (CI-safe; mutually exclusive with "
         "--update, --mcp, and positional packages). Use 'apm audit' for on-disk "
         "integrity."
     ),
@@ -950,7 +962,7 @@ def _handle_mcp_install(  # noqa: PLR0913
     "global_",
     is_flag=True,
     default=False,
-    help="Install to user scope (~/.apm/) instead of the current project. Direct MCP installs create or update ~/.apm/apm.yml. Mixed selections warn and skip workspace-only runtimes; selections with no global-capable runtime exit 2 before changing the user manifest, lockfile, or runtime configuration. Supported runtimes include Copilot CLI, Claude Code, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot.",
+    help="Install to user scope (~/.apm/) instead of the current project. Direct MCP installs create or update ~/.apm/apm.yml. Mixed selections warn and skip workspace-only runtimes; selections with no global-capable runtime exit 2 before changing the user manifest, lockfile, or runtime configuration. Supported runtimes include Copilot CLI, Claude Code, Cursor, OpenCode, Codex CLI, Gemini CLI, Antigravity CLI, Hermes, Kiro, Windsurf, and JetBrains Copilot.",
 )
 @click.option(
     "--ssh",
@@ -1640,10 +1652,7 @@ def install(  # noqa: PLR0913
             else InstallResult(disposition=InstallDisposition.FAILED, exit_code=1, error=e)
         )
     except FrozenInstallError as e:
-        logger.error(str(e))
-        for reason in e.reasons:
-            logger.error_detail(reason)
-        logger.info(_frozen_install_tip(e))
+        log_frozen_install_error(e, logger)
         command_result = (
             transaction.fail(e)
             if transaction is not None
@@ -1661,9 +1670,8 @@ def install(  # noqa: PLR0913
         # render with exit code 2 and the standard "Usage: ..." prefix.
         raise
     except Exception as e:
-        (logger or InstallLogger(verbose=verbose, dry_run=dry_run)).exception(
-            f"Error installing dependencies: {e}"
-        )
+        failure_logger = logger or InstallLogger(verbose=verbose, dry_run=dry_run)
+        failure_logger.exception(install_failure_message(e))
         command_result = (
             transaction.fail(e)
             if transaction is not None
@@ -1704,8 +1712,7 @@ def install(  # noqa: PLR0913
 def _install_apm_packages(ctx, outcome):
     """Execute the APM + transitive MCP installation pipeline.
 
-    Parses ``apm.yml``, installs APM dependencies, collects and installs
-    transitive MCP servers, and handles lockfile updates.
+    Install packages and transitive MCP servers, updating non-frozen lock state.
     Args:
         ctx: :class:`InstallContext` with configuration and environment.
         outcome: ``_ValidationOutcome`` from package validation (may be
@@ -1764,22 +1771,33 @@ def _install_apm_packages(ctx, outcome):
                 frozen=True,
                 scope=ctx.scope,
                 trust_transitive_mcp=ctx.trust_transitive_mcp,
-            )
+            ),
+            allow_pending_mcp=ctx.install_mode != InstallMode.MCP,
         )
 
-    # Determine what to install based on install mode
     should_install_apm = ctx.install_mode != InstallMode.MCP
     should_install_mcp = ctx.install_mode != InstallMode.APM
 
-    if ctx.dry_run:
-        prospective_plan = ProspectiveInstallPlan.from_apm_package(
+    from apm_cli.install.helpers.no_work import local_rows_need_reconciling
+
+    def _local_cleanup_pending(lockfile: "LockFile | None") -> bool:
+        return should_install_apm and local_rows_need_reconciling(
+            lockfile,
+            ctx.project_root,
             apm_package,
+            target=ctx.target or ctx.runtime,
+            scope=ctx.scope,
+        )
+
+    if ctx.dry_run:
+        prospective_plan = ProspectiveInstallPlan.from_install_context(
+            apm_package,
+            ctx,
             should_install_apm=should_install_apm,
             should_install_mcp=should_install_mcp,
-            only_packages=ctx.only_packages,
             updated_packages=outcome.updated_packages if outcome is not None else (),
         )
-        prospective_plan = prospective_plan.with_allowed_lsp_dependencies(apm_package, logger)
+        logger.record_dry_run_incomplete(bool(prospective_plan.dependency_preview_errors))
         logger.record_dry_run_apm_updates(len(prospective_plan.updated_apm_identities))
         _check_insecure_dependencies(
             prospective_plan.selected_apm_dependencies,
@@ -1812,21 +1830,18 @@ def _install_apm_packages(ctx, outcome):
             plan=prospective_plan,
             update=ctx.update,
             apm_dir=ctx.apm_dir,
+            local_cleanup_pending=_local_cleanup_pending,
         )
         return (*prospective_plan.dependency_counts, None)
 
     _check_insecure_dependencies(all_apm_deps, ctx.allow_insecure, logger)
 
-    # Install APM dependencies first (if requested)
     apm_count = 0
 
     # Migrate legacy apm.lock -> apm.lock.yaml if needed (one-time, transparent)
     migrate_lockfile_if_needed(ctx.apm_dir)
 
-    # Capture old MCP servers and configs from lockfile BEFORE
-    # _install_apm_dependencies regenerates it (which drops the fields).
-    # We always read this -- even when --only=apm -- so we can restore the
-    # field after the lockfile is regenerated by the APM install step.
+    # Preserve MCP fields across APM lockfile regeneration, even with --only=apm.
     old_mcp_servers: builtins.set = builtins.set()
     old_mcp_configs: builtins.dict = {}
     old_mcp_provenance: builtins.dict = {}
@@ -1858,6 +1873,7 @@ def _install_apm_packages(ctx, outcome):
         has_any_apm_deps
         or _project_has_root_primitives(_cli_project_root)
         or _has_orphan_deps_in_lock
+        or _local_cleanup_pending(_existing_lock)
     ):
         if not APM_DEPS_AVAILABLE:
             logger.error("APM dependency system not available")
@@ -1865,10 +1881,7 @@ def _install_apm_packages(ctx, outcome):
             raise InstallFailureAlreadyRendered("APM dependency system not available")
 
         try:
-            # If specific packages were requested, only install those
-            # Otherwise install all from apm.yml.
-            # `only_packages` was computed above so the dry-run preview
-            # and the actual install share one canonical list.
+            # Use the same canonical package selection as the dry-run preview.
             install_result = _install_apm_dependencies(
                 apm_package,
                 ctx.update,
@@ -1925,10 +1938,7 @@ def _install_apm_packages(ctx, outcome):
             logger.info("Tip: run 'apm doctor' to diagnose auth and connectivity.")
             raise InstallFailureAlreadyRendered(str(e)) from e
         except FrozenInstallError as e:
-            logger.error(str(e))
-            for reason in e.reasons:
-                logger.error_detail(reason)
-            logger.info(_frozen_install_tip(e))
+            log_frozen_install_error(e, logger)
             raise InstallFailureAlreadyRendered(str(e)) from e
         except InstallFailureAlreadyRendered:
             raise
