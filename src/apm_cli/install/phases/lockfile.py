@@ -97,6 +97,7 @@ class LockfileBuilder:
             not self.ctx.installed_packages
             and not self.ctx.lockfile_only
             and not self._has_orphan_lockfile_entries()
+            and not self._replacement_table_changed()
         ):
             # Even with nothing newly installed, a pre-existing
             # lockfile may need its cache pin markers refreshed --
@@ -155,6 +156,7 @@ class LockfileBuilder:
             # merge new entries into the existing lockfile instead of
             # overwriting it -- otherwise the uninstalled packages disappear.
             lockfile = self._maybe_merge_partial(lockfile, lockfile_path, _LF)
+            self._attach_replacement_table(lockfile)
             # Restore local compatibility state first so the canonical ledger is
             # complete when MCP target rows are projected into it.
             self._preserve_existing_local_state(lockfile)
@@ -183,6 +185,26 @@ class LockfileBuilder:
             self._handle_failure(e)
 
     # -- private helpers (verbatim from original inline block) ----------
+
+    def _replacement_table_changed(self) -> bool:
+        """Keep dormant rule changes out of the no-packages early return."""
+        from apm_cli.install.plan import lockfile_satisfies_replacements
+
+        rules = getattr(getattr(self.ctx, "apm_package", None), "replace_rules", None)
+        existing = self.ctx.existing_lockfile
+        if existing is None:
+            return rules is not None
+        satisfied, _ = lockfile_satisfies_replacements(existing, rules)
+        return not satisfied
+
+    def _attach_replacement_table(self, lockfile: LockFile) -> None:
+        """Persist all root rules, including unused and explicitly empty tables."""
+        from apm_cli.models.dependency.replacement import replacement_rule_to_dict
+
+        rules = getattr(getattr(self.ctx, "apm_package", None), "replace_rules", None)
+        lockfile.replacements = (
+            None if rules is None else [replacement_rule_to_dict(rule) for rule in rules]
+        )
 
     def _has_orphan_lockfile_entries(self) -> bool:
         """True when the existing lockfile records apm deps no longer intended.

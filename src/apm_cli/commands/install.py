@@ -41,6 +41,7 @@ from apm_cli.install.manifest_helpers import (
     _prepare_user_scope_for_install,
     _report_bootstrap_manifest,
 )
+from apm_cli.models.dependency.replacement import project_manifest_dependencies
 
 if TYPE_CHECKING:
     from apm_cli.core.target_detection import EffectiveTargetDecision
@@ -1717,8 +1718,7 @@ def _install_apm_packages(ctx, outcome):
     Install packages and transitive MCP servers, updating non-frozen lock state.
     Args:
         ctx: :class:`InstallContext` with configuration and environment.
-        outcome: ``_ValidationOutcome`` from package validation (may be
-            ``None`` when no explicit packages were passed).
+        outcome: Package validation result, or ``None`` without explicit packages.
     Returns:
         Tuple of ``(apm_count, mcp_count, lsp_count, apm_diagnostics)``.
     """
@@ -1760,8 +1760,6 @@ def _install_apm_packages(ctx, outcome):
     )
 
     has_any_apm_deps = bool(apm_deps) or bool(dev_apm_deps)
-
-    all_apm_deps = list(apm_deps) + list(dev_apm_deps)
 
     if ctx.frozen is True:
         from apm_cli.install.request import InstallRequest
@@ -1836,11 +1834,12 @@ def _install_apm_packages(ctx, outcome):
         )
         return (*prospective_plan.dependency_counts, None)
 
-    _check_insecure_dependencies(all_apm_deps, ctx.allow_insecure, logger)
+    _check_insecure_dependencies(
+        project_manifest_dependencies(apm_package), ctx.allow_insecure, logger
+    )
 
     apm_count = 0
 
-    # Migrate legacy apm.lock -> apm.lock.yaml if needed (one-time, transparent)
     migrate_lockfile_if_needed(ctx.apm_dir)
 
     # Preserve MCP fields across APM lockfile regeneration, even with --only=apm.

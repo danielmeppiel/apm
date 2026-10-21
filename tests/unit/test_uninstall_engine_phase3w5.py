@@ -30,6 +30,7 @@ def _make_logger():
 
 def _make_lockfile(deps=None):
     lf = MagicMock()
+    lf.replacements = None
     lf.dependencies = deps or {}
     lf.get_package_dependencies.return_value = list((deps or {}).values())
     return lf
@@ -40,6 +41,7 @@ def _make_locked_dep(key, repo_url=None, resolved_by=None):
     dep.get_unique_key.return_value = key
     dep.repo_url = repo_url or key.split("/")[-1]
     dep.resolved_by = resolved_by
+    dep.parent_keys = (resolved_by,)
     return dep
 
 

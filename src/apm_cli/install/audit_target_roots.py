@@ -5,10 +5,17 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from apm_cli.core.scope import InstallScope, get_deploy_root, get_modules_dir
 from apm_cli.integration.targets import TargetProfile
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 
 _EXTERNAL_REPLAY_ROOT = ".apm-audit-targets"
+
+
+def replay_modules_root(scratch_root: Path, *, user_scope: bool) -> Path:
+    """Project the canonical scope's deployment source layout into scratch."""
+    scope = InstallScope.USER if user_scope else InstallScope.PROJECT
+    return scratch_root / get_modules_dir(scope).relative_to(get_deploy_root(scope))
 
 
 def governed_root_dirs(targets: list[TargetProfile] | None) -> set[str]:
