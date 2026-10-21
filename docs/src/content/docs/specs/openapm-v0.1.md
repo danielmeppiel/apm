@@ -1265,6 +1265,39 @@ locked commit. This optimisation MUST NOT change observable
 behaviour; the post-install workspace state MUST be identical to a
 fresh install.
 
+#### Proposed obsolete dependency-claim repair (informative)
+
+The accepted implementation scope in
+[apm#3281](https://github.com/microsoft/apm/issues/3281) distinguishes a
+missing desired file from an obsolete claim for an already-absent file.
+The former remains drift under [req-lk-017](#req-lk-017). The proposed
+repair handles the latter during an ordinary, non-frozen install, at
+project or user scope, without resetting or uninstalling the dependency.
+
+Retirement requires successful, authoritative, complete reintegration
+of the dependency in the processed target scope and current source
+selection proving it no longer deploys the path. Missing bytes, a
+directory prefix, a saved hash, or a list of copied files alone do not
+establish that proof. File lists, corresponding hashes, and any canonical
+ownership ledger would change together, including when an older lockfile
+has no ledger. The proposal does not require a new lockfile format.
+
+The repair removes metadata only, not disk content. Desired paths,
+other owners, unprocessed targets, and failed, skipped, incomplete, or
+refused selections retain their claims. Present edited, untracked, or
+ambiguously owned content gains no deletion, adoption, or detachment
+authority. Existing no-hash compatibility, project-self cleanup, and
+imperative bundle cleanup are outside this change. Audit does not perform
+the repair; frozen install remains subject to
+[req-lk-006](#req-lk-006) and does not migrate claims.
+
+This proposal would introduce a narrow obsolete-claim exception to the
+target-based preservation rule in [req-lk-020](#req-lk-020); it does not
+reinterpret that rule as proof of current source membership. It adds no
+normative requirement or conformance claim and does not assert that the
+repair is available in a released consumer. Amendment status remains
+governed by [Section 9.3](#93-amendment-process).
+
 ### 5.6 git-semver fields (constraint, resolved_tag, resolved_at)
 
 When the resolver picks a git tag from a semver range (see

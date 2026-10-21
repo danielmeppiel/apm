@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Document the proposed absent dependency-claim repair in `docs/src/content/docs/specs/openapm-v0.1.md` and add its inactive consumer safeguards; historical-lock repair remains unavailable until complete reintegration evidence is connected and qualified. (#3315)
+
 ### Fixed
 
 - Legacy Claude plugin packing preserves hook scripts and sibling assets, rewrites commands to packed paths, and declares hooks in the native manifest; unsafe or excluded resources fail before replacing an existing bundle. (#3301)
