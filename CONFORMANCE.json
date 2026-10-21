@@ -490,24 +490,42 @@
     },
     {
       "conformance_class": "consumer",
+      "fixture": "tests/fixtures/spec-conformance/manifest/dependency-schema-cases.json",
       "id": "req-mf-011",
       "keyword": "MUST",
       "section": "4.3.2",
       "status": "active",
-      "test_count": 1,
+      "test_count": 2,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_apm_source_table_form"
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[conflicting-git-id-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[conflicting-git-id-devDependencies]"
       ]
     },
     {
       "conformance_class": "consumer",
+      "fixture": "tests/fixtures/spec-conformance/manifest/dependency-schema-cases.json",
       "id": "req-mf-012",
       "keyword": "MUST",
       "section": "4.3.6",
       "status": "active",
-      "test_count": 1,
+      "test_count": 16,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_rejects_unknown_source_kind"
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-tab-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-tab-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-whitespace-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-command-whitespace-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-command-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-command-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-http-url-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-http-url-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-sse-url-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-sse-url-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-streamable-url-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-streamable-url-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-transport-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-missing-transport-devDependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-spaced-command-dependencies]",
+        "tests/spec_conformance/test_dependency_schema_reqs.py::test_dependency_instances_match_schema_and_loader[self-defined-spaced-command-devDependencies]"
       ]
     },
     {
