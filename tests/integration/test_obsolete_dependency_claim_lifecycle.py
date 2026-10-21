@@ -14,6 +14,9 @@ from tests.integration.test_required_lifecycle_state_machine import (
     _new_scenario,
     _skill,
 )
+from tests.integration.test_shared_skill_preservation_lifecycle import (
+    _scenario as _shared_scenario,
+)
 from tests.utils.apm_lifecycle_runner import CommandResult
 from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
 
@@ -115,6 +118,9 @@ def test_ordinary_install_retires_obsolete_absent_dependency_claims(
         assert presence["passed"] is False
         assert obsolete <= set(presence["details"])
 
+    before_dry_run = ArtifactSnapshot.capture(tmp_path)
+    run(*install, "--dry-run")
+    assert_unchanged(before_dry_run, ArtifactSnapshot.capture(tmp_path))
     run(*install)
     repaired = load_yaml(lock_path)
     dependency = repaired["dependencies"][0]
@@ -147,3 +153,69 @@ def test_ordinary_install_retires_obsolete_absent_dependency_claims(
         final = load_yaml(lock_path)
         assert not final.get("dependencies")
         assert not final.get("deployments")
+
+
+@pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
+@pytest.mark.parametrize(
+    "protection", ["edited-marker", "unprocessed-target", "required-selection", "untracked-content"]
+)
+def test_historical_absence_respects_live_preservation_boundaries(
+    tmp_path: Path, apm_binary_path: Path, user_scope: bool, protection: str
+) -> None:
+    """Real CLI receipt production cannot turn missing bytes into blanket authority."""
+    scenario = _shared_scenario(tmp_path, apm_binary_path, user_scope)
+    scenario.install("a")
+    lock_path = scenario.lock_root / "apm.lock.yaml"
+    lock = load_yaml(lock_path)
+    shared = ".agents/skills/s/a.md"
+    expected_hash = lock["dependencies"][0]["deployed_file_hashes"][shared]
+    for row in lock["deployments"]:
+        if row["value"].startswith(".agents/"):
+            row["target"] = "legacy"
+    dump_yaml(lock, lock_path)
+    (scenario.packages["a"] / "skills/s/a.md").unlink()
+    for root in (".agents", ".claude"):
+        (scenario.deploy_root / root / "skills/s/a.md").unlink()
+
+    marker = scenario.deploy_root / ".agents/skills/s/SKILL.md"
+    untracked = scenario.deploy_root / ".agents/skills/s/personal.txt"
+    if protection == "edited-marker":
+        marker.write_bytes(b"User-edited skill marker.\n")
+    elif protection == "required-selection":
+        scenario.manifest(
+            dependencies={
+                "apm": [{"path": str(scenario.packages["a"]), "skills": ["no-such-skill"]}]
+            }
+        )
+    elif protection == "untracked-content":
+        untracked.write_bytes(b"Untracked personal content.\n")
+    arguments = ("--target", "claude") if protection == "unprocessed-target" else ()
+    expected_exit = 1 if protection == "required-selection" else 0
+    prior_bytes = lock_path.read_bytes()
+    for _ in range(2):
+        scenario.run("install", *arguments, expected=expected_exit)
+        repaired = load_yaml(lock_path)
+        dependency = repaired["dependencies"][0]
+        rows = [row for row in repaired["deployments"] if row["value"] == shared]
+        if protection == "untracked-content":
+            assert shared not in dependency["deployed_files"]
+            assert shared not in dependency["deployed_file_hashes"]
+            assert rows == []
+            assert untracked.read_bytes() == b"Untracked personal content.\n"
+            personal = ".agents/skills/s/personal.txt"
+            assert personal not in dependency["deployed_files"]
+            assert personal not in dependency["deployed_file_hashes"]
+            assert all(row["value"] != personal for row in repaired["deployments"])
+        else:
+            assert shared in dependency["deployed_files"]
+            assert dependency["deployed_file_hashes"][shared] == expected_hash
+            assert len(rows) == 1
+            assert rows[0]["target"] == "legacy"
+            assert rows[0]["owners"] == [str(scenario.packages["a"])]
+            assert rows[0]["content_hash"] == expected_hash
+            scenario.run("audit", "--ci", "--format", "json", expected=1)
+        assert not (scenario.deploy_root / shared).exists()
+        if protection == "edited-marker":
+            assert marker.read_bytes() == b"User-edited skill marker.\n"
+        elif protection == "required-selection":
+            assert lock_path.read_bytes() == prior_bytes
