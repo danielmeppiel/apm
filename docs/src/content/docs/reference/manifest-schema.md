@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-> **Normative reference:** This page describes the CLI's v0.3 working draft. [OpenAPM v0.1, Section 4](../../specs/openapm-v01/#4-manifest-format-apmyml) defines the normative contract; its unratified 0.1.41 amendment selects [`manifest-v0.1.41.schema.json`](/apm/specs/schemas/manifest-v0.1.41.schema.json). See [schema identity and status](../../specs/openapm-v01/#appendix-a-normative-json-schemas-inline).
+> **Normative reference:** This page describes the CLI's v0.3 working draft. [OpenAPM v0.1, Section 4](../../specs/openapm-v01/#4-manifest-format-apmyml) defines the normative contract; proposed amendment 0.1.48 selects a [corrected dependency/MCP schema](/apm/specs/schemas/manifest-v0.1.48.schema.json). Review, publication and supporting CLI release remain separate steps. See [schema identity and status](../../specs/openapm-v01/#appendix-a-normative-json-schemas-inline).
 
 <dl>
 <dt>Version</dt><dd>0.3 (Working Draft)</dd>
@@ -72,12 +72,28 @@ x-[a-z][a-z0-9-]*: <any>             # OPTIONAL vendor extensions
 Two fields are REQUIRED at parse time: `name` and `version`. All other fields are OPTIONAL. Unknown top-level keys MUST be preserved by writers. The CLI keeps keys matching `x-[a-z][a-z0-9-]*` and warns, without failing, on any other unknown top-level key. See [Extension keys](#312-extension-keys).
 
 The standard `$schema` key selects the manifest contract; omission selects
-APM's current working draft. Amendment 0.1.41 selects
-`https://microsoft.github.io/apm/specs/schemas/manifest-v0.1.41.schema.json`
-for the alias-aware OpenAPM v0.1 shape. Unknown identities fail closed, not
+APM's current working draft. The corrected OpenAPM v0.1 candidate uses
+`https://microsoft.github.io/apm/specs/schemas/manifest-v0.1.48.schema.json`.
+Adopt that explicit URL only after the resource is published and with a CLI
+version that recognizes it; its presence in this reference does not announce
+either event. Unknown identities fail closed, not
 back to the working draft. Explicit OpenAPM v0.1 uses the normative
 string-or-object `registries` map, not the working draft's named map plus
 `default` selector.
+
+Both older URLs, `manifest-v0.1.schema.json` and
+`manifest-v0.1.41.schema.json`, keep their original IDs and bytes. Validators
+pinned to them still reject Git objects with `path`, registry objects with
+both `id` and `registry`, and self-defined MCP objects with `registry: false`.
+The corrected candidate accepts those existing forms in both `dependencies`
+and `devDependencies`, while checking source identity conflicts, required
+fields, field types and MCP transport/command/URL rules. It retains the
+alias-aware shape; it does not add dependency features or bypass runtime,
+local-path, target, experimental-feature or policy checks.
+
+Schema-less manifests remain working drafts, not implicit opt-ins to this
+published-contract subset. There is no published working-draft schema to
+assign automatically to all `apm.yml` files.
 
 The `marketplace:` block is the source for `apm pack`'s marketplace output. Repositories that do not publish a marketplace omit it entirely. See [Section 7](#7-marketplace-authoring-block).
 

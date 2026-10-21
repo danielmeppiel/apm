@@ -8,6 +8,9 @@ OPENAPM_V01_SCHEMA_URI = "https://microsoft.github.io/apm/specs/schemas/manifest
 OPENAPM_V0141_SCHEMA_URI = (
     "https://microsoft.github.io/apm/specs/schemas/manifest-v0.1.41.schema.json"
 )
+OPENAPM_V0148_SCHEMA_URI = (
+    "https://microsoft.github.io/apm/specs/schemas/manifest-v0.1.48.schema.json"
+)
 # Candidate working-draft contract for source replacements (issue #3180).
 # Unpublished until doc/schema/spec/release deliverables; do not claim ratified.
 SOURCE_REPLACEMENTS_V1_SCHEMA_URI = (
@@ -32,7 +35,7 @@ def negotiate_manifest_contract(data: dict) -> ManifestContract:
     schema_uri = data.get("$schema")
     if schema_uri is None:
         return ManifestContract.WORKING_DRAFT
-    if schema_uri in (OPENAPM_V01_SCHEMA_URI, OPENAPM_V0141_SCHEMA_URI):
+    if schema_uri in (OPENAPM_V01_SCHEMA_URI, OPENAPM_V0141_SCHEMA_URI, OPENAPM_V0148_SCHEMA_URI):
         return ManifestContract.OPENAPM_V01
     if schema_uri == SOURCE_REPLACEMENTS_V1_SCHEMA_URI:
         return ManifestContract.SOURCE_REPLACEMENTS_V1
@@ -41,5 +44,6 @@ def negotiate_manifest_contract(data: dict) -> ManifestContract:
         "Use a supported explicit contract:\n"
         f"  {OPENAPM_V01_SCHEMA_URI}\n"
         f"  {OPENAPM_V0141_SCHEMA_URI}\n"
+        f"  {OPENAPM_V0148_SCHEMA_URI}\n"
         f"  {SOURCE_REPLACEMENTS_V1_SCHEMA_URI}"
     )
