@@ -393,12 +393,13 @@ class InstallService:
         trust_transitive_mcp: bool,
         logger: InstallLogger | None,
         allow_pending: bool,
+        active_package_keys: frozenset[str] | None = None,
     ) -> list[str]:
         """Compare actual declarations, deferring only unavailable source evidence."""
         from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
 
         if allow_pending and not (
-            list(package.get_all_mcp_dependencies()) or lockfile.mcp_configs or lockfile.mcp_servers
+            package.get_all_mcp_dependencies() or lockfile.mcp_configs or lockfile.mcp_servers
         ):
             return []
         current = CurrentMcpConfigView.derive(
@@ -408,6 +409,7 @@ class InstallService:
             trust_transitive_self_defined=trust_transitive_mcp,
             logger=logger,
             allow_pending=allow_pending,
+            active_package_keys=active_package_keys,
         )
         pending = current.pending_servers(lockfile) if allow_pending else frozenset()
         diff = current.diff(lockfile.mcp_configs)
@@ -430,6 +432,7 @@ class InstallService:
         *,
         trust_transitive_mcp: bool,
         logger: InstallLogger | None,
+        active_package_keys: frozenset[str] | None = None,
     ) -> None:
         """Reject restored MCP drift before a package can activate native configuration."""
         from apm_cli.install.errors import FrozenInstallError
@@ -441,6 +444,7 @@ class InstallService:
             trust_transitive_mcp=trust_transitive_mcp,
             logger=logger,
             allow_pending=False,
+            active_package_keys=active_package_keys,
         )
         if reasons:
             raise FrozenInstallError(

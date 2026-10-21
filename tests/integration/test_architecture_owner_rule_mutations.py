@@ -1746,6 +1746,18 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
             "require_locked=False,",
             "mutation_writes.mcp_declaration_scope",
         ),
+        (
+            "src/apm_cli/install/phases/integrate.py",
+            "active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),",
+            "active_package_keys=frozenset(ctx.intended_dep_keys),",
+            "install-deployment-frozen-mutation-eligibility",
+        ),
+        (
+            "src/apm_cli/integration/mcp_config_view.py",
+            "active_package_keys is not None and package_key not in active_package_keys",
+            "False",
+            "mutation_writes.mcp_declaration_scope",
+        ),
     ],
 )
 def test_frozen_mcp_verification_cannot_bypass_owners(

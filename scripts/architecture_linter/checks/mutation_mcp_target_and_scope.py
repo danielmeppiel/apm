@@ -333,6 +333,20 @@ def _check_mcp_declaration_scope(provider: FactsProvider) -> Iterable[Violation]
                 "unlocked collector must read package.get_mcp_dependencies exactly once",
             )
         )
+    if not _span_has_fixed(
+        facts, derive_span, "active_package_keys=active_package_keys,"
+    ) or not _span_has_fixed(
+        facts,
+        locked_span,
+        "active_package_keys is not None and package_key not in active_package_keys",
+    ):
+        findings.append(
+            violation(
+                rule_id,
+                _MCP_SCOPE_OWNER,
+                "MCP source scope must preserve supplied complete active graph membership",
+            )
+        )
     if not _span_has_fixed(facts, locked_span, "build_download_ref(") or not _span_has_fixed(
         facts, locked_span, "require_locked=True,"
     ):

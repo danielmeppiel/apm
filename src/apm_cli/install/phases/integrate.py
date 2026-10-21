@@ -705,6 +705,7 @@ def run(ctx: InstallContext) -> None:
             apm_modules_dir,
             trust_transitive_mcp=ctx.trust_transitive_mcp,
             logger=ctx.logger,
+            active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),
         )
 
     for dep_key, install_path, source, materialization, terminal_deltas in prepared_integrations:

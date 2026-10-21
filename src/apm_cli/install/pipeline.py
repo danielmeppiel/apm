@@ -81,12 +81,8 @@ dict = builtins.dict
 def _run_phase(name: str, phase, ctx):
     """Invoke ``phase.run(ctx)`` with verbose-only timing (F6, #1116).
 
-    Returns whatever ``phase.run(ctx)`` returns (most phases return
-    ``None``; ``finalize`` returns the :class:`InstallResult`).
-
-    Best-effort: any failure to render the timing line is swallowed so
-    it cannot mask the phase's own exception. The phase exception
-    propagates after the timing attempt.
+    Return the phase result. Timing output is best-effort and must not
+    mask the phase's own exception.
 
     Verbose mode shows ``[i] Phase: <name> -> 1.234s`` so users (and
     CI logs) can locate the phase responsible for a slow install

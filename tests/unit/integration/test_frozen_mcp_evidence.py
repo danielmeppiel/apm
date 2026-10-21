@@ -101,6 +101,55 @@ def test_insufficient_or_local_evidence_is_never_deferred(tmp_path: Path, overri
     assert not current.pending_servers(lock)
 
 
+def test_complete_registry_evidence_is_pending_not_verified(tmp_path: Path) -> None:
+    """A complete registry pin permits acquisition, not assumed MCP declarations."""
+    root, lock = _baseline(tmp_path, "apm_package")
+    dependency = replace(
+        lock.dependencies["owner/plugin"],
+        source="registry",
+        version="1.0.0",
+        resolved_url="https://registry.example.invalid/plugin-1.0.0.tar.gz",
+        resolved_hash="sha256:" + "a" * 64,
+    )
+    lock.dependencies = {dependency.get_unique_key(): dependency}
+    current = _view(root, lock, allow_pending=True)
+    assert current.pending_packages == frozenset({dependency.get_unique_key()})
+    assert not current.problems
+    assert current.configs == {}
+    assert current.pending_servers(lock) == frozenset({"tool"})
+    assert len(_view(root, lock, allow_pending=False).problems) == 1
+
+
+def test_active_missing_source_is_not_an_inactive_orphan(tmp_path: Path) -> None:
+    """Full graph membership excludes only orphans, never unhydrated active sources."""
+    root, lock = _baseline(tmp_path, "apm_package")
+    orphan = replace(lock.dependencies["owner/plugin"], repo_url="owner/orphan", name="unused")
+    lock.dependencies[orphan.get_unique_key()] = orphan
+    current = CurrentMcpConfigView.derive(
+        root,
+        lock,
+        tmp_path / "apm_modules",
+        trust_transitive_self_defined=False,
+        allow_pending=False,
+        active_package_keys=frozenset({"owner/plugin"}),
+    )
+    assert [problem.package_key for problem in current.problems] == ["owner/plugin"]
+    assert current.configs == {}
+    with pytest.raises(FrozenInstallError, match="restored MCP declarations differ") as failure:
+        InstallService.enforce_hydrated_mcp(
+            root,
+            lock,
+            tmp_path / "apm_modules",
+            trust_transitive_mcp=False,
+            logger=None,
+            active_package_keys=frozenset({"owner/plugin"}),
+        )
+    assert any(
+        "owner/plugin: package manifest not found" in reason for reason in failure.value.reasons
+    )
+    assert all("owner/orphan" not in reason for reason in failure.value.reasons)
+
+
 @pytest.mark.parametrize(
     "case", ["missing-name", "coincidental-directory", "shared-owner", "ambiguous-name"]
 )

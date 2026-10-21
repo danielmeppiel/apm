@@ -106,6 +106,7 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         and _present(owner, "current.pending_servers(lockfile)")
         and _present(owner, "current.diff(lockfile.mcp_configs)")
         and _present(owner, "allow_pending=False,")
+        and _present(owner, "active_package_keys=active_package_keys,")
         and _first_line(owner, "project_dir = get_lockfile_dir(request.scope)") is not None
     )
 
@@ -127,6 +128,9 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
         or not _before(add_guard, local_bundle)
         or not _present(adapter, "allow_pending_mcp=ctx.install_mode != InstallMode.MCP,")
         or not _present(integration, "if ctx.frozen and ctx.existing_lockfile is not None:")
+        or not _present(
+            integration, "active_package_keys=frozenset(ctx.update_plan_complete_dep_keys),"
+        )
         or not _before(acquisition, hydrated_check)
         or not _before(hydrated_check, deployment)
         or bool(duplicates)

@@ -261,6 +261,51 @@ def test_frozen_whole_plugin_subdirectory(tmp_path: Path, apm_binary_path: Path)
         _assert_mcp_matches_producer(scenario)
 
 
+@pytest.mark.parametrize("plugin_mcp", [False, True])
+def test_frozen_cold_consumer_tolerates_absent_no_mcp_orphan(
+    tmp_path: Path, apm_binary_path: Path, plugin_mcp: bool
+) -> None:
+    """An unused producer-locked package must not require hydration or MCP evidence."""
+    scenario = _scenario(tmp_path, apm_binary_path, plugin_mcp=plugin_mcp, root_mcp=plugin_mcp)
+    orphan = LocalPackageFactory(tmp_path / "orphan-source").create("unused")
+    repository = scenario.repositories.create("unused", source_tree=orphan.root)
+    commit = scenario.repositories.commit(repository, message="Unused package without MCP")
+    remote = "https://gitlab.example.invalid/frozen/unused.git"
+    transport = scenario.repositories.url_rewrite_subprocess_env_many(
+        [(scenario.repository, _REMOTE), (repository, remote)]
+    )
+    scenario.producer_environment.update(transport)
+    for key, value in transport.items():
+        if key == "GIT_CONFIG_COUNT" or key.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")):
+            scenario.environment[key] = value
+    manifest = load_yaml(scenario.producer / "apm.yml")
+    original_dependencies = list(manifest["dependencies"]["apm"])
+    manifest["dependencies"]["apm"].append({"git": remote, "type": "gitlab", "ref": commit.sha})
+    dump_yaml(manifest, scenario.producer / "apm.yml")
+    scenario.runner.run_sequence(
+        (("install", "--no-policy", "--parallel-downloads", "0"),),
+        expected_returncodes=(0,),
+        scenario_id="producer-with-unused-lock-entry",
+        cwd=scenario.producer,
+        env=scenario.producer_environment,
+    )
+    lock = load_yaml(scenario.producer / "apm.lock.yaml")
+    assert {entry["resolved_commit"] for entry in lock["dependencies"]} == {
+        *scenario.pins,
+        commit.sha,
+    }
+    manifest["dependencies"]["apm"] = original_dependencies
+    dump_yaml(manifest, scenario.consumer / "apm.yml")
+    (scenario.consumer / "apm.lock.yaml").write_bytes(
+        (scenario.producer / "apm.lock.yaml").read_bytes()
+    )
+    for _ in range(2):
+        scenario.freeze()
+        assert (scenario.consumer / ".agents/skills/frozen-skill/SKILL.md").read_bytes() == _SKILL
+        assert not (scenario.consumer / "apm_modules/frozen/unused").exists()
+        _assert_mcp_matches_producer(scenario)
+
+
 def test_frozen_replays_pin_after_remote_head_advances(
     tmp_path: Path, apm_binary_path: Path
 ) -> None:

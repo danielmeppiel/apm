@@ -71,8 +71,14 @@ class CurrentMcpConfigView:
         logger: _McpViewLogger | None = None,
         trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
         allow_pending: bool | None = None,
+        active_package_keys: frozenset[str] | None = None,
     ) -> CurrentMcpConfigView:
-        """Derive MCP truth; frozen callers explicitly select pending or strict evidence."""
+        """Derive MCP truth for the resolver's complete active graph, when supplied.
+
+        ``allow_pending`` selects pending (True), strict (False), or legacy
+        compatibility (None) evidence. Active membership is not a materialized
+        package selection: unavailable active sources still require evidence.
+        """
         project_root = root.package_path or Path.cwd()
         package_deps, problems, pending_packages = _collect_locked_dependencies(
             lockfile,
@@ -83,6 +89,7 @@ class CurrentMcpConfigView:
             logger=logger,
             trusted_transitive_configs=trusted_transitive_configs,
             allow_pending=allow_pending,
+            active_package_keys=active_package_keys,
         )
         # Root is the authoring project: both prod and dev MCP are intentionally
         # included here (behaviour introduced in #1780). Transitive package deps
@@ -317,6 +324,7 @@ def _collect_locked_dependencies(
     logger: _McpViewLogger | None = None,
     trusted_transitive_configs: (Mapping[str, tuple[str, Mapping[str, Any]]] | None) = None,
     allow_pending: bool | None = None,
+    active_package_keys: frozenset[str] | None = None,
 ) -> tuple[list[MCPDependency], list[McpSourceProblem], set[str]]:
     """Collect MCP declarations from only package manifests named by the lockfile."""
     if lockfile is None:
@@ -329,7 +337,9 @@ def _collect_locked_dependencies(
     resolved_cache: dict[str, Path] = {}
     native_ownership_cache: dict[Path, frozenset[str]] = {}
     for package_key, dependency in lockfile.dependencies.items():
-        if package_key == ".":
+        if package_key == "." or (
+            active_package_keys is not None and package_key not in active_package_keys
+        ):
             continue
         fallback_path = _fallback_manifest_path(dependency, modules_root, project_root)
         try:
