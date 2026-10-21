@@ -1858,9 +1858,10 @@ def _install_apm_packages(ctx, outcome):
         old_mcp_target_servers_present = _existing_lock._mcp_target_servers_present
 
     # Enter the APM install path when there are deps, local .apm/ primitives
-    # (#714), OR orphan deps in the lockfile to clean up (manifest emptied).
+    # (#714), orphan deps to clean up, or replacement intent to persist.
     from apm_cli.core.scope import get_deploy_root as _get_deploy_root
     from apm_cli.deps.lockfile import _SELF_KEY as _LOCK_SELF_KEY
+    from apm_cli.install.plan import lockfile_satisfies_replacements
 
     _cli_project_root = _get_deploy_root(ctx.scope)
     _has_orphan_deps_in_lock = bool(
@@ -1875,6 +1876,7 @@ def _install_apm_packages(ctx, outcome):
         or _project_has_root_primitives(_cli_project_root)
         or _has_orphan_deps_in_lock
         or _local_cleanup_pending(_existing_lock)
+        or not lockfile_satisfies_replacements(_existing_lock, apm_package.replace_rules)[0]
     ):
         if not APM_DEPS_AVAILABLE:
             logger.error("APM dependency system not available")

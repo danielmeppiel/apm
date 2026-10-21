@@ -67,6 +67,17 @@ class LockfileBuilder:
 
     # -- public API -----------------------------------------------------
 
+    def save_replacement_intent(self) -> None:
+        """Save metadata-only intent, retaining every existing deployment receipt."""
+        from apm_cli.deps.lockfile import LockFile, get_lockfile_path
+
+        if not self.ctx.lockfile_only and not self._replacement_table_changed():
+            return
+        existing = self.ctx.existing_lockfile
+        lockfile = copy.deepcopy(existing) if existing is not None else LockFile()
+        self._attach_replacement_table(lockfile)
+        self._write_if_changed(lockfile, get_lockfile_path(self.ctx.apm_dir), LockFile)
+
     def build_and_save(self) -> None:
         """Assemble lockfile from ctx state and write it (no-op when nothing was installed)."""
         # Self-heal cache pin markers for remote deps recorded in the
@@ -191,10 +202,7 @@ class LockfileBuilder:
         from apm_cli.install.plan import lockfile_satisfies_replacements
 
         rules = getattr(getattr(self.ctx, "apm_package", None), "replace_rules", None)
-        existing = self.ctx.existing_lockfile
-        if existing is None:
-            return rules is not None
-        satisfied, _ = lockfile_satisfies_replacements(existing, rules)
+        satisfied, _ = lockfile_satisfies_replacements(self.ctx.existing_lockfile, rules)
         return not satisfied
 
     def _attach_replacement_table(self, lockfile: LockFile) -> None:
@@ -616,6 +624,7 @@ class LockfileBuilder:
         else:
             lockfile.save(lockfile_path, existing_lockfile=existing_lockfile)
             if self.ctx.logger:
+                self.ctx.logger.record_lockfile_write()
                 self.ctx.logger.verbose_detail(
                     f"Generated apm.lock.yaml with {len(lockfile.dependencies)} dependencies"
                 )

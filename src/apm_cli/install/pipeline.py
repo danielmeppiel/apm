@@ -448,15 +448,31 @@ def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
         _early_lockfile and any(k != _SELF_KEY for k in _early_lockfile.dependencies)
     )
 
-    from .helpers.no_work import is_no_work_install, retained_local_work
+    from .helpers.no_work import (
+        is_no_work_install,
+        local_rows_need_reconciling,
+        retained_local_work,
+    )
 
     if is_no_work_install(
         all_apm_deps=all_apm_deps,
         root_has_local_primitives=_root_has_local_primitives,
-        old_local_deployed=_old_local_deployed,
+        local_cleanup_pending=(
+            not lockfile_only
+            and local_rows_need_reconciling(
+                _early_lockfile,
+                project_root,
+                apm_package,
+                target=target,
+                scope=scope,
+                target_decision=target_decision,
+            )
+        ),
         has_orphan_deps=_has_orphan_deps,
         lockfile_only=lockfile_only,
         apm_dir=apm_dir,
+        apm_package=apm_package,
+        logger=logger,
     ):
         return InstallResult()
 
