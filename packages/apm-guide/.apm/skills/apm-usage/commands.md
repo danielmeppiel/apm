@@ -111,7 +111,9 @@ attempts restoration without changing the lockfile. If restoration or cleanup
 also fails, preserve the reported recovery paths: the prior package may be in
 `.apm-resolution-staging/<session>/backups/` rather than active. Close programs
 holding the affected paths and inspect/recover prior data before retrying the
-same command. Do not delete unknown, legacy, active, or recovery staging roots,
+same command. Overlapping parent/child recovery is deferred after an obstruction
+to retain the needed backups; unrelated packages can still be restored.
+Do not delete unknown, legacy, active, or recovery staging roots,
 elevate APM, change ACLs, or disable security controls to bypass a Windows denial.
 Cleanup of committed staging warns without rolling back the validated package.
 Late Codex native reconciliation

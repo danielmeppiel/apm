@@ -315,6 +315,9 @@ use `--force` to bypass an OS denial. A persistent denial still fails.
 If restoration or cleanup also fails, APM reports those errors and retained
 recovery paths alongside the original failure. The prior package may be in
 `.apm-resolution-staging/<session>/backups/`, **not active at its usual path**.
+Recovery of overlapping parent and child packages is deferred after an
+obstruction so their backups remain recoverable; unrelated packages can still
+be restored.
 Preserve that directory, inspect its contents, and recover needed prior data
 before retrying. Do not delete the entire staging directory: unknown, legacy,
 active, and prior-backup roots can belong to another install or contain the

@@ -189,8 +189,36 @@ class ResolutionStagingSession:
     def rollback(self) -> list[tuple[Path, str]]:
         """Remove session-created paths and restore every replaced path."""
         cleanup_issues: list[tuple[Path, str]] = []
+        blocked_paths: set[Path] = set()
+        blocked_ancestors: set[Path] = set()
+
+        def block_recovery(*paths: Path) -> None:
+            for path in paths:
+                blocked_paths.add(path)
+                blocked_ancestors.update(path.parents)
+
+        def defer_overlapping_recovery(recovery_path: Path, *paths: Path) -> bool:
+            if not any(
+                path in blocked_ancestors or not blocked_paths.isdisjoint((path, *path.parents))
+                for path in paths
+            ):
+                return False
+            # A deferred ancestor also blocks its other children: restoring them
+            # now would consume backups that the ancestor's retry can overwrite.
+            block_recovery(*paths)
+            cleanup_issues.append(
+                (
+                    recovery_path,
+                    f"deferred recovery of {paths[0]} because overlapping recovery failed; "
+                    "preserve the retained data and resolve the reported obstruction first",
+                )
+            )
+            return True
+
         with self._lock:
             for path, backup in reversed(self._backups.items()):
+                if defer_overlapping_recovery(backup or path, path):
+                    continue
                 try:
                     if backup is not None and backup.exists():
                         if path.exists():
@@ -202,9 +230,16 @@ class ResolutionStagingSession:
                             safe_rmtree(path, self._modules_dir)
                         self._remove_empty_parents(path.parent)
                 except (OSError, ValueError) as exc:
+                    block_recovery(path)
                     cleanup_issues.append((backup or path, f"could not restore {path}: {exc}"))
             for source, destination in reversed(self._relocations):
                 try:
+                    recovery_paths = (
+                        ensure_path_within(source, self._modules_dir),
+                        ensure_path_within(destination, self._modules_dir),
+                    )
+                    if defer_overlapping_recovery(destination, *recovery_paths):
+                        continue
                     if destination.exists():
                         source.parent.mkdir(parents=True, exist_ok=True)
                         if source.exists() and os.path.samefile(source, destination):
@@ -213,6 +248,7 @@ class ResolutionStagingSession:
                             destination.replace(source)
                     self._remove_empty_parents(destination.parent)
                 except (OSError, ValueError) as exc:
+                    block_recovery(source, destination)
                     cleanup_issues.append((destination, f"could not restore {source}: {exc}"))
             try:
                 # Never dispose of prior data after a failed restoration.

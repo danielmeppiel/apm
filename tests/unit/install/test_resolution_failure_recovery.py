@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import errno
+import json
 import os
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -14,8 +16,180 @@ from filelock import FileLock, Timeout
 from apm_cli.install.resolution_staging import ResolutionStagingSession
 from apm_cli.install.transaction import InstallTransaction
 from apm_cli.utils.path_security import safe_rmtree
+from scripts.windows_native_symlink_probe_entry import probe_native_context
+from tests.utils.resolution_failure_probe import hold_path, release_directory
 
 pytestmark = [pytest.mark.component, pytest.mark.windows_compat]
+
+
+@pytest.mark.parametrize("parent_first", [False, True], ids=["child-first", "parent-first"])
+@pytest.mark.parametrize("child_existed", [True, False], ids=["prior-child", "new-child"])
+@pytest.mark.parametrize(
+    "native_denial",
+    [
+        pytest.param(False, id="injected"),
+        pytest.param(True, id="native", marks=pytest.mark.requires_windows_native_standard_user),
+    ],
+)
+def test_nested_replacement_denied_restore_retry_preserves_original_child_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    parent_first: bool,
+    child_existed: bool,
+    native_denial: bool,
+    record_property: Callable[[str, object], None],
+) -> None:
+    """Denied nested recovery must not consume backups needed by a later retry."""
+    modules = tmp_path / "apm_modules"
+    parent = modules / "owner" / "repo"
+    child = parent / "plugins" / "tool"
+    sibling = parent / "plugins" / "sibling"
+    unrelated = modules / "other" / "package"
+    original = {
+        parent: b"original parent",
+        sibling: b"original sibling",
+        unrelated: b"original unrelated",
+    }
+    if child_existed:
+        original[child] = b"original child\x00\r\n"
+    for path, content in original.items():
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "marker").write_bytes(content)
+    staging = ResolutionStagingSession(modules)
+    order = (parent, child) if parent_first else (child, parent)
+    for path in (unrelated, sibling, *order):
+        candidate = staging.prepare_replacement(path)
+        candidate.mkdir()
+        (candidate / "marker").write_bytes(b"replacement")
+        if path == parent:
+            nested = candidate / "plugins" / "tool"
+            nested.mkdir(parents=True)
+            (nested / "marker").write_bytes(b"parent replacement child")
+        staging.publish_replacement(candidate)
+
+    denied_path = order[-1]
+    denied_backup = staging._backups[denied_path]
+    replace = Path.replace
+    denied = False
+
+    def deny_first_restore(source: Path, target: Path) -> Path:
+        nonlocal denied
+        if source == denied_backup and not denied:
+            denied = True
+            raise PermissionError("nested restoration obstruction")
+        return replace(source, target)
+
+    if native_denial:
+        context = probe_native_context(
+            tmp_path / "native-context", os.environ["APM_WINDOWS_NATIVE_EXPECTED_SID"]
+        )
+        record_property("native_context", json.dumps(context, sort_keys=True))
+        assert denied_backup is not None
+        held = hold_path(denied_backup)
+        try:
+            issues = staging.rollback()
+        finally:
+            release_directory(held)
+        assert any("[WinError 32]" in reason for _, reason in issues)
+        record_property(
+            "native_recovery_issues",
+            json.dumps([(str(path), reason) for path, reason in issues]),
+        )
+    else:
+        monkeypatch.setattr(Path, "replace", deny_first_restore)
+        issues = staging.rollback()
+        assert denied
+        assert any("nested restoration obstruction" in reason for _, reason in issues)
+    assert any("deferred recovery" in reason for _, reason in issues)
+    assert (unrelated / "marker").read_bytes() == original[unrelated]
+    assert staging.rollback() == []
+    for path, content in original.items():
+        assert (path / "marker").read_bytes() == content
+    if not child_existed:
+        assert not child.exists()
+    assert not staging._staging_root.exists()
+
+
+def test_denied_nested_restore_defers_ancestor_relocation_until_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An ancestor relocation must not invalidate a retained child's journal path."""
+    modules = tmp_path / "apm_modules"
+    original_owner = modules / "original"
+    moved_owner = modules / "moved"
+    original_child = original_owner / "child"
+    original_child.mkdir(parents=True)
+    (original_child / "marker").write_bytes(b"original child")
+    independent_source = modules / "separate-original"
+    independent_destination = modules / "separate-moved"
+    independent_source.mkdir()
+    (independent_source / "marker").write_bytes(b"independent")
+    staging = ResolutionStagingSession(modules)
+    staging.relocate_path(independent_source, independent_destination)
+    staging.relocate_path(original_owner, moved_owner)
+    child = moved_owner / "child"
+    candidate = staging.prepare_replacement(child)
+    candidate.mkdir()
+    (candidate / "marker").write_bytes(b"replacement")
+    staging.publish_replacement(candidate)
+    backup = staging._backups[child]
+    replace = Path.replace
+
+    def denied_restore(source: Path, target: Path) -> Path:
+        if source == backup:
+            raise PermissionError("nested restore before relocation")
+        return replace(source, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", denied_restore)
+        issues = staging.rollback()
+    assert any("nested restore before relocation" in reason for _, reason in issues)
+    assert (independent_source / "marker").read_bytes() == b"independent"
+    assert not independent_destination.exists()
+    assert not original_owner.exists()
+    assert staging.rollback() == []
+    assert (original_child / "marker").read_bytes() == b"original child"
+    assert not moved_owner.exists()
+
+
+def test_three_level_recovery_preserves_bytes_across_successive_denials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Partial progress across retries must preserve the remaining nested journal."""
+    modules = tmp_path / "apm_modules"
+    root = modules / "owner" / "repo"
+    middle = root / "nested"
+    leaf = middle / "leaf"
+    paths = (root, middle, leaf)
+    original = {path: f"original {index}".encode() for index, path in enumerate(paths)}
+    for path, content in original.items():
+        path.mkdir(parents=True, exist_ok=True)
+        (path / "marker").write_bytes(content)
+    staging = ResolutionStagingSession(modules)
+    for path in reversed(paths):
+        candidate = staging.prepare_replacement(path)
+        candidate.mkdir()
+        (candidate / "marker").write_bytes(b"replacement")
+        staging.publish_replacement(candidate)
+    replace = Path.replace
+    denied_backup: Path | None = None
+
+    def deny_selected_backup(source: Path, target: Path) -> Path:
+        if source == denied_backup:
+            raise PermissionError("successive nested obstruction")
+        return replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", deny_selected_backup)
+    for path in paths:
+        denied_backup = staging._backups[path]
+        assert denied_backup is not None and denied_backup.exists()
+        issues = staging.rollback()
+        assert any("successive nested obstruction" in reason for _, reason in issues)
+    denied_backup = None
+    assert staging.rollback() == []
+    for path, content in original.items():
+        assert (path / "marker").read_bytes() == content
+    assert not staging._staging_root.exists()
 
 
 def test_failed_directory_removal_is_not_reported_as_success(
