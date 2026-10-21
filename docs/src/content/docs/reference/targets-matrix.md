@@ -279,7 +279,8 @@ Kiro IDE and CLI V3 target layout.
   precedence over same-name user prompts; file prompts take precedence over
   same-name MCP prompts. APM does not change native precedence or trust.
   Local user-authored files are preserved unless `--force` is requested;
-  uninstall removes only APM-owned prompts. This does not establish IDE
+  uninstall removes only APM-owned prompts. Edited managed prompts are
+  retained, and uninstall fails until those edits are resolved. This does not establish IDE
   prompt parity or authenticated model execution.
 
 ## intellij

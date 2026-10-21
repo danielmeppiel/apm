@@ -204,11 +204,23 @@ def test_kiro_prompt_installed_lifecycle(
 
     edited = prompts / "edited.md"
     edited.write_text("USER_EDITED_MANAGED_PROMPT\n")
-    run("uninstall", *scope, records[".kiro/prompts/review.md"]["owners"][0])
+    manifest_before = (state_root / "apm.yml").read_bytes()
+    lock_before = (state_root / "apm.lock.yaml").read_bytes()
+    owner = records[".kiro/prompts/review.md"]["owners"][0]
+    removal = run("uninstall", *scope, owner, expected_returncode=1)
+    assert "Retained user-edited file" in removal.stdout
+    assert (state_root / "apm.yml").read_bytes() == manifest_before
+    assert (state_root / "apm.lock.yaml").read_bytes() == lock_before
     assert not deployed.exists()
     assert not (target_root / "agents/reviewer.md").exists()
     assert not (target_root / "steering/style.md").exists()
     assert user_file.read_text() == "USER_PROMPT\n"
     assert collision.read_text() == "USER_COLLISION\n"
     assert edited.read_text() == "USER_EDITED_MANAGED_PROMPT\n"
+    saved_edit = prompts / "saved-edit.md"
+    edited.rename(saved_edit)
+    run("uninstall", *scope, owner)
+    assert saved_edit.read_text() == "USER_EDITED_MANAGED_PROMPT\n"
+    assert user_file.read_text() == "USER_PROMPT\n"
+    assert collision.read_text() == "USER_COLLISION\n"
     assert not (state_root / "apm.lock.yaml").exists()
