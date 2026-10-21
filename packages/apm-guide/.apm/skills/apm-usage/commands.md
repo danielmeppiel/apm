@@ -157,12 +157,12 @@ intended `--target` first; frozen mode does not create an unrecorded personal
 deployment. Retain `--only`, `--root DIR` or `--global` during recovery.
 Reordered, repeated and narrower selections work. Downloads may precede the
 check; package deployment and lifecycle scripts are not generally rolled back.
-Late MCP checks retain the complete resolved package graph when `--only`
-selects a package subset.
+Late MCP checks use the complete resolved package graph, not just the packages
+selected for installation.
 
 `--only mcp` does not hydrate package sources, even without `--frozen`.
-Restore the package sources and declarations matching the lock using a
-package-installing mode in the same deployment store (retain `--root DIR`
+Restore the package sources and declarations matching the lock using
+`apm install` without `--only mcp` in the same deployment store (retain `--root DIR`
 or `--global`, if used) before retrying.
 
 Claude MCP rewrites remove the previous transport's fields while preserving

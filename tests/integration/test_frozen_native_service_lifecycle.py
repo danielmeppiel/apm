@@ -268,10 +268,10 @@ def test_frozen_service_only_missing_package_source_cannot_remove_native_servers
     assert "fixture-mcp" in result.stdout + result.stderr
 
 
-def test_frozen_package_selection_retains_unselected_active_service_evidence(
+def test_selected_package_install_retains_unselected_service_evidence(
     tmp_path: Path, apm_binary_path: Path
 ) -> None:
-    """The late native guard must use the complete graph, not the --only subset."""
+    """Package selection preserves other services and permits frozen replay."""
     scenario = _new_scenario(tmp_path / "selected-service-graph", apm_binary_path)
     selected = _publish(scenario, "selected", skill="selected-skill")
     service = _publish(scenario, "retained-service", mcp=True)
@@ -290,17 +290,23 @@ def test_frozen_package_selection_retains_unselected_active_service_evidence(
     )
     _success(scenario, project, label="complete-graph-baseline")
     lock = project.root / "apm.lock.yaml"
-    locked, manifest = lock.read_bytes(), project.manifest_path.read_bytes()
     native = _native_bytes(scenario, project)
-    assert "fixture-mcp" in json.loads((project.root / ".github/mcp.json").read_bytes())["servers"]
+    assert set(json.loads((project.root / ".github/mcp.json").read_bytes())["mcpServers"]) == {
+        "fixture-mcp"
+    }
     _success(
         scenario,
         project,
-        "--only",
-        "apm-fixture-org/selected",
-        "--frozen",
+        f"apm-fixture-org/selected#{selected.commit.sha}",
         label="selected-package-keeps-full-service-graph",
     )
+    assert _native_bytes(scenario, project) == native
+    assert {dep["resolved_commit"] for dep in load_yaml(lock)["dependencies"]} == {
+        selected.commit.sha,
+        service.commit.sha,
+    }
+    locked, manifest = lock.read_bytes(), project.manifest_path.read_bytes()
+    _success(scenario, project, "--frozen", label="frozen-complete-service-graph")
     assert lock.read_bytes() == locked
     assert project.manifest_path.read_bytes() == manifest
     assert _native_bytes(scenario, project) == native

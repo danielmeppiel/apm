@@ -17,6 +17,7 @@ from apm_cli.install.service import InstallService
 from apm_cli.install.service_integration import run_service_integrations
 from apm_cli.integration.mcp_config_view import CurrentMcpConfigView, McpSourceProblem
 from apm_cli.models.apm_package import APMPackage
+from apm_cli.models.dependency.mcp import MCPDependency
 from apm_cli.models.results import InstallResult
 
 pytestmark = pytest.mark.component
@@ -65,12 +66,12 @@ def test_prepared_frozen_view_preserves_membership_and_actual_source_requirement
         package_path=tmp_path,
         dependencies={
             "mcp": [
-                {
-                    "name": "root-service",
-                    "registry": False,
-                    "transport": "http",
-                    "url": "https://example.invalid/root",
-                }
+                MCPDependency(
+                    name="root-service",
+                    registry=False,
+                    transport="http",
+                    url="https://example.invalid/root",
+                )
             ]
         },
     )
