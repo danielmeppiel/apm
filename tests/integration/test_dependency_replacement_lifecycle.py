@@ -345,7 +345,6 @@ def test_replacement_local_file_children_keep_selected_anchor_and_frozen_baselin
     assert entries["apm-replacement-fixture/base"]["resolved_commit"] == fixture.upstream_sha
 
 
-@pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
 @pytest.mark.parametrize("source_kind", ["local", "fork"])
 def test_replacement_only_apm_records_selected_source_omission(
     tmp_path: Path, apm_binary_path: Path, source_kind: str
@@ -403,6 +402,7 @@ def test_replacement_only_apm_records_selected_source_omission(
     assert not load_yaml(lock_path).get("mcp_omissions")
 
 
+@pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
 def test_replacement_ignores_unused_original_http_transport(
     tmp_path: Path, apm_binary_path: Path, dry_run: bool
 ) -> None:
