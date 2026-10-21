@@ -612,6 +612,9 @@ def test_metadata_only_replacement_write_retains_registry_receipt(
     assert receipts[target]["io.example/registered"].startswith("sha256:")
     native_before = scenario.path(target).read_bytes()
     manifest = load_yaml(scenario.root / "apm.yml")
+    manifest["$schema"] = (
+        "https://microsoft.github.io/apm/specs/schemas/manifest-source-replacements-v1.schema.json"
+    )
     manifest["replace"] = []
     dump_yaml(manifest, scenario.root / "apm.yml")
     _success(scenario.install("--only", "apm", targets=target))
