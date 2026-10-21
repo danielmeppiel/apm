@@ -154,6 +154,11 @@ deployment. Retain `--only`, `--root DIR` or `--global` during recovery.
 Reordered, repeated and narrower selections work. Downloads may precede the
 check; package deployment and lifecycle scripts are not generally rolled back.
 
+`--only mcp` does not hydrate package sources, even without `--frozen`.
+Restore the package sources and declarations matching the lock using a
+package-installing mode in the same deployment store (retain `--root DIR`
+or `--global`, if used) before retrying.
+
 Claude MCP rewrites remove the previous transport's fields while preserving
 unmanaged keys such as OAuth blocks. This also repairs older mixed entries
 when they are written. An unchanged self-defined declaration with matching
