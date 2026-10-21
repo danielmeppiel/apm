@@ -122,9 +122,18 @@ Global dry-run bootstrap leaves an absent `~/.apm` uncreated.
 or runtime configuration.
 
 `apm update`, `apm install --update`, and `apm install --refresh` stage and
-validate replacement packages before publication. A failed download,
-validation, or staged activation leaves the previous package and lockfile active;
-fix the reported cause and rerun the command. Late Codex native reconciliation
+validate replacement packages before publication. A failed download
+or validation leaves the previous package active. Failed staged activation
+attempts restoration without changing the lockfile. If restoration or cleanup
+also fails, preserve the reported recovery paths: the prior package may be in
+`.apm-resolution-staging/<session>/backups/` rather than active. Close programs
+holding the affected paths and inspect/recover prior data before retrying the
+same command. Overlapping parent/child recovery is deferred after an obstruction
+to retain the needed backups; unrelated packages can still be restored.
+Do not delete unknown, legacy, active, or recovery staging roots,
+elevate APM, change ACLs, or disable security controls to bypass a Windows denial.
+Cleanup of committed staging warns without rolling back the validated package.
+Late Codex native reconciliation
 runs after APM persistence and is not part of that rollback; see its qualified
 contract below.
 
