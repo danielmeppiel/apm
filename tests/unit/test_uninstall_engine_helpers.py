@@ -692,8 +692,7 @@ class TestCleanupStaleMcp:
             (tmp_path / ".claude").mkdir()
         config_path = tmp_path / (".claude.json" if user_scope else ".mcp.json")
         original = (
-            b'{"mcpServers":{"stale":{"type":"stdio","command":"old","args":[]}},'
-            b'"theme":"dark"}\n'
+            b'{"mcpServers":{"stale":{"type":"stdio","command":"old","args":[]}},"theme":"dark"}\n'
         )
         config_path.write_bytes(original)
         lockfile = LockFile(
