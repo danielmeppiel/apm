@@ -261,8 +261,12 @@ consumer-root anchor; unavailable selected sources make the preview incomplete.
 `--frozen` compares the complete rule table, including unused rules, and verifies
 local content against its recorded baseline before deployment. Changed, added
 or removed files, missing sources and missing content hashes are refused.
-Review changes and run a normal install to accept a new baseline. An unused
-rule warns but does not read its source.
+Review changes and run a normal install to accept a new baseline.
+
+Ordinary `apm install` persists the entire normalized root replacement table in
+`apm.lock.yaml`, even after the last dependency is removed. This includes
+clearing it with `replace: []` or removing `replace`. Recording dormant rules
+does not read or fetch their sources, even if a local path is absent.
 
 Delete a matching rule and run `apm install` to return to upstream requirements
 and reconcile owned outputs. Shared replacements remain until their last parent
