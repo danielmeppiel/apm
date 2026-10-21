@@ -800,8 +800,8 @@ locked content hash covers the ordinary materialized package, including its
 generated manifest. `--frozen` reconstructs that image from the declared source
 and rejects changed bytes without rewriting the lock or replacing deployment.
 Run normal `apm install` to accept deliberate source edits; sibling files are
-not included. `apm update` compares dependency refs and may be a no-op for
-local-content-only edits.
+not included. `apm update` compares dependency refs; do not use it as a
+local-content refresh.
 
 Directory symlink aliases in `HOME` or `APM_HOME` work for global skill deployment.
 They do not relax package-descendant containment or destination-symlink checks,

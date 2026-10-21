@@ -1837,6 +1837,73 @@ def test_frozen_preflight_uses_selected_lockfile_store() -> None:
     assert any(violation.rule_id == rule_id for violation in report.violations)
 
 
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/commands/install.py",
+            "ctx.with_resource(InstallService.frozen_writes(frozen))",
+            "ctx.with_resource(contextlib.nullcontext())",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "InstallService.enforce_frozen_services(",
+            "InstallService.disabled_service_guard(",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "prepared=prepared_mcp,",
+            "prepared=None,",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "prepared=prepared_lsp,",
+            "prepared=None,",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "current_mcp=prepared_mcp.current_view,",
+            "current_mcp=None,",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "    return ServiceIntegrationResult(mcp_count, lsp_count, target_decision)",
+            "    raise FrozenInstallError('second frozen authority')",
+        ),
+        (
+            "src/apm_cli/install/outcome.py",
+            'complete_dep_keys = getattr(ctx, "update_plan_complete_dep_keys", None)',
+            'complete_dep_keys = getattr(ctx, "intended_dep_keys", None)',
+        ),
+        (
+            "src/apm_cli/commands/install.py",
+            "install_result.active_package_keys if install_result is not None else None",
+            "None",
+        ),
+        (
+            "src/apm_cli/install/service_integration.py",
+            "allow_pending=False,",
+            "allow_pending=None,",
+        ),
+        (
+            "src/apm_cli/install/mcp/integration.py",
+            "allow_pending=allow_pending,",
+            "allow_pending=None,",
+        ),
+    ],
+)
+def test_frozen_native_service_boundary_guards(path: str, old: str, new: str) -> None:
+    """Command lifetime, prepared evidence and eligibility retain one owner."""
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    rule_id = "install-deployment-frozen-mutation-eligibility"
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
 def test_ref_freshness_guard_rejects_unconditional_cache_publication() -> None:
     """A checkout must not promote a lock pin into a fresh named observation."""
     path = "src/apm_cli/deps/github_downloader.py"

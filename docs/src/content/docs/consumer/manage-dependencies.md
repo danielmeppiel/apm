@@ -148,8 +148,8 @@ copied package's content hash. `apm install --frozen` verifies that same image
 against the locked hash; changed bytes fail without replacing the deployment
 or rewriting the lockfile. A missing, unreadable, unsupported, or invalid source
 also fails rather than removing its previously deployed output.
-Use normal `apm install` to refresh local edits: `apm update` compares dependency
-refs and may be a no-op when only local file content changed.
+Use normal `apm install` to refresh local edits. `apm update` compares dependency
+refs; do not use it as a local-content refresh.
 
 Use `type: gitlab` only on `git` object entries for self-managed GitLab
 instances whose hostname does not make the platform obvious:
