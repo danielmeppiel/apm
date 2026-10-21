@@ -55,7 +55,7 @@ APM implements the proposed staged-replacement recovery capability (req-lk-023).
 | [req-lk-003](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-003) | MUST | 5.2 | consumer | active | 9 | - |
 | [req-lk-004](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-004) | MUST | 5.4 | consumer | active | 1 | - |
 | [req-lk-005](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-005) | MUST | 5.5 | consumer | active | 2 | - |
-| [req-lk-006](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-006) | MUST | 5.5 | consumer | active | 17 | - |
+| [req-lk-006](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-006) | MUST | 5.5 | consumer | active | 20 | - |
 | [req-lk-007](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-007) | SHOULD | 5.5 | consumer | active | 1 | - |
 | [req-lk-008](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-008) | MUST | 5.6 | consumer | active | 3 | - |
 | [req-lk-009](docs/src/content/docs/specs/openapm-v0.1.md#req-lk-009) | MUST | 5.6 | consumer | active | 1 | - |
@@ -85,7 +85,7 @@ APM implements the proposed staged-replacement recovery capability (req-lk-023).
 | [req-mf-010](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-010) | MUST | 4.3.2 | consumer | active | 1 | - |
 | [req-mf-011](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-011) | MUST | 4.3.2 | consumer | active | 2 | - |
 | [req-mf-012](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-012) | MUST | 4.3.6 | consumer | active | 16 | - |
-| [req-mf-013](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-013) | MUST | 4.5 | consumer | active | 1 | - |
+| [req-mf-013](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-013) | MUST | 4.5 | consumer | active | 3 | - |
 | [req-mf-014](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-014) | MUST | 4.2.3 | producer | active | 1 | - |
 | [req-mf-015](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-015) | MUST | 4.2.3 | producer | active | 1 | - |
 | [req-mf-016](docs/src/content/docs/specs/openapm-v0.1.md#req-mf-016) | MUST | 4.3.5 | consumer | skipped | 1 | - |
