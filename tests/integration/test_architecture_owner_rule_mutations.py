@@ -682,6 +682,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Claude LSP plugin writes bypass the canonical deployment-path gate.",
     ),
     MutationCase(
+        guard_id="install-deployment-manifest-snapshot",
+        rule_id="install-deployment-manifest-snapshot",
+        path="src/apm_cli/install/source_helpers.py",
+        old="snapshot = APMPackage.from_mapping(",
+        new="snapshot = APMPackage.from_apm_yml(",
+        intent="Acquired metadata reuses the process-lifetime manifest path cache.",
+    ),
+    MutationCase(
         guard_id="install-deployment-mcp-ownership-migration",
         rule_id="install-deployment-mcp-ownership-migration",
         path="src/apm_cli/install/mcp/ownership.py",
@@ -844,18 +852,24 @@ MUTATIONS: tuple[MutationCase, ...] = (
     MutationCase(
         guard_id="marketplace-integrations-locked-association",
         rule_id="marketplace-integrations-locked-evidence",
-        path="src/apm_cli/install/plan.py",
-        old="locked_dep = lockfile.get_dependency(key, marketplace_index=marketplace_index)",
-        new="locked_dep = lockfile.dependencies.get(key)",
-        intent="Frozen planning bypasses canonical marketplace declaration association.",
+        path="src/apm_cli/policy/ci_checks.py",
+        old=(
+            "display = dep_ref.get_display_name() if dep_ref.is_marketplace else key\n"
+            "        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)"
+        ),
+        new=(
+            "display = dep_ref.get_display_name() if dep_ref.is_marketplace else key\n"
+            "        locked_dep = next((dep for dep in lock.dependencies if dep.get_unique_key() == key), None)"
+        ),
+        intent="Ref consistency bypasses canonical marketplace declaration-to-lock association.",
     ),
     MutationCase(
         guard_id="marketplace-integrations-locked-evidence",
         rule_id="marketplace-integrations-locked-evidence",
         path="src/apm_cli/policy/ci_checks.py",
-        old="if reason := marketplace_ref_mismatch(dep_ref, locked_dep):",
-        new="if reason := None:",
-        intent="Audit stops comparing declared marketplace refs with locked selection evidence.",
+        old="marketplace_ref_mismatch(dep_ref, locked_dep)",
+        new="None",
+        intent="Ref consistency accepts marketplace declarations without checking locked ref evidence.",
     ),
     MutationCase(
         guard_id="marketplace-integrations-metadata-enrichment",

@@ -46,6 +46,10 @@ from scripts.architecture_linter.checks.install_lsp_plugin import (
     check_lsp_lifecycle,
     check_lsp_target_contract,
 )
+from scripts.architecture_linter.checks.install_manifest_snapshot import (
+    GUARD_MANIFEST_SNAPSHOT,
+    check_manifest_snapshot,
+)
 from scripts.architecture_linter.checks.install_package_target_authorization import (
     _GUARD_PACKAGE_TARGET,
     check_package_target_authorization,
@@ -124,6 +128,11 @@ RULES: tuple[Rule, ...] = (
         _GUARD_FROZEN,
         "Frozen install mutation eligibility routes through InstallService before mutation.",
         check_frozen,
+    ),
+    _rule(
+        GUARD_MANIFEST_SNAPSHOT,
+        "Acquired-manifest metadata and version authority route through their snapshot owners.",
+        check_manifest_snapshot,
     ),
     _rule(
         _GUARD_DRY_RUN_PLAN,

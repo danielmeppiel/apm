@@ -42,7 +42,10 @@ from apm_cli.install.registry_wiring import (
 from apm_cli.install.source_helpers import (
     format_package_type_label as _format_package_type_label,
 )
-from apm_cli.install.source_helpers import locked_parent_identity
+from apm_cli.install.source_helpers import (
+    locked_parent_identity,
+    materialized_manifest_snapshot,
+)
 from apm_cli.install.source_helpers import (
     rebuild_cached_semver_resolution as _rebuild_cached_semver_resolution,
 )
@@ -238,6 +241,7 @@ class LocalDependencySource(DependencySource):
         else:
             details = "; ".join(validation.errors) or "validator returned no package"
             raise DirectDependencyError(f"Local package is invalid: {details}")
+        local_pkg = materialized_manifest_snapshot(local_pkg, install_path, pkg_type)
         warn_unrecognized_plugin_schema(diagnostics, dep_key, install_path)
         if not local_pkg.source:
             local_pkg.source = dep_ref.local_path
@@ -496,6 +500,7 @@ class CachedDependencySource(DependencySource):
                     package_path=install_path,
                     source=dep_ref.repo_url,
                 )
+        cached_package = materialized_manifest_snapshot(cached_package, install_path, pkg_type)
         if not cached_package.source:
             cached_package.source = dep_ref.repo_url
 
@@ -739,6 +744,11 @@ class FreshDependencySource(DependencySource):
                     install_path,
                     progress_task_id=task_id,
                     progress_obj=progress,
+                )
+
+            if package_info.package is not None:
+                package_info.package = materialized_manifest_snapshot(
+                    package_info.package, install_path, package_info.package_type
                 )
 
             # CRITICAL: hide progress BEFORE printing success to avoid overlap

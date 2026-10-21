@@ -175,6 +175,12 @@ The local-source check is APM-specific frozen-install behavior, not a new
 lockfile schema requirement. Legacy bare SHA-256 digests are accepted without
 rewriting the lock. Normal non-frozen installs can establish missing baselines.
 
+Manifest-derived dependency versions come from the acquired package snapshot,
+not an older descriptor in `apm_modules/`. The first ordinary install after a
+branch switch records the current version. These values are inventory metadata,
+not frozen replay pins. Registry and Git-semver
+resolver-selected versions and legacy synthesized plugin versions retain their
+own meaning; absent optional versions do not become errors.
 Frozen native MCP/LSP integration also preserves exact manifest and lockfile
 bytes. It refuses a selected target/server without recorded ownership before
 writing or removing either service's native configs. For example, adding
