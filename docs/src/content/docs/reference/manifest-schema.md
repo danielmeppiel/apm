@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-> **Normative reference:** This page describes the CLI's v0.3 working draft. [OpenAPM v0.1, Section 4](../../specs/openapm-v01/#4-manifest-format-apmyml) defines the normative contract; proposed amendment 0.1.48 selects a corrected dependency/MCP schema. Review, publication and supporting CLI release remain separate steps. See [schema identity and status](../../specs/openapm-v01/#appendix-a-normative-json-schemas-inline).
+> **Normative reference:** This page describes the CLI's v0.3 working draft. [OpenAPM v0.1, Section 4](../../specs/openapm-v01/#4-manifest-format-apmyml) defines the normative contract; proposed amendment 0.1.48 selects a [corrected dependency/MCP schema](/apm/specs/schemas/manifest-v0.1.48.schema.json). Review, publication and supporting CLI release remain separate steps. See [schema identity and status](../../specs/openapm-v01/#appendix-a-normative-json-schemas-inline).
 
 <dl>
 <dt>Version</dt><dd>0.3 (Working Draft)</dd>
