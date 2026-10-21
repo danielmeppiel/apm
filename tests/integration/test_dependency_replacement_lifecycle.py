@@ -236,14 +236,21 @@ def test_replacement_transitive_dry_run_keeps_consumer_anchor_and_outputs_untouc
     before = _snapshot(fixture.consumer.root)
     preview = fixture.run(*_INSTALL, "--dry-run")
     assert preview.returncode == 0, preview.stdout + preview.stderr
-    assert "apm-replacement-fixture/base" in preview.stdout
+    assert "APM dependencies (2)" in preview.stdout
+    assert "../local-base -> install" in preview.stdout
+    assert "Dependency preview incomplete" not in preview.stdout
     assert _snapshot(fixture.consumer.root) == before
     assert fixture.consumer.manifest_path.read_bytes() == manifest_before
     fixture.replace({"path": "../missing"})
-    refused = fixture.run(*_INSTALL, "--dry-run")
-    assert refused.returncode != 0, refused.stdout + refused.stderr
-    assert "Cannot load replacement" in " ".join((refused.stdout + refused.stderr).split())
+    missing_manifest = fixture.consumer.manifest_path.read_bytes()
+    incomplete = fixture.run(*_INSTALL, "--dry-run", "--verbose")
+    assert incomplete.returncode == 0, incomplete.stdout + incomplete.stderr
+    assert "Dependency preview incomplete" in incomplete.stdout
+    assert "Cannot load replacement" in " ".join((incomplete.stdout + incomplete.stderr).split())
+    assert "Dry run completed: would" not in incomplete.stdout
+    assert "Files that would be removed" not in incomplete.stdout
     assert _snapshot(fixture.consumer.root) == before
+    assert fixture.consumer.manifest_path.read_bytes() == missing_manifest
 
 
 @pytest.mark.parametrize("cli_consent", [False, True])

@@ -72,7 +72,8 @@ def test_read_only_replacement_uses_consumer_anchor_not_nested_parent(
     node = graph.dependency_tree.get_node("example/base")
     assert node is not None
     if missing:
-        assert node.package is None
+        assert node.package.version == "unknown"
+        assert node.package.source_path is None
         assert any("Cannot load replacement" in error for error in graph.resolution_errors)
     else:
         assert node.package is not None
