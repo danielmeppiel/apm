@@ -1,19 +1,9 @@
-"""Package integration services.
+"""Coordinate primitive integration and source-backed completion receipts.
 
-The two functions in this module own the *integration template* for a single
-package -- looping over the resolved targets, dispatching primitives to their
-integrators, accumulating counters, and recording deployed file paths.
-
-Moved here from ``apm_cli.commands.install`` so that the install engine
-package owns its own integration logic.  ``commands/install`` keeps thin
-underscore-prefixed re-exports for backward compatibility with existing
-``@patch`` sites and direct imports.
-
-Design notes
-------------
-``integrate_local_content()`` calls ``integrate_package_primitives()`` via a
-bare-name lookup so that ``@patch`` of either symbol on this module's
-namespace intercepts both call paths consistently.
+The install engine owns target dispatch, counters and deployed paths.
+``commands/install`` retains compatibility re-exports. Local content calls
+``integrate_package_primitives`` by name so patches in this module intercept
+both package and local integration.
 """
 
 from __future__ import annotations
