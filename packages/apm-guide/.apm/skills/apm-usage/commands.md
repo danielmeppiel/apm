@@ -94,7 +94,6 @@ unverifiable historical entries and asks for manual reconciliation; do not
 delete the lockfile or unrelated native settings to bypass it. This concerns
 connection settings, not data held by the MCP service.
 
-Positional-package dry-runs retain any bootstrapped manifest for inspection.
 `apm install --dry-run` includes required indirect APM dependencies in its
 counts using local source metadata and unchanged installed remote metadata.
 The dependency graph pass is read-only and offline: unavailable metadata or
