@@ -162,7 +162,7 @@ def _on_readonly_retry(func: Callable, path: str, _exc_info: Any) -> None:
     try:
         os.chmod(path, stat.S_IWRITE)
         func(path)
-    except OSError:
+    except FileNotFoundError:
         pass
 
 

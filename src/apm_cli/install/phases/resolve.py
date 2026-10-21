@@ -139,6 +139,20 @@ def _prepare_callback_materialization_path(
         )
 
 
+def _discard_failed_download(
+    staging_session: ResolutionStagingSession, replacement_path: Path, error: Exception
+) -> Exception:
+    """Keep the download failure visible if removing its partial candidate also fails."""
+    try:
+        staging_session.discard_replacement(replacement_path)
+    except (OSError, ValueError) as cleanup_error:
+        return RuntimeError(
+            f"{error}. Could not discard downloaded candidate {replacement_path}: "
+            f"{cleanup_error}. Inspect the retained staging path before retrying."
+        )
+    return error
+
+
 def _activate_validated_candidate(
     candidate_path: Path,
     *,
@@ -680,7 +694,7 @@ def _resolve_dependencies(
             return replacement_path
         except Exception as e:
             if replacement_path is not None:
-                staging_session.discard_replacement(replacement_path)
+                e = _discard_failed_download(staging_session, replacement_path, e)
             dep_display = dep_ref.get_display_name()
             dep_key = dep_ref.get_unique_key()
             is_direct = dep_key in direct_dep_keys

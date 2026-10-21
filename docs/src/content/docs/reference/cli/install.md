@@ -166,8 +166,12 @@ still cleans up its managed files, subject to the usual user-edit protections.
 - **Claude Code profiles.** For user-scope MCP installs, an absolute `CLAUDE_CONFIG_DIR` selects that profile's `.claude.json` for both installation and stale-server cleanup. Removing an APM-managed server in the selected profile preserves other profiles and user-owned entries. Cleanup refuses symlinked config files or profile directories; replace the link with a regular file or directory before retrying.
 - **Transactional replacement.** `--update` and `--refresh` download package
   replacements to isolated staging paths and validate them before publication.
-  If download, validation, or activation fails, APM keeps the previous package
-  and lockfile active and exits non-zero with retry guidance.
+  Failed downloads or validation leave the previous package active. Failed
+  activation attempts restoration and exits non-zero without changing the
+  lockfile. If the OS also denies restoration, APM reports both failures and
+  retains recovery data; the prior package may no longer be active.
+  Follow [Windows recovery guidance](../../../troubleshooting/install-failures/#windows-file-locks-and-incomplete-recovery)
+  before retrying.
 - **Git-hook isolation.** Dependency Git operations ignore repository-locating
   hook variables, preserving the caller's branch and HEAD. APM allows safe URL
   rewrites but rejects credentials, insecure transports including `http://` and

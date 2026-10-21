@@ -58,6 +58,7 @@ def _publish_staging(scenario: _Scenario) -> _PublishedPackage:
 
 def _advance(scenario: _Scenario, source: _PublishedPackage, consumer: LocalPackage) -> str:
     (source.repository.worktree / "revision.txt").write_bytes(b"replacement revision\n")
+    (source.repository.worktree / ("long-" + "x" * 110 + ".txt")).write_bytes(b"long path payload")
     commit = scenario.repositories.commit(source.repository, message="replacement revision")
     manifest = load_yaml(consumer.manifest_path)
     manifest["dependencies"]["apm"][0]["ref"] = commit.sha
@@ -96,6 +97,10 @@ def test_module_first_install_and_pinned_replacement(
     _success(_run(scenario, consumer, source.environment))
     _assert_pin(consumer, sha)
     assert (live / "revision.txt").read_bytes() == b"replacement revision\n"
+    long_path = live / ("long-" + "x" * 110 + ".txt")
+    assert long_path.read_bytes() == b"long path payload"
+    if os.name == "nt":
+        assert len(str(long_path)) > 260
     assert user_file.read_bytes() == b"unrelated user bytes\r\n"
     assert not (consumer.root / "apm_modules" / ".apm-resolution-staging").exists()
 
@@ -135,6 +140,26 @@ def test_install_preserves_active_unknown_and_legacy_staging(scenario: _Scenario
             assert (root / "marker").read_bytes() == b"must survive"
 
 
+def test_invalid_download_never_replaces_prior_validated_package(scenario: _Scenario) -> None:
+    """A real pinned invalid Git package is rejected before activating its bytes."""
+    source = _publish_staging(scenario)
+    consumer = scenario.consumers.create("consumer", dependencies=(source.dependency,))
+    _success(_run(scenario, consumer, source.environment))
+    live = _live(consumer)
+    prior = (live / "apm.yml").read_bytes()
+    lock = (consumer.root / "apm.lock.yaml").read_bytes()
+    (source.repository.worktree / "apm.yml").write_bytes(b"name: [invalid\n")
+    _advance(scenario, source, consumer)
+    manifest = consumer.manifest_path.read_bytes()
+    result = _run(scenario, consumer, source.environment)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (live / "apm.yml").read_bytes() == prior
+    assert not (live / "revision.txt").exists()
+    assert consumer.manifest_path.read_bytes() == manifest
+    assert (consumer.root / "apm.lock.yaml").read_bytes() == lock
+    assert not (live.parents[1] / ".apm-resolution-staging").exists()
+
+
 @pytest.mark.requires_windows_native_standard_user
 def test_native_locked_destination_preserves_prior_install_and_recovers(
     scenario: _Scenario, record_property: Callable[[str, object], None]
@@ -167,8 +192,18 @@ def test_native_locked_destination_preserves_prior_install_and_recovers(
 
 
 @pytest.mark.requires_windows_native_standard_user
-@pytest.mark.parametrize("replacement", [False, True], ids=["first-install", "replacement"])
-@pytest.mark.parametrize("mode", ["transient", "cleanup-denied", "restore-denied"])
+@pytest.mark.parametrize(
+    ("replacement", "mode"),
+    [
+        (False, "transient"),
+        (True, "transient"),
+        (False, "cleanup-denied"),
+        (True, "cleanup-denied"),
+        (True, "restore-denied"),
+        (False, "download-denied"),
+        (True, "download-denied"),
+    ],
+)
 def test_native_activation_failure_reports_original_and_recovery_errors(
     scenario: _Scenario,
     replacement: bool,
@@ -196,29 +231,28 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
     probe = Path(__file__).parents[1] / "utils" / "resolution_failure_probe.py"
     guard = scenario.isolated.root / "network_guard" / "sitecustomize.py"
     original_guard = guard.read_text(encoding="utf-8")
-    # A first install has no prior backup to lock; it still proves denied cleanup.
-    effective_mode = "cleanup-denied" if mode == "restore-denied" and not replacement else mode
     guard.write_text(
         original_guard
         + "\nimport runpy\n"
         + f"runpy.run_path({str(probe)!r})['install_probe']("
-        + f"{str(live)!r}, {str(evidence)!r}, {effective_mode!r})\n",
+        + f"{str(live)!r}, {str(evidence)!r}, {mode!r})\n",
         encoding="utf-8",
     )
     try:
-        result = _run(scenario, consumer, source.environment)
+        result = _run(scenario, consumer, {**source.environment, "APM_NO_CACHE": "1"})
     finally:
         guard.write_text(original_guard, encoding="utf-8")
     events = [json.loads(line) for line in evidence.read_text(encoding="utf-8").splitlines()]
     record_property("native_operations", json.dumps(events, sort_keys=True))
     failures = [event for event in events if "winerror" in event]
-    assert failures and all(event["winerror"] in {5, 32} for event in failures), events
+    assert failures and failures[0]["winerror"] in {5, 32}, events
+    assert all(event["winerror"] in {5, 32, 145} for event in failures), events
     assert result.returncode == 1, result.stdout + result.stderr
     assert consumer.manifest_path.read_bytes() == manifest
     lock = consumer.root / "apm.lock.yaml"
     assert (lock.read_bytes() if lock.exists() else None) == old_lock
     if prior is not None:
-        if effective_mode == "restore-denied":
+        if mode == "restore-denied":
             backups = list(
                 (live.parents[1] / ".apm-resolution-staging").glob("*/backups/*/apm.yml")
             )
@@ -227,11 +261,18 @@ def test_native_activation_failure_reports_original_and_recovery_errors(
         else:
             assert (live / "apm.yml").read_bytes() == prior
     output = " ".join((result.stdout + result.stderr).split())
-    assert "Failed to activate downloaded dependency" in output, output
+    if mode == "download-denied":
+        assert any(event["operation"] == "held-download-metadata" for event in events)
+        assert not any(event["operation"] == "held-candidate" for event in events)
+        assert "Could not discard downloaded candidate" in output, output
+    else:
+        assert "Failed to activate downloaded dependency" in output, output
     assert failures[0]["error"] in output, output
-    if effective_mode != "transient":
+    if mode != "transient":
         assert len(failures) >= 2, events
         assert failures[-1]["error"] in output, output
         assert "recover" in output.lower(), output
     _success(_run(scenario, consumer, source.environment))
     _assert_pin(consumer, sha)
+    if prior is not None and mode == "restore-denied":
+        assert backups[0].read_bytes() == prior

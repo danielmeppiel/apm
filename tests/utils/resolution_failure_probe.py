@@ -82,10 +82,21 @@ def install_probe(live: str, evidence: str, mode: str) -> None:
             raise
 
     def rmdir(path: str, *args: object, **kwargs: object) -> None:
+        directory = Path(path)
+        if (
+            mode == "download-denied"
+            and directory.name == ".git"
+            and directory.parent.parent.name == "replacements"
+            and not handles
+        ):
+            if not (directory.parent / "apm.yml").is_file():
+                raise RuntimeError("Expected materialized package bytes before download denial")
+            handles.append(hold_directory(directory))
+            record("held-download-metadata", directory)
         try:
             return original_rmdir(path, *args, **kwargs)
         except OSError as error:
-            record("rmdir", Path(path), error)
+            record("rmdir", directory, error)
             raise
 
     Path.replace = replace
