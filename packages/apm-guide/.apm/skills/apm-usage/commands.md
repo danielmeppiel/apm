@@ -64,6 +64,13 @@ outside-constraint upgrades, see the
 `apm update` remains constraint-respecting and writable; it does not take an
 outside-constraint `Latest`.
 
+Same-named skills keep other packages' unique assets and personal files;
+overlapping managed files retain last-writer behavior in project and global
+scope. Use ordinary `apm install` after source or target changes; `--frozen`
+keeps recorded ownership. Overwrite warnings name the previous owner when known.
+Fix unreadable sources before retrying, not by resetting the lockfile. See
+[shared-skill behavior](https://microsoft.github.io/apm/reference/cli/install/#behavior).
+
 For `apm install -g --mcp`, mixed target selections warn and skip
 workspace-only runtimes. If no selected target supports user scope, the command
 exits `2` before creating or changing the user manifest, lockfile, or runtime
