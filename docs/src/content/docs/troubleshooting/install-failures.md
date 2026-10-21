@@ -212,6 +212,14 @@ apm audit --ci
 
 A non-zero exit means the working tree has diverged from `apm.lock.yaml` -- either re-run `apm install` to restore parity, or commit the new lockfile if the drift was intentional.
 
+A fresh project clone can run `apm audit --ci` without `apm_modules/` when its
+manifest, lockfile, and local dependency sources are available. Replay stays
+in scratch space; missing or modified managed files still fail their checks.
+Windows long and native 8.3 paths to the same project are equivalent. A
+missing sibling local source is not a global installation: restore that
+source at its declared path. The `apm install --global` recovery instruction
+applies when auditing the actual user metadata workspace with missing modules.
+
 For the full flag list see [`apm install`](../../reference/cli/install/).
 
 ## 4. Cache problems
