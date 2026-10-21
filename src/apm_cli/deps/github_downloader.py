@@ -21,7 +21,6 @@ from git.exc import GitCommandError
 
 from ..core.auth import AuthContext, AuthResolver
 from ..models.apm_package import (
-    APMPackage,
     DependencyReference,
     GitReferenceType,
     PackageInfo,
@@ -30,7 +29,6 @@ from ..models.apm_package import (
     validate_apm_package,
 )
 from ..models.dependency.host_virtual import dependency_repository_owner, repository_path_segments
-from ..utils.atomic_io import atomic_write_text
 from ..utils.console import (
     _rich_warning,  # noqa: F401  -- re-exported; tests patch github_downloader._rich_warning
 )
@@ -52,7 +50,6 @@ from ..utils.github_host import (
     default_host,
     is_github_hostname,
 )
-from ..utils.yaml_io import yaml_to_str
 from .bare_cache import (
     bare_clone_with_fallback,
     clone_with_fallback,
@@ -70,6 +67,7 @@ from .transport_selection import (
     ProtocolPreference,
     TransportSelector,
 )
+from .virtual_file import materialize_virtual_file_package
 
 _log = logging.getLogger(__name__)
 
@@ -1062,74 +1060,11 @@ class GitHubPackageDownloader:
         if progress_obj and progress_task_id is not None:
             progress_obj.update(progress_task_id, completed=90, total=100)
 
-        # Create target directory structure
-        target_path.mkdir(parents=True, exist_ok=True)
-
-        # Determine the subdirectory based on file extension
-        subdirs = {
-            ".prompt.md": "prompts",
-            ".instructions.md": "instructions",
-            ".agent.md": "agents",
-        }
-
-        subdir = None
-        filename = dep_ref.virtual_path.split("/")[-1]
-        for ext, dir_name in subdirs.items():
-            if dep_ref.virtual_path.endswith(ext):
-                subdir = dir_name
-                break
-
-        if not subdir:
-            raise ValueError(f"Unknown file extension for {dep_ref.virtual_path}")
-
-        # Create .apm structure
-        apm_dir = target_path / ".apm" / subdir
-        apm_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write the file
-        file_path = apm_dir / filename
-        file_path.write_bytes(file_content)
-
-        # Generate minimal apm.yml
-        package_name = dep_ref.get_virtual_package_name()
-
-        # Try to extract description from file frontmatter
-        description = f"Virtual package containing {filename}"
-        try:
-            content_str = file_content.decode("utf-8")
-            # Simple frontmatter parsing (YAML between --- markers)
-            if content_str.startswith("---\n"):
-                end_idx = content_str.find("\n---\n", 4)
-                if end_idx > 0:
-                    frontmatter = content_str[4:end_idx]
-                    # Look for description field
-                    for line in frontmatter.split("\n"):
-                        if line.startswith("description:"):
-                            description = line.split(":", 1)[1].strip().strip("\"'")
-                            break
-        except Exception:
-            # If frontmatter parsing fails, use default description
-            pass
-
-        apm_yml_data = {
-            "name": package_name,
-            "version": "1.0.0",
-            "description": description,
-            "author": dependency_repository_owner(dep_ref),
-        }
-        apm_yml_content = yaml_to_str(apm_yml_data)
-
-        apm_yml_path = target_path / "apm.yml"
-        atomic_write_text(apm_yml_path, apm_yml_content)
-
-        # Create APMPackage object
-        package = APMPackage(
-            name=package_name,
-            version="1.0.0",
-            description=description,
-            author=dependency_repository_owner(dep_ref),
-            source=dep_ref.to_github_url(),
-            package_path=target_path,
+        package = materialize_virtual_file_package(
+            dep_ref,
+            target_path,
+            dep_ref.virtual_path.split("/")[-1],
+            file_content,
         )
 
         # Build the resolved reference. On non-GitHub hosts or SHA-resolve

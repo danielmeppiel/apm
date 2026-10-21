@@ -2595,6 +2595,48 @@ When two dependencies provide primitives with the same name and
 same type, the **first declared** dependency wins; later
 dependencies' versions MUST NOT replace the resolved primitive.
 
+#### Proposed shared-skill preservation amendment (informative)
+
+PR #3313 implements the accepted repair in issue #3288: reinstalling
+one package preserves another package's separately owned files in a
+shared skill directory. It retains APM's existing last-writer behavior
+for the exact overlapping managed file. This differs from the
+first-declared rule in [req-pr-003](#req-pr-003); accepting the repair
+does not adopt a specification exception or establish conformance to
+that rule.
+
+The proposed amendment would distinguish an admitted replacement of
+an exact managed skill file from replacement of the whole skill
+directory. The last successfully materialized replacement would own
+that file and its verified hash. Separately owned sibling assets and
+valid claims from other packages or targets would survive. Canonical
+deployment records and compatibility file/hash views would describe
+the same successfully deployed state, without recording a failed
+replacement as successful.
+
+Source-file removal, dependency removal and target narrowing would
+use the existing ownership-aware cleanup decision: a surviving valid
+claim keeps the physical file; removing the last claim permits safe
+cleanup, not unconditional deletion. User edits, untracked files,
+ambiguous legacy provenance and existing no-hash protections remain
+outside automatic ownership adoption. Ordinary installation would
+converge without a frozen-only workaround; frozen replay would not
+resurrect relinquished claims or upgrade sources. Audit remains
+read-only and continues to detect actual drift.
+
+This is a proposed narrow exception for shared managed skill files,
+not a change to local-priority rules, native plugin identity or
+consent, unmanaged-file policy, dependency traversal, or the semantics
+of other primitive types. It does not make competing skill bodies
+simultaneously usable. The installed-CLI preservation scenarios are
+implementation evidence, not evidence that this proposal is adopted.
+Changing the existing precedence obligation is not behavior-neutral
+errata: adoption needs the next-minor and migration treatment in
+[Sections 9.2-9.5](#92-breaking-vs-non-breaking-change-definition).
+Non-author review, public comment and adoption remain pending.
+The normative text, requirement identifiers and conformance
+enumerations are unchanged by this informative proposal.
+
 ### 8.4 Target detection signals (normative)
 
 When the user has not specified a target via `--target` or in the
