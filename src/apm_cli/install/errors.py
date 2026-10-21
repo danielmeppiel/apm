@@ -48,6 +48,14 @@ class InstallFailureAlreadyRendered(RuntimeError):
     """Signal a failed install whose user-facing diagnostics are complete."""
 
 
+class MCPNativeConflictError(InstallFailureAlreadyRendered):
+    """Native connections were preserved; actual nonconflicting writes may remain."""
+
+    def __init__(self, message: str, *, wrote_connections: bool) -> None:
+        super().__init__(message)
+        self.wrote_connections = wrote_connections
+
+
 class RequiredIntegrationError(RuntimeError):
     """Raised when a declared MCP or LSP write cannot be completed."""
 
