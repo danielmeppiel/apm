@@ -296,7 +296,7 @@ class BaseIntegrator:
                     continue
                 source_file = Path(directory) / name
                 target_file = destination / source_file.relative_to(source)
-                if has_symlink_component(destination.parent, target_file):
+                if has_symlink_component(destination.parent, target_file, raise_on_error=True):
                     raise PathTraversalError(
                         f"Skill destination {target_file} contains a symlink -- refusing to deploy"
                     )

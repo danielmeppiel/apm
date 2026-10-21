@@ -157,6 +157,16 @@ def check_base_integrator(provider: FactsProvider) -> tuple[Violation, ...]:
                 rule_id, native_path, "Skill materialization must route through BaseIntegrator"
             )
         )
+    if not _present(
+        native, "rel_path = rewriter._skill_path_entry(target, materialization_root)"
+    ) or not _present(native, "return self._skill_path_entry(path, project_root)"):
+        failures.append(
+            _summary(
+                rule_id,
+                native_path,
+                "Skill collisions and copied members must share canonical deployed-path identity",
+            )
+        )
     services_path = "src/apm_cli/install/services.py"
     services, services_fail = _facts_for(provider, services_path, rule_id)
     failures.extend(services_fail)

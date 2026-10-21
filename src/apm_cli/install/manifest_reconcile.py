@@ -30,6 +30,8 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .presentation import surface_target_cleanup
+
 if TYPE_CHECKING:
     from apm_cli.core.command_logger import InstallLogger
     from apm_cli.core.deployment_state import DeploymentLedger
@@ -119,24 +121,6 @@ def _scoped_known_targets_for_reconciliation(
         if scoped is not None:
             scoped_known_targets[name] = scoped
     return scoped_known_targets
-
-
-def _surface_target_cleanup(
-    logger: InstallLogger | None, dep_key: str, cleanup: CleanupResult
-) -> None:
-    """Report a target-contraction cleanup pass at default verbosity.
-
-    Deleting a dropped target's deployed file is a destructive operation in
-    the user's tracked workspace, so -- like every other caller of the
-    cleanup chokepoint (see ``install/phases/cleanup.py``) -- it must be
-    visible without ``--verbose``. Surfaces each user-edit skip as a yellow
-    inline and the deletion count as an info line.
-    """
-    if logger is None:
-        return
-    for skipped in cleanup.skipped_user_edit:
-        logger.cleanup_skipped_user_edit(skipped, dep_key)
-    logger.stale_cleanup(dep_key, len(cleanup.deleted))
 
 
 def install_governance(
@@ -868,7 +852,7 @@ def reconcile_target_deployed_files(
             declared_targets=declared_targets,
             diagnostics=diagnostics,
             prior_ledger=dependency_ledger,
-            on_cleanup=partial(_surface_target_cleanup, logger, dep_key),
+            on_cleanup=partial(surface_target_cleanup, logger, dep_key),
             desired_owners=desired_owners,
             generic_governed_values=(
                 frozenset(prior_files) if selected_owner_removal else frozenset()
@@ -913,7 +897,7 @@ def reconcile_target_deployed_files(
             declared_targets=declared_targets,
             diagnostics=diagnostics,
             prior_ledger=local_ledger,
-            on_cleanup=partial(_surface_target_cleanup, logger, "<local .apm/>"),
+            on_cleanup=partial(surface_target_cleanup, logger, "<local .apm/>"),
             user_scope=user_scope,
         )
         if local_files != prior_local or local_hashes != prior_local_hashes:

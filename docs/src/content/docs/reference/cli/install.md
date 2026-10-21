@@ -200,6 +200,8 @@ still cleans up its managed files, subject to the usual user-edit protections.
   package preserves the other's unique assets. This applies to project and
   global installs, including shared `.agents/skills/` destinations. Ownership
   and hashes record successful source members, not unrelated destination files.
+  External user-scope roots use the same recorded paths for collision checks
+  and deployment receipts.
   Edited or untracked files remain protected; `--force` permits overwriting
   matching files, not deleting an entire shared directory. Ordinary install
   reconciles changed sources and ownership; `--frozen` keeps the recorded owner

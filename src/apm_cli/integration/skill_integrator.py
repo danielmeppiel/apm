@@ -426,6 +426,12 @@ class SkillIntegrator(BaseIntegrator):
             for root in roots
         )
 
+    def _skill_path_entry(self, path: Path, project_root: Path) -> str:
+        """Use one canonical locator for collision checks and materialized members."""
+        if self._skill_targets is None and not path.is_relative_to(project_root):
+            return path.as_posix()
+        return deployed_path_entry(path, project_root, self._skill_targets)
+
     def _copy_skill_bundle(
         self,
         source: Path,
@@ -444,9 +450,7 @@ class SkillIntegrator(BaseIntegrator):
         from apm_cli.utils.content_hash import compute_file_hash
 
         def entry(path: Path) -> str:
-            if self._skill_targets is None and not path.is_relative_to(project_root):
-                return path.as_posix()
-            return deployed_path_entry(path, project_root, self._skill_targets)
+            return self._skill_path_entry(path, project_root)
 
         hashes = ChainMap(
             self._skill_session_hashes if self._hash_snapshots is not None else {},
@@ -875,16 +879,7 @@ class SkillIntegrator(BaseIntegrator):
         else:
             candidates = [source_paths[name] for name in sorted(source_paths)]
 
-        # Compute project-relative prefix for consistent path reporting
-        if project_root is not None:
-            try:
-                rel_prefix = target_skills_root.relative_to(project_root).as_posix()
-            except ValueError:
-                # Dynamic-root targets (cowork): use synthetic prefix
-                # when the skills root lives outside the project tree.
-                rel_prefix = target_skills_root.name
-        else:
-            rel_prefix = target_skills_root.name
+        materialization_root = project_root or target_skills_root.parent.parent
 
         for sub_skill_path in candidates:
             if not sub_skill_path.is_dir():
@@ -898,8 +893,8 @@ class SkillIntegrator(BaseIntegrator):
             is_valid, _ = validate_skill_name(raw_sub_name)
             sub_name = raw_sub_name if is_valid else normalize_skill_name(raw_sub_name)
             target = target_skills_root / sub_name
-            rel_path = f"{rel_prefix}/{sub_name}"
             rewriter = link_rewriter or SkillIntegrator()
+            rel_path = rewriter._skill_path_entry(target, materialization_root)
             target_existed = target.exists()
             unchanged = target_existed and SkillIntegrator.is_skill_dir_identical_to_source(
                 sub_skill_path, target
@@ -947,7 +942,7 @@ class SkillIntegrator(BaseIntegrator):
             copied = rewriter._copy_skill_bundle(
                 sub_skill_path,
                 target,
-                project_root or target_skills_root.parent.parent,
+                materialization_root,
                 ignore=_build_deployable_copy_ignore(
                     skip_bin=skip_bin,
                     source_plan=source_plan,

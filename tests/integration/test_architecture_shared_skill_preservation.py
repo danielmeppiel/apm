@@ -39,8 +39,13 @@ def test_skill_replacement_has_one_file_materialization_owner() -> None:
             "for path in skill_result.deployed_files",
             "for path in tp.rglob('*')",
         ),
+        (
+            "src/apm_cli/integration/skill_integrator.py",
+            "rel_path = rewriter._skill_path_entry(target, materialization_root)",
+            "rel_path = target.name",
+        ),
     ],
-    ids=["blanket-deletion", "second-materializer", "destination-adoption"],
+    ids=["blanket-deletion", "second-materializer", "destination-adoption", "parallel-locator"],
 )
 def test_skill_guard_rejects_split_materialization(path: str, old: str, new: str) -> None:
     source = (_ROOT / path).read_text(encoding="utf-8")
