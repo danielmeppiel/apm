@@ -11,6 +11,51 @@ from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 _EXTERNAL_REPLAY_ROOT = ".apm-audit-targets"
 
 
+def governed_root_dirs(targets: list[TargetProfile] | None) -> set[str]:
+    """Return the set of top-level managed directory names to walk.
+
+    Includes each target's top-level ``root_dir`` (plus ``.apm``) AND every
+    per-primitive ``deploy_root`` override (e.g. the ``copilot`` target routing
+    ``skills`` to ``.agents``). Walking the deploy roots is what lets the drift
+    differ compare committed skill bundles under ``.agents/skills/`` against the
+    replay, closing the gap where deployed skill content could silently diverge
+    from source (issue #1716). The replay reproduces the deploy-time link
+    rewrite faithfully, so byte-identical skills do not surface as false drift.
+    Only the first path segment is kept so nested deploy roots collapse to a
+    single walk root.
+    """
+    roots: set[str] = {".apm"}
+    for t in targets or []:
+        root = getattr(t, "root_dir", None)
+        if root:
+            roots.add(str(root).split("/", 1)[0])
+        primitives = getattr(t, "primitives", None) or {}
+        for mapping in primitives.values():
+            deploy_root = getattr(mapping, "deploy_root", None)
+            if deploy_root:
+                roots.add(str(deploy_root).split("/", 1)[0])
+    return roots
+
+
+def canvas_deploy_prefixes(targets: list[TargetProfile] | None) -> set[str]:
+    """Return ``root/subdir/`` prefixes for every target carrying a canvas mapping.
+
+    Used to exclude canvas extension deploy paths from drift comparison
+    (the replay deliberately does not re-integrate canvases).
+    """
+    prefixes: set[str] = set()
+    for target in targets or []:
+        mapping = getattr(target, "primitives", {}).get("canvas")
+        if mapping is None:
+            continue
+        effective_root = mapping.deploy_root or target.root_dir
+        if mapping.subdir:
+            prefixes.add(f"{effective_root}/{mapping.subdir}/")
+        else:
+            prefixes.add(f"{effective_root}/")
+    return prefixes
+
+
 def replay_target(target: TargetProfile) -> TargetProfile:
     """Return a scratch-contained profile for replay-only integration."""
     if target.managed_deploy_root is None:

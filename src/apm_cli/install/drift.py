@@ -2,9 +2,10 @@
 
 Reproduces the integration step from the lockfile in an isolated scratch
 directory, then diffs the resulting tree against the working project to
-surface four kinds of divergence:
+surface five kinds of divergence:
 
 * ``modified``     -- a tracked deployed file's content differs.
+* ``unmanaged-conflict`` -- a selected skill differs at an unowned destination.
 * ``unintegrated`` -- a tracked deployed file is missing from the project.
 * ``orphaned``     -- a managed-directory file exists in the project but
   is not present in the scratch replay AND not tracked in the lockfile.
@@ -43,6 +44,12 @@ from apm_cli.core.target_detection import (
     read_manifest_target as _read_apm_yml_target,  # noqa: F401 -- compatibility re-export
 )
 from apm_cli.deps.path_anchoring import build_local_parent_index, resolve_local_dep_dir
+from apm_cli.install.audit_target_roots import (
+    canvas_deploy_prefixes as _canvas_deploy_prefixes,
+)
+from apm_cli.install.audit_target_roots import (
+    governed_root_dirs as _governed_root_dirs,
+)
 from apm_cli.install.drift_render import (
     _INLINE_DIFF_BYTE_CAP as _INLINE_DIFF_BYTE_CAP,
 )
@@ -69,7 +76,6 @@ from apm_cli.utils.guards import _ReadOnlyProjectGuard
 
 if TYPE_CHECKING:
     from apm_cli.deps.lockfile import LockedDependency, LockFile
-    from apm_cli.integration.targets import TargetProfile
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +107,7 @@ class DriftFinding:
     """A single divergence between the replay scratch tree and the project."""
 
     path: str
-    kind: str  # one of "modified" | "unintegrated" | "orphaned" | "unrecorded"
+    kind: str
     package: str = ""
     inline_diff: str = ""
 
@@ -729,32 +735,6 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
 # Diff engine
 
 
-def _governed_root_dirs(targets: list[TargetProfile]) -> set[str]:
-    """Return the set of top-level managed directory names to walk.
-
-    Includes each target's top-level ``root_dir`` (plus ``.apm``) AND every
-    per-primitive ``deploy_root`` override (e.g. the ``copilot`` target routing
-    ``skills`` to ``.agents``). Walking the deploy roots is what lets the drift
-    differ compare committed skill bundles under ``.agents/skills/`` against the
-    replay, closing the gap where deployed skill content could silently diverge
-    from source (issue #1716). The replay reproduces the deploy-time link
-    rewrite faithfully, so byte-identical skills do not surface as false drift.
-    Only the first path segment is kept so nested deploy roots collapse to a
-    single walk root.
-    """
-    roots: set[str] = {".apm"}
-    for t in targets or []:
-        root = getattr(t, "root_dir", None)
-        if root:
-            roots.add(str(root).split("/", 1)[0])
-        primitives = getattr(t, "primitives", None) or {}
-        for mapping in primitives.values():
-            deploy_root = getattr(mapping, "deploy_root", None)
-            if deploy_root:
-                roots.add(str(deploy_root).split("/", 1)[0])
-    return roots
-
-
 def _walk_managed(root: Path, governed_roots: set[str]) -> dict[str, Path]:
     """Return a mapping of project-relative posix paths to absolute paths."""
     out: dict[str, Path] = {}
@@ -819,25 +799,6 @@ def _collect_hashed_files(lockfile: LockFile) -> set[str]:
     return set(DeploymentLedgerCodec.legacy_deployed_file_hash_paths(lockfile))
 
 
-def _canvas_deploy_prefixes(targets) -> set[str]:
-    """Return ``root/subdir/`` prefixes for every target carrying a canvas mapping.
-
-    Used to exclude canvas extension deploy paths from drift comparison
-    (the replay deliberately does not re-integrate canvases).
-    """
-    prefixes: set[str] = set()
-    for target in targets or []:
-        mapping = getattr(target, "primitives", {}).get("canvas")
-        if mapping is None:
-            continue
-        effective_root = mapping.deploy_root or target.root_dir
-        if mapping.subdir:
-            prefixes.add(f"{effective_root}/{mapping.subdir}/")
-        else:
-            prefixes.add(f"{effective_root}/")
-    return prefixes
-
-
 def diff_scratch_against_project(
     scratch_root: Path,
     project_root: Path,
@@ -850,9 +811,10 @@ def diff_scratch_against_project(
 ) -> list[DriftFinding]:
     """Compare the replay scratch tree against the project tree.
 
-    Four kinds of findings are emitted:
+    Five kinds of findings are emitted:
 
     * ``modified``     -- file exists in both, normalized content differs.
+    * ``unmanaged-conflict`` -- a replayed skill differs from an unowned file.
     * ``unintegrated`` -- file exists in scratch but not in project, and the
       path is part of the committed working tree when git tracking is known.
     * ``orphaned``     -- file exists in project + tracked in lockfile
@@ -946,6 +908,14 @@ def diff_scratch_against_project(
         project_files = {r: p for r, p in project_files.items() if not _is_canvas(r)}
 
     findings: list[DriftFinding] = []
+    from apm_cli.integration.base_integrator import BaseIntegrator
+    from apm_cli.utils.diagnostics import DiagnosticCollector
+
+    collision_diagnostics = DiagnosticCollector()
+    managed = set(tracked)
+    skill_roots = [
+        target.skills_deploy_path(project_root) for target in targets if target.supports("skills")
+    ]
 
     for rel, scratch_path in sorted(scratch_files.items()):
         project_path = project_files.get(rel)
@@ -960,6 +930,11 @@ def diff_scratch_against_project(
                 )
             )
             continue
+        unmanaged_skill = any(project_path.is_relative_to(root) for root in skill_roots) and (
+            BaseIntegrator.check_collision(
+                project_path, rel, managed, False, diagnostics=collision_diagnostics
+            )
+        )
         try:
             s_bytes = _normalize(scratch_path.read_bytes())
             p_bytes = _normalize(project_path.read_bytes())
@@ -986,17 +961,20 @@ def diff_scratch_against_project(
             findings.append(
                 DriftFinding(
                     path=rel,
-                    kind="modified",
+                    kind="unmanaged-conflict" if unmanaged_skill else "modified",
                     package=tracked.get(rel, ""),
                     inline_diff=f"(read error: {exc})",
                 )
             )
             continue
-        if s_bytes != p_bytes:
+        if s_bytes != p_bytes or (
+            unmanaged_skill
+            and not BaseIntegrator.is_content_identical_to_source(project_path, scratch_path)
+        ):
             findings.append(
                 DriftFinding(
                     path=rel,
-                    kind="modified",
+                    kind="unmanaged-conflict" if unmanaged_skill else "modified",
                     package=tracked.get(rel, ""),
                     inline_diff=_inline_diff_for(scratch_path, project_path),
                 )
@@ -1005,8 +983,8 @@ def diff_scratch_against_project(
             # Content agrees, so nothing else in the audit will ever look at
             # this file again: no manifest entry means no hash baseline and no
             # Unicode scan. Reported only in the content-clean case -- when the
-            # bytes differ, ``modified`` already fails the check and 'apm
-            # install' is the same remedy for both.
+            # bytes differ, a content or ownership finding already reports
+            # the failure with its appropriate remedy.
             findings.append(DriftFinding(path=rel, kind="unrecorded", package=""))
 
     for rel in sorted(project_files.keys()):

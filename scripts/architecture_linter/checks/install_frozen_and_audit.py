@@ -99,7 +99,7 @@ def check_frozen(provider: FactsProvider) -> tuple[Violation, ...]:
     local_bundle = _first_line(adapter, "if len(packages) == 1 and not mcp_name")
     acquisition = _first_line(integration, "prepare_integration_materialization(source)")
     hydrated_check = _first_line(integration, "InstallService.enforce_hydrated_mcp(")
-    deployment = _first_line(integration, "run_integration_template(source,")
+    deployment = _first_line(integration, "run_integration_template(")
 
     duplicates = _duplicate_definition_lines(
         provider,

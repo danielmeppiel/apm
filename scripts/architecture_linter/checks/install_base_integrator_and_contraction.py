@@ -639,7 +639,11 @@ def _skill_lockfile_root_findings(provider: FactsProvider, rule_id: str) -> list
     required_route = (
         "get_apm_dir(InstallScope.USER) if scope is InstallScope.USER else project_root"
     )
-    required_forward_count = 4
+    integration_routes = {
+        "_promote_sub_skills_standalone",
+        "_integrate_native_skill",
+        "_integrate_skill_bundle",
+    }
     findings: list[Violation] = []
     if not _present(facts, required_import) or not _present(facts, required_route):
         findings.append(_summary(rule_id, _SKILL_INTEGRATOR, route_message))
@@ -657,7 +661,30 @@ def _skill_lockfile_root_findings(provider: FactsProvider, rule_id: str) -> list
                 "skill ownership maps must resolve deployment provenance from the selected lockfile_root",
             )
         )
-    if sum("lockfile_root=lockfile_root" in line for line in facts.lines) != required_forward_count:
+    index = provider.tree_index(_SKILL_INTEGRATOR)
+    function = (
+        index.function("SkillIntegrator.integrate_package_skill") if index is not None else None
+    )
+    calls = (
+        [
+            node
+            for node in index.own_scope(function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in integration_routes
+        ]
+        if function is not None
+        else []
+    )
+    if {call.func.attr for call in calls} != integration_routes or any(
+        not any(
+            keyword.arg == "lockfile_root"
+            and isinstance(keyword.value, ast.Name)
+            and keyword.value.id == "lockfile_root"
+            for keyword in call.keywords
+        )
+        for call in calls
+    ):
         findings.append(_summary(rule_id, _SKILL_INTEGRATOR, forward_message))
     snapshot_body = _awk_body(
         facts, re.compile(r"^    def ownership_snapshot\("), re.compile(r"^    def ")

@@ -29,6 +29,13 @@ scratch replay does not enable cold replay for global installations.
 Both modes also enforce the lockfile's canonical deployment ownership; see
 [Deployment-owner integrity](#deployment-owner-integrity).
 
+Drift reports distinguish a differing unowned skill file (`unmanaged-conflict`)
+from an edited managed file (`modified`). Ordinary reinstall refuses the former:
+rename the local skill or correct the dependency's existing skill/target
+selection first. Audit does not adopt, overwrite, or delete either file.
+JSON retains the finding's path and kind; SARIF uses
+`apm/drift/unmanaged-conflict` with error severity.
+
 Replay and coverage use the current `apm.yml` target declaration when present,
 otherwise the concrete target identities recorded by install. An unrelated
 `.github/workflows/` file does not add a Copilot deployment to a recorded
