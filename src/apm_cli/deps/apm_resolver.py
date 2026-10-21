@@ -1502,7 +1502,8 @@ class APMDependencyResolver:
             raise DownloadedPackageError(
                 f"Failed to activate downloaded dependency "
                 f"'{package.name}': {exc}. "
-                f"{self._replacement_failure_hint(had_existing_install)}"
+                "The candidate was not activated; inspect the failure and any "
+                "reported recovery paths before retrying."
             ) from exc
         if not live_path.exists():
             raise FileNotFoundError(f"Validated package was not published: {live_path}")
