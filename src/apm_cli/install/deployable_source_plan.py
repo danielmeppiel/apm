@@ -49,6 +49,14 @@ def _is_safe_source_path(
     return True
 
 
+def _optional_source_directory(root: Path) -> bool | None:
+    """Distinguish an absent optional root from a non-directory or an access failure."""
+    try:
+        return stat.S_ISDIR(root.stat().st_mode)
+    except FileNotFoundError:
+        return None
+
+
 @dataclass(frozen=True)
 class DeployableSourcePlan:
     """Authorized sources plus a skill-scoped discovery witness.
@@ -116,8 +124,7 @@ class DeployableSourcePlan:
         def safe(path: Path, on_symlink: Callable[[Path], None] | None = None) -> bool:
             nonlocal discovery_complete
             admitted = _is_safe_source_path(path, source_root, on_symlink)
-            if not admitted:
-                discovery_complete = False
+            discovery_complete = discovery_complete and admitted
             return admitted
 
         def warn_agent_symlink(path: Path) -> None:
@@ -158,14 +165,9 @@ class DeployableSourcePlan:
             nonlocal discovery_complete
             if not safe(root, on_symlink):
                 return False
-            try:
-                mode = root.stat().st_mode
-            except FileNotFoundError:
-                return False
-            if stat.S_ISDIR(mode):
-                return True
-            discovery_complete = False
-            return False
+            directory = _optional_source_directory(root)
+            discovery_complete = discovery_complete and directory is not False
+            return directory is True
 
         def tree_files(
             root: Path, on_symlink: Callable[[Path], None] | None = None
