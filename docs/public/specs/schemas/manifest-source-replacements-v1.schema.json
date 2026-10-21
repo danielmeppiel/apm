@@ -4,7 +4,7 @@
   "title": "Proposed OpenAPM root source replacement manifest",
   "description": "Unratified opt-in capability proposal 0.1.54. Structural validation supplements req-rpl-001; canonical identity, duplicate selectors and provider/path semantics require consumer validation. No first supporting release is implied.",
   "allOf": [
-    { "$ref": "manifest-v0.1.41.schema.json" }
+    { "$ref": "manifest-v0.1.48.schema.json" }
   ],
   "type": "object",
   "required": ["$schema"],

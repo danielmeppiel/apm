@@ -4238,7 +4238,7 @@ source verification and graph safety) are defined in Section 4.8.1 and
 exercised against the consumer; schema validation alone does not establish
 them. No earlier schema URL or bytes are replaced.
 Offline validators load both candidate resources and their referenced
-0.1.41 manifest and 0.1.46 lockfile resources; no network fetch is required.
+0.1.48 manifest and 0.1.46 lockfile resources; no network fetch is required.
 
 `src/apm_cli/policy/schema.py` is a **non-normative cross-reference**;
 the policy JSON Schema is authoritative. Manifest and lockfile validation

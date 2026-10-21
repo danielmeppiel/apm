@@ -24,6 +24,7 @@ pytestmark = pytest.mark.component
 def _validator(kind: str) -> Draft202012Validator:
     names = [
         "manifest-v0.1.41.schema.json",
+        "manifest-v0.1.48.schema.json",
         "lockfile-v0.1.46.schema.json",
         "manifest-source-replacements-v1.schema.json",
         "lockfile-source-replacements-v1.schema.json",
@@ -44,6 +45,22 @@ def _manifest(source: dict) -> dict:
         "version": "1.0.0",
         "replace": [{"for": {"git": "https://github.com/owner/original"}, "with": source}],
     }
+
+
+@pytest.mark.req("req-rpl-001")
+def test_replacement_schema_preserves_git_subpath_dependencies(tmp_path: Path) -> None:
+    manifest = _manifest({"path": "../source"})
+    manifest["replace"][0]["for"]["path"] = "packages/base"
+    manifest["dependencies"] = {
+        "apm": [{"git": "https://github.com/owner/original", "path": "packages/base"}]
+    }
+    errors = list(_validator("manifest").iter_errors(manifest))
+    assert not errors, [error.message for error in errors]
+    package = APMPackage.from_mapping(manifest, package_path=tmp_path, create_config=False)
+    dependency = package.get_apm_dependencies()[0]
+    rule = build_replacement_index(package.replace_rules).lookup(dependency)
+    assert dependency.virtual_path == "packages/base"
+    assert rule is not None and rule.selector.subpath == "packages/base"
 
 
 @pytest.mark.req("req-rpl-001")
