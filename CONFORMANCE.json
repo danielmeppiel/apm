@@ -1163,8 +1163,10 @@
       "keyword": "MUST",
       "section": "4.8.1",
       "status": "active",
-      "test_count": 3,
+      "test_count": 5,
       "tests": [
+        "tests/spec_conformance/test_source_replacement_lifecycle.py::test_empty_graph_replacement_intent_is_persisted[declared-targets]",
+        "tests/spec_conformance/test_source_replacement_lifecycle.py::test_empty_graph_replacement_intent_is_persisted[no-target]",
         "tests/spec_conformance/test_source_replacement_reqs.py::test_empty_and_dormant_tables_are_not_absent_or_implicitly_accepted",
         "tests/spec_conformance/test_source_replacement_reqs.py::test_selected_source_policy_and_original_ownership_survive_lock_replay[source0]",
         "tests/spec_conformance/test_source_replacement_reqs.py::test_selected_source_policy_and_original_ownership_survive_lock_replay[source1]"
@@ -1176,8 +1178,10 @@
       "keyword": "MUST",
       "section": "4.8.1",
       "status": "active",
-      "test_count": 4,
+      "test_count": 6,
       "tests": [
+        "tests/spec_conformance/test_source_replacement_lifecycle.py::test_empty_graph_replacement_intent_is_persisted[declared-targets]",
+        "tests/spec_conformance/test_source_replacement_lifecycle.py::test_empty_graph_replacement_intent_is_persisted[no-target]",
         "tests/spec_conformance/test_source_replacement_lifecycle.py::test_frozen_replacement_refuses_untrusted_content_without_rewriting[changed-source]",
         "tests/spec_conformance/test_source_replacement_lifecycle.py::test_frozen_replacement_refuses_untrusted_content_without_rewriting[missing-baseline]",
         "tests/spec_conformance/test_source_replacement_lifecycle.py::test_frozen_replacement_refuses_untrusted_content_without_rewriting[missing-source]",

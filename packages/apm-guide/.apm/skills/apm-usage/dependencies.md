@@ -301,9 +301,13 @@ Unknown fields, duplicate selectors, collisions and cycles fail.
 Original identity and selections still own one installed slot. Auth, policy,
 integrity and executable approval evaluate the selected source; upstream consent
 is not transferred. HTTP replacement sources are rejected, even with CLI consent.
-Missing/invalid selected sources never fall back upstream. Unused rules warn
-without accessing their sources. Removing a rule and running `apm install`
+Missing/invalid selected sources never fall back upstream. Removing a rule and running `apm install`
 restores upstream obligations and reconciles owned outputs.
+
+Ordinary `apm install` persists the entire normalized root replacement table in
+`apm.lock.yaml`, even after the last dependency is removed. This includes
+clearing it with `replace: []` or removing `replace`. Recording dormant rules
+does not read or fetch their sources, even if a local path is absent.
 
 The complete table and incoming requests are recorded in candidate lock version
 `"3"`. Verified v0.25.0/v0.32.0/v0.33.0 readers reject the selector/version;
