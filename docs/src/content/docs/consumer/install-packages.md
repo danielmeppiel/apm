@@ -181,7 +181,7 @@ runnable scripts your manifest exposes (see
 ## Useful flags
 
 ```bash
-apm install --dry-run                  # resolve and print the plan; no writes
+apm install --dry-run                  # preview locally known dependencies
 apm install --target claude,cursor     # only deploy to these harnesses
 apm install --exclude gemini           # deploy to all targets except gemini
 apm install --only apm                 # skip MCP server integration this run
@@ -205,8 +205,11 @@ For project-scope installs, targets that require
 print a hint when dependency instructions require `apm compile`. The hint names
 the root context files that compile will update.
 
-For the full flag reference, run `apm install --help` or see
-[CLI commands](../../reference/cli/install/).
+`--dry-run` includes required indirect APM dependencies when metadata is
+available locally. Offline gaps make the preview incomplete and suppress
+orphan-removal predictions; stale-file integration cleanup is not previewed.
+See [preview limits](../../reference/cli/install/#preview-without-writing)
+and the full flag reference, or run `apm install --help`.
 
 ## When things go wrong
 

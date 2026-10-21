@@ -71,6 +71,7 @@ class InstallContext:
     allow_insecure: bool = False
     allow_insecure_hosts: tuple[str, ...] = ()
     trust_bin: bool | None = None
+    trust_transitive_mcp: bool = False
     transaction: Any = None  # InstallTransaction
 
     dry_run: bool = False

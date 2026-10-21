@@ -150,13 +150,15 @@
       "keyword": "MUST",
       "section": "5.5",
       "status": "active",
-      "test_count": 12,
+      "test_count": 14,
       "tests": [
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[False-stdio]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-http]",
         "tests/spec_conformance/test_codex_mcp_reqs.py::test_frozen_mcp_drift_precedes_codex_legacy_repair[True-stdio]",
         "tests/spec_conformance/test_lockfile_reqs.py::TestFrozenInstallNeverWritesLockfile::test_frozen_install_withholds_the_write_and_fails_instead",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_cold_dependency_evidence_cannot_defer_direct_mcp_drift[False]",
+        "tests/spec_conformance/test_lockfile_reqs.py::test_cold_dependency_evidence_cannot_defer_direct_mcp_drift[True]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_install_preserves_conflicted_lockfile_bytes[crlf]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_install_preserves_conflicted_lockfile_bytes[lf]",
         "tests/spec_conformance/test_lockfile_reqs.py::test_frozen_mcp_validation_fails_before_durable_mutation",
@@ -1035,12 +1037,13 @@
       "keyword": "MUST",
       "section": "7.2",
       "status": "active",
-      "test_count": 5,
+      "test_count": 6,
       "tests": [
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[False-False]",
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[False-True]",
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[True-False]",
         "tests/spec_conformance/test_resolution_reqs.py::test_immutable_diamond_constraints_reach_install_consumer[True-True]",
+        "tests/spec_conformance/test_resolution_reqs.py::test_offline_preview_preserves_breadth_first_declaration_order",
         "tests/spec_conformance/test_resolution_reqs.py::test_resolver_walks_dependency_graph_deterministically"
       ]
     },
@@ -1565,9 +1568,10 @@
       "keyword": "MUST",
       "section": "8.5.5",
       "status": "active",
-      "test_count": 3,
+      "test_count": 4,
       "tests": [
         "tests/spec_conformance/test_copilot_plugins_reqs.py::test_cache_only_replay_preserves_native_target_exclusion",
+        "tests/spec_conformance/test_copilot_plugins_reqs.py::test_transitive_native_preview_preflight_preserves_state",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_materializes_without_projection",
         "tests/spec_conformance/test_manifest_reqs.py::test_agent_plugin_target_exclusion_stays_opaque_after_materialization"
       ]
