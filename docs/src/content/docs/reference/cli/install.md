@@ -161,6 +161,19 @@ still cleans up its managed files, subject to the usual user-edit protections.
   the affected dependency, not a deletion location. Cleanup removes deployed
   files; a local dependency's source directory is not cleaned.
 
+- **Historical missing-file claims.** Normal `apm install` retires an obsolete
+  dependency file claim and its hash when the file is already absent and
+  complete source discovery and successful skill deployment prove it is no
+  longer shipped within a current source-backed skill. This also repairs older
+  locks with `legacy` target records or no deployment ledger, without a lock
+  reset or uninstall/reinstall.
+  Other owners, unprocessed targets and incomplete deployments remain protected.
+  Missing bytes, a saved hash or a directory prefix alone are not proof;
+  unresolved claims still appear in audit. Still-present content with unclear
+  ownership is not deleted or adopted by this repair. Audit is read-only;
+  `--frozen` neither repairs these claims nor accepts changed local sources.
+  After ordinary repair, unchanged frozen replay remains supported.
+
 - **Immutable dependency conflicts.** Install fails when two paths require
   different immutable commits for one package identity, showing both paths and
   requested refs as ordered `owner/repo@ref -> owner/repo@ref` chains.
@@ -245,6 +258,10 @@ still cleans up its managed files, subject to the usual user-edit protections.
   `~/.config/opencode/AGENTS.md`, including scoped instruction sections.
 - **Project-scope root context hint.** After `apm install`, targets that require [post-install instruction compilation](../../targets-matrix/#post-install-instruction-compilation) print a one-line `[i]` hint when dependency instructions require `apm compile`. The hint names only the root context files that compile will update.
 - **Stale-file cleanup.** Files a still-present package previously deployed but no longer produces are removed only when recorded hashes match (user-edited files are kept with a warning). The same checks apply to project-local `.apm/` output with recorded concrete target ownership, including after renames, deletions, or target removal; [ambiguous legacy rows](../../lockfile-spec/#unattributed-rows) remain untouched. Shared `.agents/skills/` files stay while another package or target claims them, including a declared target skipped by `--target`.
+  Narrowing one dependency's `targets:` also reconciles its removed targets
+  within the current install scope, even when the consumer still enables those
+  targets. Successfully removed files lose their file/hash/ledger claims;
+  edited files and targets skipped by `--target` retain protective records.
 - **Interrupted-install recovery.** After a successful install, APM removes inactive resolution backup directories left by interrupted lock-aware runs. Active install backups and entries that do not match APM's staging name format are preserved. Lockless backups from older APM versions are retained because they may belong to a running install; inactive orphaned activity-lock files are reported for manual cleanup. Stop other APM installs, rerun with `--verbose`, then manually delete the reported paths.
 - **Enterprise marketplace gate.** When installing from a `*.ghe.com` marketplace, bare cross-repo `repo:` fields (e.g. `repo: owner/repo`) are refused before any network request runs, preventing dependency-confusion attacks. Host-qualify the field to proceed: `repo: corp.ghe.com/owner/repo` for an enterprise dep, or `repo: github.com/owner/repo` for a declared cross-host dep.
 - **Security scan.** After target, subset, and executable authorization, APM scans

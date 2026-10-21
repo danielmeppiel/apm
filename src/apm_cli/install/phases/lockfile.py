@@ -277,7 +277,13 @@ class LockfileBuilder:
         # not removed, so a "Repaired inactive-target entries" report would be
         # misleading.
         lockfile_only = getattr(self.ctx, "lockfile_only", False)
+        completed_reintegrations = (
+            {}
+            if lockfile_only or getattr(self.ctx, "frozen", False)
+            else getattr(self.ctx, "package_completed_reintegrations", {})
+        )
         canonical_records = {}
+        authoritative_empty = False
         ghost_count = 0
         for dep_key in lockfile.dependencies:
             claim = package_claims[dep_key]
@@ -289,6 +295,7 @@ class LockfileBuilder:
             )
             prior_files = list(claim.prior_files)
             prior_hashes = claim.prior_hashes
+            completed = completed_reintegrations.get(dep_key)
 
             def _log_ghost_drop(path: str, package_key: str = dep_key) -> None:
                 nonlocal ghost_count
@@ -318,13 +325,16 @@ class LockfileBuilder:
                 include_ledger=True,
                 apply_disk_deletion=not lockfile_only,
                 user_scope=is_user_scope(getattr(self.ctx, "scope", None)),
+                completed_reintegration=completed,
             )
-            if not files:
+            if not files and completed is None:
                 # Nothing this install governs and nothing to carry forward;
                 # leave deployed_files untouched so the whole-dep
                 # _merge_existing path can preserve it intact.
                 continue
             canonical_records.update(ledger.records)
+            authoritative_empty |= completed is not None and not files
+        if canonical_records or authoritative_empty:
             from apm_cli.core.deployment_ledger import DeploymentLedgerCodec
 
             DeploymentLedgerCodec.apply_to_lockfile(
