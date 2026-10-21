@@ -549,11 +549,10 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
-    deployment_modules_dir = scratch_root / "apm_modules"
-    if config.user_scope:
-        deployment_modules_dir = scratch_root / get_modules_dir(InstallScope.USER).relative_to(
-            get_deploy_root(InstallScope.USER)
-        )
+    replay_scope = InstallScope.USER if config.user_scope else InstallScope.PROJECT
+    deployment_modules_dir = scratch_root / get_modules_dir(replay_scope).relative_to(
+        get_deploy_root(replay_scope)
+    )
     codex_records = None
 
     live_targets = resolve_audit_targets(
