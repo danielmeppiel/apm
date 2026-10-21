@@ -258,9 +258,11 @@ def test_alias_target_contracts_attributed_local_rows(
 def test_install_does_not_expand_unattributed_dependency_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The local provenance fix must not sweep ambiguous historical dependency rows."""
+    """Retire proven absent members without sweeping still-present historical skills."""
     _write_project(tmp_path, ("claude", "copilot"))
     _write_skill(tmp_path / "dep", "dep-extra")
+    obsolete_source = tmp_path / "dep/.apm/skills/dep-skill/obsolete.md"
+    obsolete_source.write_text("Old member.\n", encoding="ascii")
     _install(tmp_path, monkeypatch)
     _mark_shared_root_rows_unattributed(tmp_path, owner="./dep")
     shared_skill = tmp_path / ".agents/skills/dep-extra/SKILL.md"
@@ -268,6 +270,13 @@ def test_install_does_not_expand_unattributed_dependency_cleanup(
     expected_hash = compute_file_hash(shared_skill)
 
     shutil.rmtree(tmp_path / "dep" / ".apm" / "skills" / "dep-extra")
+    obsolete_source.unlink()
+    obsolete = {
+        ".agents/skills/dep-skill/obsolete.md",
+        ".claude/skills/dep-skill/obsolete.md",
+    }
+    for path in obsolete:
+        (tmp_path / path).unlink()
     _install(tmp_path, monkeypatch)
 
     dependency = next(
@@ -280,6 +289,10 @@ def test_install_does_not_expand_unattributed_dependency_cleanup(
     assert dependency["deployed_file_hashes"][".agents/skills/dep-extra/SKILL.md"] == expected_hash
     assert not (tmp_path / ".claude" / "skills" / "dep-extra").exists()
     assert _deployment_targets(_lock(tmp_path))[".agents/skills/dep-extra/SKILL.md"] == "legacy"
+    assert obsolete.isdisjoint(dependency["deployed_files"])
+    assert obsolete.isdisjoint(dependency["deployed_file_hashes"])
+    assert obsolete.isdisjoint(_deployment_targets(_lock(tmp_path)))
+    assert all(not (tmp_path / path).exists() for path in obsolete)
 
 
 def test_historical_bundle_without_owner_evidence_survives_install(
