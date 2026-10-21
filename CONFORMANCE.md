@@ -164,7 +164,7 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 | [req-tg-009](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-009) | MUST | 8.5.1 | consumer | active | 1 | - |
 | [req-tg-010](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-010) | MUST | 8.5.4 | consumer | active | 1 | - |
 | [req-tg-011](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-011) | MUST | 8.5.5 | consumer | active | 4 | - |
-| [req-tg-012](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-012) | MUST | 8.5.6 | consumer | active | 1 | - |
+| [req-tg-012](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-012) | MUST | 8.5.6 | consumer | active | 7 | - |
 | [req-tg-013](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-013) | MUST | 8.5.7 | consumer | active | 7 | - |
 | [req-tg-014](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-014) | MUST | 8.5.8 | consumer | active | 2 | - |
 | [req-tg-015](docs/src/content/docs/specs/openapm-v0.1.md#req-tg-015) | MUST | 8.5.1 | consumer | active | 1 | - |
@@ -181,4 +181,3 @@ APM claims the proposed deployed-prompt-audit capability (req-pl-019, req-pl-020
 
 ### req-mf-016
 - Path-shape negative test requires apm_cli's path-policy loader to be invokable from the test harness; the JSON Schema currently models `path` as a free-form string. Tracked as a follow-up: tighten the schema to forbid leading `/` and document the absolute-path rejection in the schema additionalProperties.
-
