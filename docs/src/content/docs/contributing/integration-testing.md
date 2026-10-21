@@ -393,6 +393,10 @@ explicit-empty commands, intact resources, source pins, disabled-by-default
 registration, reinstall/update/removal, and absence of loose duplicates.
 Ordinary and frozen reinstalls preserve both user activation choices in the
 substituted host; removal clears APM's acquired source and final lockfile.
+Pinned updates also switch between selected and explicitly empty commands.
+Two plugins with the same command basename retain separate resources; removing
+one preserves the surviving plugin's activation, source and ownership, plus a
+same-named user command.
 The saved native fingerprint and source pin must match the selected revision.
 Read-only audit rejects modified bundled resources (including `__pycache__` data)
 and, on POSIX, executable-bit changes, even with an empty command selection,

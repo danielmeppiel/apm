@@ -70,7 +70,9 @@ class _Scenario:
         """Return the isolated native user config root."""
         return self.isolated.home / ".claude"
 
-    def write_manifest(self, *, revision: str | None = None) -> None:
+    def write_manifest(
+        self, *, revision: str | None = None, plugin_paths: tuple[str, ...] = ("context",)
+    ) -> None:
         """Pin the selected Git-path source without a moving remote reference."""
         document = {
             "name": "native-command-consumer",
@@ -81,8 +83,9 @@ class _Scenario:
                     {
                         "git": _DEPENDENCY,
                         "ref": revision or self.revision,
-                        "path": "plugins/context",
+                        "path": f"plugins/{plugin_path}",
                     }
+                    for plugin_path in plugin_paths
                 ]
             },
         }
@@ -177,6 +180,122 @@ def _assert_intact_native_source(
         }
     }
     return source
+
+
+@pytest.mark.parametrize("empty", [False, True], ids=["select-to-empty", "empty-to-select"])
+def test_pinned_command_selection_update_preserves_native_unit(
+    tmp_path: Path, apm_engine_command: tuple[str, ...], empty: bool
+) -> None:
+    """Changing the selected commands updates the intact native unit, never a loose copy."""
+    scenario = _scenario(tmp_path, apm_engine_command, empty=empty)
+    scenario.install()
+    source = _assert_intact_native_source(scenario, scenario.revision, empty=empty)
+    before = (source / "selected" / "status.md").read_bytes()
+    manifest_path = scenario.source / ".claude-plugin" / "plugin.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["commands"] = ["./selected/status.md"] if empty else []
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    revision = scenario.factory.commit(
+        scenario.repository, message="Change native command selection"
+    ).sha
+    scenario.write_manifest(revision=revision)
+
+    scenario.install()
+    scenario.run("install", "-g", "--target", "claude", "--only", "apm", "--frozen")
+
+    updated = _assert_intact_native_source(scenario, revision, empty=not empty)
+    assert updated == source
+    assert (updated / "selected" / "status.md").read_bytes() == before
+    assert (updated / "commands" / "unselected.md").is_file()
+    assert [
+        call[1]
+        for call in scenario.native_state()["calls"]
+        if call[:2] in (["plugin", "install"], ["plugin", "update"])
+    ] == ["install", "update", "update"]
+
+
+def test_native_command_sibling_removal_preserves_user_command_and_survivor(
+    tmp_path: Path, apm_engine_command: tuple[str, ...]
+) -> None:
+    """Two native status commands coexist; removing one retains the other and user files."""
+    scenario = _scenario(tmp_path, apm_engine_command)
+    sibling = scenario.source.parent / "sibling"
+    shutil.copytree(_FIXTURE, sibling)
+    manifest_path = sibling / ".claude-plugin" / "plugin.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["name"] = "apm-command-sibling"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (sibling / "resources" / "identity.txt").write_bytes(b"SIBLING_COMMAND_CONTEXT\n")
+    revision = scenario.factory.commit(
+        scenario.repository, message="Add independent native command namespace"
+    ).sha
+    scenario.write_manifest(revision=revision, plugin_paths=("context", "sibling"))
+    user_command = scenario.claude / "commands" / "status.md"
+    user_command.parent.mkdir(parents=True)
+    user_command.write_bytes(b"# User-owned status\n")
+
+    scenario.install()
+
+    state = scenario.native_state()
+    plugins = {item["id"]: item for item in state["plugins"]}
+    assert set(plugins) == {
+        "apm-command-context@apm-claude",
+        "apm-command-sibling@apm-claude",
+    }
+    roots = {name: Path(plugin["readFromFolder"]) for name, plugin in plugins.items()}
+    assert len(set(roots.values())) == 2
+    for name, publisher in (
+        ("apm-command-context@apm-claude", scenario.source),
+        ("apm-command-sibling@apm-claude", sibling),
+    ):
+        assert plugins[name]["scope"] == "user"
+        assert plugins[name]["enabled"] is False
+        assert roots[name].is_relative_to(scenario.modules)
+        for path in publisher.rglob("*"):
+            if path.is_file():
+                assert (roots[name] / path.relative_to(publisher)).read_bytes() == path.read_bytes()
+    plugins["apm-command-sibling@apm-claude"]["enabled"] = True
+    Path(scenario.environment["APM_NATIVE_TEST_STATE"]).write_text(
+        json.dumps(state), encoding="utf-8"
+    )
+    ledger_path = scenario.modules / ".claude-plugin" / "apm-registration.json"
+    ledger_before = json.loads(ledger_path.read_text(encoding="utf-8"))
+    assert set(ledger_before["plugins"]) == set(plugins)
+    survivor = roots["apm-command-sibling@apm-claude"]
+    survivor_bytes = {
+        path.relative_to(survivor): path.read_bytes()
+        for path in survivor.rglob("*")
+        if path.is_file()
+    }
+
+    scenario.run("uninstall", "-g", f"{_DEPENDENCY}/plugins/context")
+    scenario.run("install", "-g", "--target", "claude", "--only", "apm", "--frozen")
+
+    remaining = scenario.native_state()
+    assert remaining["plugins"] == [plugins["apm-command-sibling@apm-claude"]]
+    assert not roots["apm-command-context@apm-claude"].exists()
+    assert {
+        path.relative_to(survivor): path.read_bytes()
+        for path in survivor.rglob("*")
+        if path.is_file()
+    } == survivor_bytes
+    lock = load_yaml(scenario.isolated.config_root / "apm.lock.yaml")
+    assert len(lock["dependencies"]) == 1
+    assert lock["dependencies"][0]["virtual_path"] == "plugins/sibling"
+    assert lock["dependencies"][0]["resolved_commit"] == revision
+    assert json.loads(ledger_path.read_text(encoding="utf-8"))["plugins"] == {
+        "apm-command-sibling@apm-claude": ledger_before["plugins"]["apm-command-sibling@apm-claude"]
+    }
+    assert [call for call in remaining["calls"] if call[:2] == ["plugin", "uninstall"]] == [
+        ["plugin", "uninstall", "apm-command-context@apm-claude", "--scope", "user", "--keep-data"]
+    ]
+    assert all(
+        call[:2] not in (["plugin", "enable"], ["plugin", "disable"]) for call in remaining["calls"]
+    )
+    assert user_command.read_bytes() == b"# User-owned status\n"
+    assert sorted(path.name for path in user_command.parent.iterdir()) == ["status.md"]
+    assert not (scenario.claude / "commands" / "unselected.md").exists()
+    assert not (scenario.claude / "hooks").exists()
 
 
 @pytest.mark.parametrize("empty", [False, True], ids=["selected-command", "explicit-empty"])
