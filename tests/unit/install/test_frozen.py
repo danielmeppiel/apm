@@ -42,6 +42,7 @@ def _make_request(*, project_dir: Path, manifest_deps: list[DependencyReference]
     pkg.package_path = project_dir / "apm.yml"
     pkg.get_apm_dependencies.return_value = manifest_deps
     pkg.get_dev_apm_dependencies.return_value = []
+    pkg.get_all_mcp_dependencies.return_value = []
     return InstallRequest(apm_package=pkg, frozen=True)
 
 
@@ -260,7 +261,9 @@ class TestEnforceFrozen:
             InstallRequest(apm_package=package, frozen=True, logger=logger)
         )
         messages = [call.args[0] for call in logger.verbose_detail.call_args_list]
-        assert any("locked Claude skill" in message for message in messages) is (not materialized)
+        assert any("Deferring cold-cache MCP verification" in message for message in messages) is (
+            not materialized
+        )
 
 
 class TestEnforceFrozenColdCache:
@@ -272,6 +275,7 @@ class TestEnforceFrozenColdCache:
             resolved_ref="v1.0.0",
             resolved_commit="a" * 40,
             package_type="apm_package",
+            name="some-pkg",
             depth=1,
         )
 
@@ -358,6 +362,7 @@ class TestEnforceFrozenColdCache:
             configs={},
             provenance={},
             problems=(),
+            pending_packages=frozenset({absent_dep.get_unique_key()}),
         )
 
         with (
@@ -371,11 +376,8 @@ class TestEnforceFrozenColdCache:
     def test_co_owned_server_not_exempted_by_cold_cache(self, tmp_path: Path) -> None:
         """A server co-owned by an absent dep AND another owner is NOT cold-cache exempt.
 
-        The issubset guard ensures only servers whose EVERY owner is absent are
-        augmented. A co-owned server must remain subject to live comparison so
-        that real drift introduced by the non-absent co-owner is not silently
-        dropped. This regression-traps the issubset check in
-        _absent_apm_package_mcp_configs.
+        Only unambiguous absent declarers can defer verification. A co-owned
+        server remains subject to live comparison when another owner is present.
         """
         from apm_cli.integration.mcp_config_view import CurrentMcpConfigView
 
@@ -386,8 +388,7 @@ class TestEnforceFrozenColdCache:
 
         lock = LockFile.read(tmp_path / "apm.lock.yaml")
         assert lock is not None
-        # server-a: exclusively owned by absent dep -> should be augmented (no drift)
-        # server-b: co-owned by absent dep + another owner -> NOT augmented
+        # Only server-a has exclusively unavailable source evidence.
         lock.mcp_servers = ["server-a", "server-b"]
         lock.mcp_configs = {
             "server-a": {"name": "server-a"},
@@ -407,6 +408,7 @@ class TestEnforceFrozenColdCache:
             configs={},
             provenance={},
             problems=(),
+            pending_packages=frozenset({dep.get_unique_key()}),
         )
 
         with (
@@ -421,12 +423,7 @@ class TestEnforceFrozenColdCache:
         assert not any("server-a" in reason for reason in exc_info.value.reasons)
 
     def test_cold_cache_mcp_restoration_emits_verbose_log(self, tmp_path: Path) -> None:
-        """enforce_frozen emits a verbose_detail log when cold-cache MCP servers are restored (DX-3).
-
-        This regression-traps the request.logger.verbose_detail() call added in
-        _absent_apm_package_mcp_configs augmentation path. If the call is removed,
-        the assertion on verbose_messages fails.
-        """
+        """Cold-cache preflight reports deferred verification, not verified restoration."""
         from apm_cli.core.command_logger import InstallLogger
 
         class _RecordingInstallLogger(InstallLogger):
@@ -466,7 +463,7 @@ class TestEnforceFrozenColdCache:
         assert len(cold_cache_logs) >= 1, (
             f"Expected at least one cold-cache verbose log from enforce_frozen; got: {recording_logger.verbose_messages}"
         )
-        assert any("locked APM package" in message for message in recording_logger.verbose_messages)
+        assert any("until its locked source is restored" in message for message in cold_cache_logs)
 
 
 def _locked(deployed: list[str]) -> LockedDependency:
