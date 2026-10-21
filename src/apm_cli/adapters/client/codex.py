@@ -210,6 +210,15 @@ class CodexClientAdapter(MCPClientAdapter):
             self._write_config(config)
         return migrated
 
+    def matches_managed_server_config(self, native: object, expected: dict) -> bool:
+        """Accept the historical empty-ID spelling without accepting foreign identity."""
+        if not isinstance(native, dict) or self.get_registry_id(native):
+            return False
+        comparable = dict(native)
+        if comparable.get("id") == "":
+            comparable.pop("id")
+        return comparable == expected
+
     def update_config(self, config_updates):
         """Update the Codex CLI MCP configuration.
 

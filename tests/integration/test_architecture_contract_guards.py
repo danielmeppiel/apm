@@ -501,7 +501,7 @@ def test_neutral_hook_walker_preserves_tolerant_integrator_inspection() -> None:
     )
 
 
-@pytest.mark.parametrize("schema_revision", ["0.1", "0.1.41"])
+@pytest.mark.parametrize("schema_revision", ["0.1", "0.1.41", "0.1.48"])
 def test_manifest_schema_negotiates_normative_v01_registry_shape(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, schema_revision: str
 ) -> None:
@@ -554,6 +554,12 @@ def test_unknown_manifest_schema_identity_fails_closed(tmp_path: Path) -> None:
     assert [(url.scheme, url.hostname, url.path) for url in urls] == [
         ("https", "microsoft.github.io", "/apm/specs/schemas/manifest-v0.1.schema.json"),
         ("https", "microsoft.github.io", "/apm/specs/schemas/manifest-v0.1.41.schema.json"),
+        ("https", "microsoft.github.io", "/apm/specs/schemas/manifest-v0.1.48.schema.json"),
+        (
+            "https",
+            "microsoft.github.io",
+            "/apm/specs/schemas/manifest-source-replacements-v1.schema.json",
+        ),
     ]
 
 

@@ -138,7 +138,9 @@ unverified. Metadata and unit/mock results do not establish execution.
 
 APM preserves manifest selection, frontmatter, plugin-root expressions and sibling
 files, without duplicate loose Claude commands or hook-settings merges.
-Standalone APM primitives, project installs and other selected targets are unchanged.
+Same-name personal loose Claude skills are preserved and do not block native
+registration. Standalone APM primitives, project installs and other selected
+targets are unchanged.
 
 Native ownership records fingerprint every publisher file, including
 `__pycache__` resources and the owner executable bit. Git transport metadata and
@@ -155,9 +157,10 @@ directory (normally `~/.apm`). Include `claude` in that manifest's `targets`,
 preserving any other targets; audit has no `--target` flag. This checks stored
 source integrity, not native activation or hook execution.
 
-Raw local plugins without a source `apm.yml` can also report a separate
-MCP configuration-consistency error. In that case, `apm audit --ci` exits 1
-even when its native drift check passes.
+For raw local Claude plugins, frozen install and audit inspect the original
+declarations in a temporary normalized copy; they do not add `apm.yml` to the
+publisher's source. The lock checks the pre-normalization source snapshot,
+while native ownership separately checks the complete installed plugin.
 
 If this package already owns loose Claude hooks, APM preserves them and refuses
 the native transition instead of deleting retained-target state or enabling both
@@ -198,6 +201,11 @@ reproducible across machines and CI.
 | Cross-harness deploy from one ref   | yes           | no (per-runtime install) |
 
 ## Picking the install path
+
+After `apm install`, `apm audit --ci` checks marketplace declarations against
+their locked source and version evidence, without refreshing the catalog.
+Missing or ambiguous provenance fails rather than guessing. See
+[baseline checks](../../reference/baseline-checks/#ref-consistency).
 
 - **You are the only user on a workstation and the plugin is simple.**
   A native install is fine. Treat it as a personal tool, not project

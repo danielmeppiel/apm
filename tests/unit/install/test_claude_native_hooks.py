@@ -9,6 +9,7 @@ import pytest
 from apm_cli.claude_plugins.admission import ClaudeNativePluginError
 from apm_cli.core.scope import InstallScope
 from apm_cli.install.context import InstallContext
+from apm_cli.install.deployment_plan import prepare_package_deployment
 from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
@@ -101,6 +102,50 @@ def test_native_hooks_remain_intact_without_loose_settings(tmp_path: Path) -> No
     assert (info.install_path / "hooks/hooks.json").read_bytes() == before
     assert ctx.claude_native_plugins["owner/hooks"].source_root == info.install_path.resolve()
     native.assert_not_called()
+
+
+def test_prepared_native_plan_preserves_unmanaged_loose_skill(tmp_path: Path) -> None:
+    info = _fixture(tmp_path / ".apm/apm_modules/owned")
+    skill = info.install_path / "skills/review/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: review\ndescription: Owned review\n---\nNative review\n")
+    personal = tmp_path / ".claude/skills/review/SKILL.md"
+    personal.parent.mkdir(parents=True)
+    personal.write_bytes(b"Personal loose review\n")
+    plan = prepare_package_deployment(
+        info,
+        tmp_path,
+        targets=[KNOWN_TARGETS["claude"]],
+        diagnostics=DiagnosticCollector(),
+        package_name="owner/hooks",
+        scope=InstallScope.USER,
+    )
+    assert plan.claude_native is not None
+    assert plan.codex_native is None
+    assert plan.projection_targets == []
+    assert plan.source_plan.includes("skills/review/SKILL.md")
+    assert (
+        SkillIntegrator().find_unmanaged_conflicts(
+            info,
+            tmp_path,
+            targets=plan.projection_targets,
+            source_plan=plan.source_plan,
+            managed_files=set(),
+            force=False,
+            skip_bin=plan.skip_bin,
+        )
+        == ()
+    )
+    with patch(
+        "apm_cli.install.services.prepare_package_deployment",
+        side_effect=AssertionError("Prepared admission must not be recalculated"),
+    ):
+        result, ctx = _integrate(tmp_path, info, deployment_plan=plan)
+    assert result["native_claude_plugin"] is True
+    assert result["deployed_files"] == []
+    assert ctx.claude_native_plugins["owner/hooks"] == plan.claude_native
+    assert personal.read_bytes() == b"Personal loose review\n"
+    assert not (tmp_path / ".claude/settings.json").exists()
 
 
 @pytest.mark.parametrize("native_target", ["claude", "codex"])

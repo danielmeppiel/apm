@@ -324,6 +324,33 @@ def synchronize_claude_plugins(
         )
 
 
+def _verify_locked_source_hash(
+    locked: Any, lockfile: Any, modules_dir: Path, root: Path, key: str
+) -> None:
+    """Compare the lock against its source image, not local normalization output."""
+    from apm_cli.deps.path_anchoring import LocalResolutionError, resolve_local_dep_dir
+    from apm_cli.install.phases.local_content import compute_local_package_hash
+    from apm_cli.utils.content_hash import compute_package_hash
+
+    if not locked.content_hash:
+        return
+    try:
+        observed = (
+            compute_local_package_hash(resolve_local_dep_dir(locked, lockfile, modules_dir.parent))
+            if locked.is_local_source
+            else compute_package_hash(root)
+        )
+    except (OSError, ValueError, LocalResolutionError) as exc:
+        raise ClaudeNativePluginError(
+            f"Cannot verify native Claude source for {key}. "
+            "Restore the locked source before retrying."
+        ) from exc
+    if observed != locked.content_hash:
+        raise ClaudeNativePluginError(
+            f"Native Claude source integrity changed for {key}; refusing registration."
+        )
+
+
 def resync_claude_plugins(
     *,
     modules_dir: Path,
@@ -346,7 +373,6 @@ def resync_claude_plugins(
     from apm_cli.install.target_filter import resolve_effective_package_targets
     from apm_cli.integration.targets import KNOWN_TARGETS
     from apm_cli.models.apm_package import APMPackage, PackageInfo, PackageType
-    from apm_cli.utils.content_hash import compute_package_hash
 
     from .admission import plan_native_claude_plugin
 
@@ -418,10 +444,7 @@ def resync_claude_plugins(
             skip_bin=True,
             native_plugin_root=plan.source_root,
         )
-        if locked.content_hash and compute_package_hash(root) != locked.content_hash:
-            raise ClaudeNativePluginError(
-                f"Native Claude source integrity changed for {key}; refusing registration."
-            )
+        _verify_locked_source_hash(locked, lockfile, modules_dir, root, key)
         if prepared and key in prepared and prepared[key] != plan:
             raise ClaudeNativePluginError(
                 "Native Claude source changed after deployment admission."

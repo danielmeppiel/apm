@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from ...constants import APM_MODULES_DIR
 from ...core.command_logger import CommandLogger
-from ...deps.lockfile import LockFile
+from ...deps.lockfile import LockFile, lockfile_parent_identity
 from ...integration.mcp_integrator import MCPIntegrator
 from ...models.apm_package import DependencyReference
 from ...models.dependency.selection import (
@@ -40,19 +40,37 @@ def _is_marketplace_ref(package: str) -> bool:
 
 
 def _build_children_index(lockfile):
-    """Build parent_url -> [child_deps] index in a single O(n) pass.
-
-    Returns a dict mapping each ``resolved_by`` URL to the list of
-    dependency objects that claim it as their parent.
-    """
+    """Index every recorded original parent in one pass over the locked edges."""
     children = {}
     for dep in lockfile.get_package_dependencies():
-        parent = dep.resolved_by
-        if parent:
-            if parent not in children:
-                children[parent] = []
-            children[parent].append(dep)
+        for parent in dep.parent_keys:
+            if parent is not None:
+                children.setdefault(parent, []).append(dep)
     return children
+
+
+def _collect_orphan_candidates(
+    lockfile: LockFile, packages_to_remove: list[object]
+) -> tuple[set[str], set[str]]:
+    """Share the backward edge scan without changing preview's cold-cache behavior."""
+    removed_parents: set[str] = set()
+    for package in packages_to_remove:
+        try:
+            reference = _parse_dependency_entry(package)
+            removed_parents.add(lockfile_parent_identity(reference, lockfile.replacements))
+        except (ValueError, TypeError, AttributeError, KeyError):
+            removed_parents.add(str(package))
+    children = _build_children_index(lockfile)
+    candidates: set[str] = set()
+    queue = list(removed_parents)
+    while queue:
+        for dependency in children.get(queue.pop(), ()):
+            key = dependency.get_unique_key()
+            if key in candidates:
+                continue
+            candidates.add(key)
+            queue.append(lockfile_parent_identity(dependency, lockfile.replacements))
+    return candidates, removed_parents
 
 
 def _dependency_public_label(dep_entry: object) -> str:
@@ -413,7 +431,10 @@ def _compute_actual_orphans(
         remaining_deps.add(ref.get_unique_key())
     for dep in lockfile.get_package_dependencies():
         key = dep.get_unique_key()
-        if key not in orphans and dep.repo_url not in removed_repo_urls:
+        if (
+            key not in orphans
+            and lockfile_parent_identity(dep, lockfile.replacements) not in removed_repo_urls
+        ):
             remaining_deps.add(key)
 
     candidate_orphans = builtins.frozenset(orphans) - remaining_deps
@@ -427,6 +448,16 @@ def _compute_actual_orphans(
         lockfile, project_root, apm_modules_dir, direct_refs, candidate_orphans
     )
     if not reachability.complete:
+        if lockfile.replacements is not None:
+            unverifiable = sorted({key for key, _reason in reachability.unverifiable})
+            details = ", ".join(unverifiable[:3])
+            if len(unverifiable) > 3:
+                details += ", ..."
+            raise ValueError(
+                "Cannot verify replacement dependency reachability "
+                f"({len(unverifiable)} manifest(s): {details}). Restore missing or "
+                "invalid package manifests before uninstalling."
+            )
         if warn_on_incomplete:
             _warn_reachability_incomplete(reachability, logger)
         return builtins.frozenset(), {}
@@ -771,29 +802,11 @@ def _dry_run_uninstall(
     lockfile_path = get_lockfile_path(Path("."))
     lockfile = LockFile.read(lockfile_path)
     if lockfile:
-        removed_repo_urls = builtins.set()
-        for pkg in packages_to_remove:
-            try:
-                ref = _parse_dependency_entry(pkg)
-                removed_repo_urls.add(ref.repo_url)
-            except (ValueError, TypeError, AttributeError, KeyError):
-                removed_repo_urls.add(pkg)
-        children_index = _build_children_index(lockfile)
-        queue = builtins.list(removed_repo_urls)
-        potential_orphans = builtins.set()
-        while queue:
-            parent_url = queue.pop()
-            for dep in children_index.get(parent_url, []):
-                key = dep.get_unique_key()
-                if key in potential_orphans:
-                    continue
-                potential_orphans.add(key)
-                queue.append(dep.repo_url)
-
+        candidates, removed_parents = _collect_orphan_candidates(lockfile, packages_to_remove)
         actual_orphans, _resolved_by_repairs = _compute_actual_orphans(
             lockfile,
-            potential_orphans,
-            removed_repo_urls,
+            candidates,
+            removed_parents,
             apm_yml_path,
             packages_to_remove,
             apm_modules_dir,
@@ -971,27 +984,7 @@ def _project_transitive_orphans(
     if not lockfile or not apm_modules_dir.exists():
         return builtins.frozenset(), {}
 
-    removed_repo_urls = builtins.set()
-    for pkg in packages_to_remove:
-        try:
-            ref = _parse_dependency_entry(pkg)
-            removed_repo_urls.add(ref.repo_url)
-        except (ValueError, TypeError, AttributeError, KeyError):
-            removed_repo_urls.add(pkg)
-
-    # Find transitive orphans recursively
-    children_index = _build_children_index(lockfile)
-    orphans = builtins.set()
-    queue = builtins.list(removed_repo_urls)
-    while queue:
-        parent_url = queue.pop()
-        for dep in children_index.get(parent_url, []):
-            key = dep.get_unique_key()
-            if key in orphans:
-                continue
-            orphans.add(key)
-            queue.append(dep.repo_url)
-
+    orphans, removed_repo_urls = _collect_orphan_candidates(lockfile, packages_to_remove)
     if not orphans:
         return builtins.frozenset(), {}
 
@@ -1063,7 +1056,7 @@ def _preflight_uninstall_survivors(
         dep_ref
         for dep_ref in refs
         if dep_ref.get_unique_key() not in excluded
-        and not (source_root is not None and dep_ref.is_local)
+        and not (source_root is not None and dep_ref.is_local and dep_ref.replacement is None)
     ]
     return preflight_reintegration_survivors(
         installed_refs,
@@ -1455,6 +1448,7 @@ def _remove_stale_mcp_from_recorded_targets(
                 user_scope=user_scope,
                 scope=scope,
                 fail_on_write_error=True,
+                stored_configs=lockfile.mcp_configs,
             )
         except Exception as exc:
             failures.append((runtime, exc))

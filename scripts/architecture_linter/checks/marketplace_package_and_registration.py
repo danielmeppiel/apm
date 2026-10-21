@@ -179,7 +179,7 @@ def _check_package_projection(provider: FactsProvider) -> tuple[Violation, ...]:
                 "native_detection = route_agent_plugin_package(install_path)",
                 "agent_plugin_detection=native_detection,\n            read_only=True",
                 "with native_registration_scope(targets):",
-                'if result.get("native_plugin"):',
+                'if result.get("native_plugin") and not result.get("native_claude_plugin"):',
                 "from apm_cli.install.native_plugin_admission import verify_native_plugin_cache",
                 "verify_native_plugin_cache(\n                            lock_dep,",
             ),
@@ -496,6 +496,8 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
                 'client.run("plugin", "uninstall"',
                 'expected_enabled = live[plugin_id]["enabled"]',
                 "fingerprint_native_claude_source(root) != expected",
+                "_verify_locked_source_hash(locked, lockfile, modules_dir, root, key)",
+                "compute_local_package_hash(resolve_local_dep_dir(locked, lockfile, modules_dir.parent))",
                 "_locked_source_pin(locked)",
                 '_check_bundle_fingerprint(root, prior["bundle_hash"])',
                 '_check_bundle_fingerprint(modules_dir / entry["source"], entry["bundle_hash"])',
@@ -520,6 +522,7 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
             _RID_CLAUDE,
             "src/apm_cli/install/drift.py",
             (
+                'if result.get("native_plugin") and not result.get("native_claude_plugin"):',
                 'if result.get("native_claude_plugin"):',
                 "verify_claude_native_cache(",
                 'scratch_root / "normalized-local-sources"',
@@ -545,15 +548,44 @@ def _check_claude_ownership(provider: FactsProvider) -> tuple[Violation, ...]:
             provider,
             inv,
             _RID_CLAUDE,
-            "src/apm_cli/install/services.py",
+            "src/apm_cli/install/deployment_plan.py",
             (
                 "plan_native_claude_plugin(",
                 "if codex_native is not None\n        else plan_native_claude_plugin(",
+                "native_plugin_root=native_plugin.source_root if native_plugin else None,",
+                "return [target for target in targets if target.name not in native_target_names]",
+                "claude_native=native_claude_plugin",
+            ),
+            "Native Claude admission and projection must share the batch deployment plan",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            "src/apm_cli/integration/mcp_config_view.py",
+            (
+                "package_dir = _local_claude_mcp_snapshot(package_dir, scratch)",
+                "package_type, manifest = detect_package_type(package_dir)",
+                'validate_legacy_marketplace_plugin(staged, staged / ".claude-plugin/plugin.json")',
+            ),
+            "Raw local Claude MCP inspection must use canonical parsing only in scratch",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_CLAUDE,
+            "src/apm_cli/install/services.py",
+            (
+                "native_claude_plugin = deployment_plan.claude_native",
+                "projection_targets = deployment_plan.projection_targets",
                 'result["native_claude_plugin"] = True',
-                "native_plugin_root=",
-                "projection_targets = [target for target in targets if target.name not in native_target_names]",
                 "if _target not in projection_targets:",
                 "targets=projection_targets,",
+                "_check_native_claude_transition(\n            reconcile_package_targets,",
                 "dry_run=True,",
                 'if reconcile_stats.get("errors") or reconcile_stats.get("files_removed"):',
             ),
@@ -620,9 +652,11 @@ def _check_codex_lifecycle(provider: FactsProvider) -> tuple[Violation, ...]:
             "compute_native_bundle_hash(",
             "git_no_hooks_args()",
         ),
-        "src/apm_cli/install/services.py": (
+        "src/apm_cli/install/deployment_plan.py": (
             "plan_native_codex_plugin(",
             "native_plugin_root=",
+        ),
+        "src/apm_cli/install/services.py": (
             "finalize_codex_native(",
             "read_only=scratch_root is not None",
         ),

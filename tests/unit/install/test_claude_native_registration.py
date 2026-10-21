@@ -320,6 +320,39 @@ def _locked_native_fixture(project: Path, native, *, local: bool = False):
     return modules, lock, plan
 
 
+@pytest.mark.parametrize("changed_root", ["publisher", "cache"])
+def test_local_lock_hash_and_admitted_cache_fingerprint_are_independent(
+    tmp_path: Path, native, changed_root: str
+) -> None:
+    from apm_cli.install.phases.local_content import compute_local_package_hash
+    from apm_cli.utils.content_hash import compute_package_hash
+
+    modules, lock, plan = _locked_native_fixture(tmp_path / "project", native, local=True)
+    publisher = tmp_path / "publisher"
+    (publisher / "apm.yml").unlink()
+    locked = lock.dependencies[plan.dependency_key]
+    locked.content_hash = compute_local_package_hash(publisher)
+    assert locked.content_hash != compute_package_hash(plan.source_root)
+    kwargs = {
+        "modules_dir": modules,
+        "scope": InstallScope.USER,
+        "lockfile": lock,
+        "prepared": {plan.dependency_key: plan},
+    }
+    resync_claude_plugins(**kwargs)
+    ledger = (modules / LEDGER_RELATIVE).read_bytes()
+    native["calls"].clear()
+    root = publisher if changed_root == "publisher" else plan.source_root
+    (root / "resources/identity.json").write_text('{"name":"changed"}', encoding="ascii")
+    expected = (
+        "source integrity changed" if changed_root == "publisher" else "after deployment admission"
+    )
+    with pytest.raises(ClaudeNativePluginError, match=expected):
+        resync_claude_plugins(**kwargs)
+    assert (modules / LEDGER_RELATIVE).read_bytes() == ledger
+    assert native["calls"] == []
+
+
 def _change_native_resource(root: Path, change: str) -> None:
     """Change a publisher-controlled input excluded by the legacy lock digest."""
     if change == "cache-resource":
@@ -545,6 +578,7 @@ def test_local_native_audit_checks_source_and_live_cache_without_repairing_eithe
     tmp_path: Path, native, change_at: str, change: str
 ) -> None:
     from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
+    from apm_cli.install.audit_target_roots import replay_modules_root
     from apm_cli.install.drift import CheckLogger, ReplayConfig, run_replay
 
     project = tmp_path / "project"
@@ -563,6 +597,7 @@ def test_local_native_audit_checks_source_and_live_cache_without_repairing_eithe
         scratch_root=tmp_path / "scratch",
     )
     run_replay(config, CheckLogger(verbose=False))
+    assert not replay_modules_root(config.scratch_root, user_scope=True).exists()
     source = tmp_path / "publisher"
     _change_native_resource(source if change_at == "source" else plan.source_root, change)
     before = {root: fingerprint_native_claude_source(root) for root in (source, plan.source_root)}

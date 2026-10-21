@@ -617,6 +617,7 @@ contracts-tooling-policy-content-hash
 contracts-tooling-policy-identity
 contracts-tooling-project-yaml-write-delegation
 contracts-tooling-python-artifact-membership
+contracts-tooling-source-replacements
 install-deployment-approval-outcome-routing
 install-deployment-audit-policy-discovery
 install-deployment-audit-replay
@@ -634,10 +635,12 @@ install-deployment-incomplete-chain-routing
 install-deployment-install-scope-selection
 install-deployment-local-bundle-policy-preflight
 install-deployment-local-identity-anchor
+install-deployment-skill-preflight
 install-deployment-locked-skill-subset-reconstruction
 install-deployment-lsp-lifecycle
 install-deployment-lsp-target-contract
 install-deployment-manifest-inheritance-includes
+install-deployment-manifest-snapshot
 install-deployment-marketplace-mutation-lock
 install-deployment-lifecycle-serialization
 install-deployment-mcp-ownership-migration
@@ -657,6 +660,7 @@ install-deployment-require-hashes-enforcement
 install-deployment-resolution-replacement
 install-deployment-resolver-queue-dedup
 install-deployment-skill-subset-tokens
+install-deployment-single-file-materialization
 install-deployment-skills-root-derivation
 install-deployment-source-plan
 install-deployment-target-file-contraction
@@ -673,6 +677,7 @@ marketplace-integrations-generated-bundle-lf-writers
 marketplace-integrations-hash-visible-lf-writers
 marketplace-integrations-legacy-skill-membership
 marketplace-integrations-local-audit-resolution
+marketplace-integrations-locked-evidence
 marketplace-integrations-metadata-enrichment
 marketplace-integrations-native-registration
 marketplace-integrations-output-path
@@ -694,6 +699,7 @@ mutation_writes.hook_cleanup_scope
 mutation_writes.hook_command_vocabulary
 mutation_writes.jetbrains_mcp_path
 mutation_writes.mcp_declaration_scope
+mutation_writes.mcp_omission_evidence
 mutation_writes.mcp_package_launcher
 mutation_writes.mcp_passthrough_denylist
 mutation_writes.mcp_target_selection

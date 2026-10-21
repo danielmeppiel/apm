@@ -65,6 +65,16 @@ def test_installed_hook_source_reinstall_and_removal(
         }
     }
     (source / "hooks/hooks.json").write_text(json.dumps(hooks), encoding="utf-8")
+    native_skill = source / "skills/review/SKILL.md"
+    native_skill.parent.mkdir(parents=True)
+    native_skill.write_text(
+        "---\nname: review\ndescription: Native review\n---\nOwned native skill.\n",
+        encoding="ascii",
+    )
+    personal_skill = isolated.home / ".claude/skills/review/SKILL.md"
+    personal_skill.parent.mkdir(parents=True)
+    personal_skill.write_bytes(b"Personal loose skill must not block native registration.\n")
+    personal_before = personal_skill.read_bytes()
     (source / "__pycache__").mkdir()
     (source / "__pycache__/resource.bin").write_bytes(b"publisher-owned resource")
     (source / "hooks/resource.cjs").write_text("// inert publisher resource\n", encoding="ascii")
@@ -121,6 +131,8 @@ def test_installed_hook_source_reinstall_and_removal(
         live_source = Path(plugin["readFromFolder"])
         assert live_source.is_relative_to(isolated.config_root / "apm_modules")
         assert json.loads((live_source / "hooks/hooks.json").read_text()) == hooks
+        assert (live_source / "skills/review/SKILL.md").read_bytes() == native_skill.read_bytes()
+        assert personal_skill.read_bytes() == personal_before
         lock = load_yaml(isolated.config_root / "apm.lock.yaml")
         if local:
             assert lock["dependencies"][0]["local_path"] == str(source)
@@ -131,12 +143,8 @@ def test_installed_hook_source_reinstall_and_removal(
 
     if not failure:
         audit = ("audit", "--ci", "--no-policy", "--no-fail-fast", "--format", "json")
-        healthy = json.loads(run(*audit, expected=int(local)))
-        # Raw local plugins lack apm.yml at their original source. The existing
-        # MCP consistency check reports that separately from native integrity.
-        assert [row["name"] for row in healthy["checks"] if not row["passed"]] == (
-            ["config-consistency"] if local else []
-        )
+        healthy = json.loads(run(*audit))
+        assert [row["name"] for row in healthy["checks"] if not row["passed"]] == []
         assert next(row for row in healthy["checks"] if row["name"] == "drift")["passed"] is True
         ledger = isolated.config_root / "apm_modules/.claude-plugin/apm-registration.json"
         baseline = ledger.read_bytes()
@@ -166,7 +174,7 @@ def test_installed_hook_source_reinstall_and_removal(
             assert "fingerprint changed" in run(*audit, expected=1)
             assert script.stat().st_mode & stat.S_IXUSR != mode & stat.S_IXUSR
             script.chmod(mode)
-        restored = json.loads(run(*audit, expected=int(local)))
+        restored = json.loads(run(*audit))
         assert next(row for row in restored["checks"] if row["name"] == "drift")["passed"] is True
         assert ledger.read_bytes() == baseline
         assert state_file.read_bytes() == calls_before
@@ -197,3 +205,4 @@ def test_installed_hook_source_reinstall_and_removal(
         "update",
     ]
     assert all(call[1:2] not in (["enable"], ["disable"]) for call in state["calls"])
+    assert personal_skill.read_bytes() == personal_before

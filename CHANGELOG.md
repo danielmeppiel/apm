@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Root `replace` rules can select a local checkout or explicit-ref fork while preserving dependency ownership; proposal 0.1.54 in `openapm-v0.1.md` stages the opt-in manifest and lock-v3 contracts without claiming ratification or a first supporting release. Use a feature-capable build with the explicit schema selector; older clients may ignore replacement intent. (#3309)
+
+### Changed
+
+- Repair obsolete already-absent dependency file claims during ordinary install after complete source-backed skill reintegration, including historical locks, while preserving other owners, unprocessed targets, still-present content and frozen protections. (#3315)
+
 ### Fixed
 
+- OpenCode MCP references now use native `{env:VAR}` syntax without saving resolved values; authored literals and registry overlays are preserved. Export referenced variables when launching OpenCode. -- by @leninworld (#3303)
+- Legacy Claude plugin packing preserves hook scripts and sibling assets, rewrites commands to packed paths, and declares hooks in the native manifest; unsafe or excluded resources fail before replacing an existing bundle. (#3301)
+- Lockfile conflict diagnostics now name the affected file and direct manual resolution or restoration before retrying the original command, preserving bytes and frozen/preview behavior. Automatic recovery remains deferred to #2979. -- by @lachieh (#3028)
 - Hook-only Git-path packages using `hooks/*.json` or `.apm/hooks/*.json` install without a placeholder manifest or skill, and invalid updates preserve the installed source, lockfile and deployment ownership. (#3282)
 - Codex MCP entries no longer emit the unsupported `id` setting; reinstalling repairs recorded APM-owned entries while preserving registry identity, user settings, and ownership safeguards. -- by @Pybsama (#3157)
 - Git marketplace installs accept versioned plugin directories while rejecting file, symlink, and submodule responses during directory validation. -- by @Pybsama (#3156)
