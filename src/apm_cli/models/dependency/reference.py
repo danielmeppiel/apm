@@ -4,7 +4,7 @@ import re
 import urllib.parse
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PureWindowsPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from ...cache.url_normalize import SCP_LIKE_RE
 from ...utils.github_host import (
@@ -225,11 +225,12 @@ class DependencyReference(ProviderCoordinateMixin):
         return "literal"
 
     # Supported file extensions for virtual packages
-    VIRTUAL_FILE_EXTENSIONS = (
-        ".prompt.md",
-        ".instructions.md",
-        ".agent.md",
-    )
+    VIRTUAL_FILE_SUBDIRECTORIES: ClassVar[dict[str, str]] = {
+        ".prompt.md": "prompts",
+        ".instructions.md": "instructions",
+        ".agent.md": "agents",
+    }
+    VIRTUAL_FILE_EXTENSIONS = tuple(VIRTUAL_FILE_SUBDIRECTORIES)
 
     # Removed collection-manifest extensions. URLs ending in one of these are
     # rejected at parse time with a migration message; the legacy

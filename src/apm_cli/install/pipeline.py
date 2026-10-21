@@ -43,7 +43,6 @@ from __future__ import annotations
 import builtins
 import contextlib
 import time
-from functools import wraps
 from typing import TYPE_CHECKING
 
 from apm_cli.install.helpers.plan_inputs import build_resolved_update_plan
@@ -63,7 +62,7 @@ from .errors import (
     InstallFailureAlreadyRendered,
 )
 from .integrity import enforce_installed_hash_policy as _enforce_require_hashes
-from .transaction import InstallTransaction
+from .transaction import InstallTransaction, transactional_pipeline
 
 if TYPE_CHECKING:
     from ..core.auth import AuthResolver
@@ -110,7 +109,9 @@ def _run_integration_phase(ctx: InstallContext) -> None:
     with (
         contextlib.nullcontext()
         if ctx.lockfile_only
-        else ctx.integrators["skill"].ownership_snapshot()
+        else ctx.integrators["skill"].ownership_snapshot(
+            replay_lockfile=ctx.existing_lockfile if ctx.frozen else None
+        )
     ):
         _run_phase("integrate", _integrate_phase, ctx)
 
@@ -332,47 +333,7 @@ def _preflight_auth_check(ctx, auth_resolver, verbose: bool) -> None:
             _trace(f"Preflight: {host_display} -- accepted")
 
 
-def _transactional_pipeline(run):
-    """Supply a compatibility transaction and rollback every exceptional exit."""
-
-    @wraps(run)
-    def wrapped(*args, **kwargs):
-        transaction = kwargs.get("transaction")
-        owns_transaction = transaction is None
-        if transaction is None:
-            from ..core.scope import InstallScope, get_manifest_path, get_modules_dir
-
-            scope = kwargs.get("scope") or InstallScope.PROJECT
-            try:
-                manifest_path = get_manifest_path(scope)
-                modules_dir = get_modules_dir(scope)
-            except (AttributeError, TypeError):
-                from pathlib import Path
-
-                manifest_path = Path.cwd() / "apm.yml"
-                modules_dir = Path.cwd() / "apm_modules"
-            transaction = InstallTransaction(
-                manifest_path=manifest_path,
-                apm_modules_dir=modules_dir,
-                validation=None,
-                logger=kwargs.get("logger"),
-            )
-            kwargs["transaction"] = transaction
-        try:
-            result = run(*args, **kwargs)
-        except BaseException:
-            transaction.rollback()
-            raise
-        if result is None:
-            result = InstallResult()
-        if owns_transaction:
-            result = transaction.complete(result)
-        return result
-
-    return wrapped
-
-
-@_transactional_pipeline
+@transactional_pipeline
 def run_install_pipeline(  # noqa: C901, PLR0913, PLR0915, RUF100
     apm_package: APMPackage,
     update_refs: bool = False,

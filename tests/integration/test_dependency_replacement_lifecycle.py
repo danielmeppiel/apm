@@ -269,6 +269,72 @@ def test_replacement_monorepo_subpath_preserves_unmatched_siblings(
                 assert selected["resolved_commit"] == fork_sha
 
 
+def test_replacement_local_file_children_keep_selected_anchor_and_frozen_baseline(
+    tmp_path: Path, apm_binary_path: Path
+) -> None:
+    """Selected package children compose with ordinary single-file admission."""
+    fixture = _replacement_fixture(tmp_path, apm_binary_path)
+    sibling = fixture.local.root.parent / "selected.instructions.md"
+    sibling.write_text(_content("SELECTED-CHILD"), encoding="utf-8")
+    fixture.work_factory.replace_apm_dependencies(fixture.local, ("../selected.instructions.md",))
+    unmatched = fixture.consumer.root / "unmatched.instructions.md"
+    unmatched.write_text(_content("UNMATCHED-FILE"), encoding="utf-8")
+    manifest = load_yaml(fixture.consumer.manifest_path)
+    manifest["dependencies"]["apm"].append({"path": "./unmatched.instructions.md"})
+    dump_yaml(manifest, fixture.consumer.manifest_path)
+    fixture.replace({"path": "../local-base"})
+    fixture.install()
+    fixture.assert_bytes("LOCAL")
+    deployed = fixture.consumer.root / ".github/instructions"
+    assert (deployed / sibling.name).read_bytes() == sibling.read_bytes()
+    assert (deployed / unmatched.name).read_bytes() == unmatched.read_bytes()
+    lock_path = fixture.consumer.root / "apm.lock.yaml"
+    baseline = lock_path.read_bytes()
+    entries = {row["repo_url"]: row for row in load_yaml(lock_path)["dependencies"]}
+    assert set(entries) == {
+        "apm-replacement-fixture/base",
+        "_local/selected.instructions.md",
+        "_local/unmatched.instructions.md",
+    }
+    assert entries["apm-replacement-fixture/base"]["replacement"]["source"] == {
+        "path": "../local-base"
+    }
+    child = entries["_local/selected.instructions.md"]
+    assert child["local_path"] == "../selected.instructions.md"
+    assert child["resolved_by"] == "apm-replacement-fixture/base"
+    assert child["content_hash"].startswith("sha256:")
+    assert "replacement" not in child
+    assert "replacement" not in entries["_local/unmatched.instructions.md"]
+    frozen = fixture.run(*_INSTALL, "--frozen")
+    assert frozen.returncode == 0, frozen.stdout + frozen.stderr
+    assert lock_path.read_bytes() == baseline
+
+    sibling.write_text(_content("EDITED-CHILD"), encoding="utf-8")
+    before = _snapshot(fixture.consumer.root)
+    refused = fixture.run(*_INSTALL, "--frozen")
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "content differs" in " ".join((refused.stdout + refused.stderr).split())
+    assert _snapshot(fixture.consumer.root) == before
+    assert (deployed / sibling.name).read_text() == _content("SELECTED-CHILD")
+    fixture.install()
+    assert (deployed / sibling.name).read_bytes() == sibling.read_bytes()
+    stable = _snapshot(fixture.consumer.root)
+    audit = fixture.run("audit", "--ci", "--no-policy", "--format", "json")
+    assert audit.returncode == 0, audit.stdout + audit.stderr
+    assert json.loads(audit.stdout)["passed"] is True
+    assert _snapshot(fixture.consumer.root) == stable
+
+    fixture.replace(None)
+    fixture.install()
+    fixture.assert_bytes("UPSTREAM")
+    assert not (deployed / sibling.name).exists()
+    assert (deployed / unmatched.name).read_bytes() == unmatched.read_bytes()
+    entries = {row["repo_url"]: row for row in load_yaml(lock_path)["dependencies"]}
+    assert set(entries) == {"apm-replacement-fixture/base", "_local/unmatched.instructions.md"}
+    assert "replacement" not in entries["apm-replacement-fixture/base"]
+    assert entries["apm-replacement-fixture/base"]["resolved_commit"] == fixture.upstream_sha
+
+
 @pytest.mark.parametrize("dry_run", [False, True], ids=["install", "preview"])
 def test_replacement_ignores_unused_original_http_transport(
     tmp_path: Path, apm_binary_path: Path, dry_run: bool
