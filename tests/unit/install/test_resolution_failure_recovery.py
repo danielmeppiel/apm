@@ -301,6 +301,7 @@ def test_partial_directory_removal_finishes_independent_children(
     monkeypatch.setattr(os, "unlink", deny_one)
     with pytest.raises(PermissionError, match="child removal denied"):
         safe_rmtree(root, tmp_path)
+    root.chmod(0o700)
     denied = root / denied_names[0]
     denied.chmod(0o600)
     assert denied.read_bytes() == b"preserve"
