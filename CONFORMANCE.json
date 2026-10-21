@@ -1021,6 +1021,44 @@
       ]
     },
     {
+      "conformance_class": "consumer",
+      "id": "req-pr-008",
+      "keyword": "MUST",
+      "section": "8.3.1",
+      "status": "active",
+      "test_count": 28,
+      "tests": [
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_known_later_conflict_precedes_complete_plan_writes",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_native_plugin_is_not_a_loose_skill_collision",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-False-False-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-False-False-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-False-True-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-False-True-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-True-False-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-True-False-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-True-True-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[bundle-True-True-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-False-False-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-False-False-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-False-True-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-False-True-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-True-False-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-True-False-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-True-True-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[native-True-True-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-False-False-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-False-False-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-False-True-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-False-True-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-True-False-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-True-False-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-True-True-project]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_selected_scope_order_replay_audit_and_correction[subskills-True-True-user]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_shared_root_refusal_preserves_existing_explicit_force[False]",
+        "tests/spec_conformance/test_unmanaged_skill_preflight_reqs.py::test_shared_root_refusal_preserves_existing_explicit_force[True]"
+      ]
+    },
+    {
       "conformance_class": "registry",
       "id": "req-rg-001",
       "keyword": "MUST",
@@ -1662,7 +1700,7 @@
   "spec_version": "v0.1.1",
   "summary_by_class": {
     "consumer": {
-      "active": 95,
+      "active": 96,
       "skipped": 1,
       "unbound": 0,
       "xfail": 0
@@ -1686,5 +1724,5 @@
       "xfail": 0
     }
   },
-  "total_requirements": 129
+  "total_requirements": 130
 }
