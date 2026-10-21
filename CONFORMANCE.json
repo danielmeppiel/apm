@@ -1581,9 +1581,15 @@
       "keyword": "MUST",
       "section": "8.5.6",
       "status": "active",
-      "test_count": 1,
+      "test_count": 7,
       "tests": [
-        "tests/spec_conformance/test_manifest_reqs.py::test_plugin_root_hook_resolution_preserves_quoting_and_warns"
+        "tests/spec_conformance/test_manifest_reqs.py::test_plugin_root_hook_resolution_preserves_quoting_and_warns",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}\"/scripts/probe.py-probe file.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}\"/scripts/probe.py-probe.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}/scripts/probe.py\"-probe file.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python \"${CLAUDE_PLUGIN_ROOT}/scripts/probe.py\"-probe.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python '${CLAUDE_PLUGIN_ROOT}'\\\\scripts\\\\probe.py-probe file.py]",
+        "tests/spec_conformance/test_packed_hook_resolution_reqs.py::test_packed_hook_keeps_expandable_quoting_through_consumer_resolution[python '${CLAUDE_PLUGIN_ROOT}'\\\\scripts\\\\probe.py-probe.py]"
       ]
     },
     {

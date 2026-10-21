@@ -135,6 +135,25 @@ See [MCP dependency formats](dependencies.md#mcp-dependency-formats).
 
 ## Hook files
 
+For legacy Claude plugin output (`apm pack --format plugin` or
+`--claude-plugin`), first-party hook resources travel with the bundle.
+Plugin-root command paths are rewritten to their packed locations, including
+`.apm/skills/...` to `skills/...` and `.apm/hooks/...` to `hooks/...`.
+References may resolve relative to the source hook descriptor when absent
+at the package root. Sibling assets and Node module type are preserved.
+Packing never executes scripts or translates hook semantics between hosts.
+Quoted filenames and selected directory references retain their meaning after
+relocation. Selected files must materialize each referenced directory; empty
+directories fail. Root scripts retain their Node module type without publishing
+the whole repository.
+
+With hooks present, root `plugin.json` and `.claude-plugin/plugin.json` both
+declare `"hooks": "./hooks.json"` for native Claude discovery. This is a
+Claude layout contract, not universal host compatibility. Explicit `includes`
+must select both descriptors and their resource paths; unsafe, missing,
+excluded or collision-displaced resources fail before replacing a bundle.
+Use `apm pack --dry-run --verbose` to inspect the complete file list.
+
 Packages can ship hooks (pre/post tool-use scripts) by placing JSON
 files under `hooks/` or `.apm/hooks/`. Filename-based hook routing
 (`*-<harness>-hooks.json` and `hooks-<harness>.json`) is deprecated.
