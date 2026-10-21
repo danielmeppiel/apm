@@ -264,9 +264,9 @@ that at most one declaration remains.
 
 ### Root source replacement (candidate)
 
-Unratified development-build contract; no first supported release or published
-JSON Schema is assigned. Require this exact selector whenever root `replace`
-is present:
+Unratified development-build contract. Proposal 0.1.54 stages distinct
+manifest and lock schemas for review; no first supported release or adoption
+is claimed. Require this exact selector whenever root `replace` is present:
 
 ```yaml
 $schema: https://microsoft.github.io/apm/specs/schemas/manifest-source-replacements-v1.schema.json

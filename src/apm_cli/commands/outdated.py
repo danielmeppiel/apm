@@ -597,7 +597,12 @@ def outdated(global_, verbose, parallel_checks):
             header_style="bold cyan",
             box=ASCII,
         )
-        table.add_column("Package", style="white", min_width=20)
+        table.add_column(
+            "Package",
+            style="white",
+            min_width=20,
+            overflow="fold" if has_replacements else "ellipsis",
+        )
         table.add_column("Current", style="white", min_width=1 if has_replacements else 10)
         if show_wanted:
             table.add_column("Wanted", style="white", min_width=1 if has_replacements else 10)

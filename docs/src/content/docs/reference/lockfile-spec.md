@@ -336,8 +336,10 @@ entry as an implementation detail; do not author it by hand.
 
 ## Root source replacement evidence (candidate)
 
-Version `"3"` is an **unratified implementation candidate**, not a published
-OpenAPM schema. It requires a feature-capable development build and the explicit
+Version `"3"` is an **unratified implementation candidate**. Its
+[proposed schema](/apm/specs/schemas/lockfile-source-replacements-v1.schema.json)
+is staged for review, not an adopted OpenAPM version. It requires a
+feature-capable development build and the explicit
 [replacement manifest selector](../manifest-schema/#313-replace-candidate).
 No first supported release has been assigned. Verified older readers v0.25.0,
 v0.32.0 and v0.33.0 reject this version; v0.24.1 may accept and rewrite it without

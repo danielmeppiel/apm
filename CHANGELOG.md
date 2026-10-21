@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Root `replace` rules can select a local checkout or explicit-ref fork while preserving dependency ownership; proposal 0.1.54 in `openapm-v0.1.md` stages the opt-in manifest and lock-v3 contracts without claiming ratification or a first supporting release. Use a feature-capable build with the explicit schema selector; older clients may ignore replacement intent. (#3309)
+
 ### Fixed
 
 - Legacy Claude plugin packing preserves hook scripts and sibling assets, rewrites commands to packed paths, and declares hooks in the native manifest; unsafe or excluded resources fail before replacing an existing bundle. (#3301)

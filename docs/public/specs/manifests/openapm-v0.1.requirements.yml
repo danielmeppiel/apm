@@ -567,3 +567,23 @@ requirements:
     keyword: MUST
     section: "12.3"
     conformance_class: consumer
+  - id: req-rpl-001
+    keyword: MUST
+    section: "4.8.1"
+    conformance_class: consumer
+    notes: "proposed opt-in root replacement syntax and exact once-only graph binding"
+  - id: req-rpl-002
+    keyword: MUST
+    section: "4.8.1"
+    conformance_class: consumer
+    notes: "proposed original ownership and selected-source lifecycle/security separation"
+  - id: req-rpl-003
+    keyword: MUST
+    section: "4.8.1"
+    conformance_class: consumer
+    notes: "proposed version-3 complete replacement table and incoming-request evidence"
+  - id: req-rpl-004
+    keyword: MUST
+    section: "4.8.1"
+    conformance_class: consumer
+    notes: "proposed frozen full-table comparison and trustworthy local-source verification"

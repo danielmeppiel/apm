@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **129 normative statements (124 MUST, 5 SHOULD)** indexed in
+- OpenAPM v0.1 carries **133 normative statements (128 MUST, 5 SHOULD)** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -830,6 +830,122 @@ manifest MUST emit a non-blocking diagnostic naming the key as
 reserved for v0.2 and MUST NOT attach any semantics to its value.
 The diagnostic MUST NOT fail install.
 
+### 4.8.1 Root source replacements (proposed capability)
+
+This is an opt-in capability proposal for issue #3180, not workspace
+composition or a change to the reserved `workspaces:` key. Section 9.3
+reviewer approvals and public comment remain pending. Staging its
+implementation and schema artifacts does not ratify the proposal or
+identify a first supporting release. Consumers not providing this
+capability acquire no new mandatory feature.
+
+The manifest selector is
+`https://microsoft.github.io/apm/specs/schemas/manifest-source-replacements-v1.schema.json`.
+The following obligations apply to consumers providing this capability.
+
+<a id="req-rpl-001"></a>
+**[req-rpl-001]** A conforming **consumer** providing root source
+replacements MUST require the explicit manifest selector above before
+accepting a `replace:` key, and MUST validate its list of rules and bind
+them as follows:
+
+- Each rule has exactly `for` and `with`. `for` contains a nonempty
+  explicit-host Git locator and optional package-directory `path`.
+  `with` is either a nonempty local `path`, or an explicit Git locator
+  with a required nonempty `ref` and optional package-directory `path`.
+  Unknown fields, shorthand Git locators, embedded refs, query strings,
+  HTTP credentials and single-primitive selectors are rejected.
+  HTTPS, SSH and SCP-style Git locators are supported; an original HTTP
+  selector can redirect to a secure source, but an HTTP selected source
+  is rejected.
+- Match the original (normalized host, port, repository, package subpath)
+  exactly, using the existing dependency-coordinate normalization.
+  Ref, alias and display name are not selector dimensions. Duplicate
+  normalized selectors are rejected. Local, registry, marketplace and
+  parent-inheritance references do not match.
+- Apply the root table once to every original edge, including direct,
+  transitive and diamond requests, before graph deduplication and
+  immutable-source admission. A selected source does not trigger another
+  replacement. Dependency-owned rules do not redirect the consumer.
+  Incompatible original identities sharing an existing materialization
+  slot, and logical or physical dependency cycles, are refused rather
+  than resolved by arbitrary winner selection.
+
+<a id="req-rpl-002"></a>
+**[req-rpl-002]** A conforming **consumer** providing this capability MUST
+keep original identity as graph, lock-entry and materialization ownership,
+including alias, skill and target selections and every incoming request,
+while using the selected source for transport, authentication, ref
+resolution, cache acquisition, content scanning, integrity and policy
+evaluation. Replacement MUST NOT grant executable consent or bypass
+existing security checks. Existing host-blind policy matching remains
+host-blind, but evaluates the selected package, not the original package.
+Original ref constraints are provenance, not constraints on the fully
+substituted source; immutable obligations introduced by the selected
+source's own dependencies still apply.
+
+Relative selected local paths are anchored to the root manifest directory,
+including intentional siblings; explicit absolute and home-relative paths
+retain their normal local-path meaning. Nested local dependencies resolve
+relative to their selected parent's source. Missing selected content MUST NOT
+fall back upstream. Install and update MUST use the selected source; update
+MUST retain an explicit fork SHA and refresh a mutable fork ref. Removing a
+rule returns that identity upstream on the next non-frozen resolution.
+Audit MUST verify selected-source evidence without repair; outdated MUST query
+the selected fork and reports a local replacement as not remotely
+comparable. Dry-run MUST remain read-only and may return its existing
+successful but explicitly incomplete preview for unavailable metadata.
+Uninstall MUST use surviving selected-source manifests, preserve shared
+dependencies, and refuse destructive cleanup if reachability is incomplete.
+
+<a id="req-rpl-003"></a>
+**[req-rpl-003]** A conforming **consumer** providing this capability MUST
+write the proposed `lockfile_version: "3"` when a root replacement table
+is present, including `replace: []`, and record its complete normalized
+table as top-level `replacements`, including dormant rules. The written
+table MUST preserve manifest declaration order. Each matched
+Git-owned entry retains its original coordinates and records
+`replacement: {source: ..., requests: [...]}`. A matched entry MUST NOT
+carry entry-level `source` or `local_path`; `replacement.source` is its
+sole selected-source record. `source` has the selected
+`with` shape. Each nonempty incoming-request record contains `parent`,
+`ref`, `skills`, `targets`, `dev` and `alias`; nullable fields and explicit
+empty selections remain distinguishable. Parent values are exact original
+lock keys. Existing resolved-commit/tag and content-hash fields describe
+selected bytes; a local replacement has no fabricated Git commit.
+Git-fork content retains the existing [req-lk-015](#req-lk-015) integrity
+obligation over selected bytes; this proposal does not claim to discharge
+any implementation's existing conformance debt. Local `content_hash`
+retains the documented implementation-specific tree convention under the
+v0.2 canonical-tree reservation; [req-rpl-004](#req-rpl-004) requires a
+trustworthy baseline using that convention, not a newly invented algorithm.
+Malformed evidence, evidence inconsistent with the recorded table, or a
+matched entry missing its evidence is rejected on read.
+
+The capability does not reinterpret version `"1"` or `"2"`. Without a
+replacement table, their existing rules apply; removal of the table
+permits returning from `"3"` to `"2"`, not a downgrade from `"2"` to `"1"`.
+Unknown-version refusal remains governed by [req-lk-004](#req-lk-004).
+Neither an additive field nor this proposal can retrofit support into an
+older client. Tested v0.25.0, v0.32.0 and v0.33.0 refuse this candidate;
+v0.24.1 can ignore replacement intent and is unsafe for these manifests
+and lockfiles. No universal minimum-safe-version claim follows.
+
+<a id="req-rpl-004"></a>
+**[req-rpl-004]** A conforming **consumer** providing this capability MUST
+compare the complete normalized manifest and locked replacement tables
+before a frozen install mutates state, including dormant rules and the
+distinction between absent and explicitly empty tables. A changed table
+is refused. For reachable selected local sources and their local
+dependencies, frozen verification requires trustworthy locked content
+evidence and current source bytes under the existing local-content
+verification contract; missing baseline, missing source and changed content
+are refused without lock, deployment or cache mutation. Comparison uses
+the normalized set of rules, not serialization order. Equivalent locator
+spelling does not create a table change when canonical normalization
+produces the same rule. This extends [req-lk-006](#req-lk-006); it does
+not permit frozen resolution to accept changed replacement intent.
+
 ### 4.9 Conformance requirements (manifest)
 
 This section's normative statements are:
@@ -852,6 +968,9 @@ This section's normative statements are:
   [req-ext-002](#req-ext-002),
   [req-ext-003](#req-ext-003),
   [req-tg-004](#req-tg-004), [req-sc-006](#req-sc-006).
+- Consumer (conditional on providing the proposed root-source-replacement
+  capability): [req-rpl-001](#req-rpl-001), [req-rpl-002](#req-rpl-002),
+  [req-rpl-003](#req-rpl-003), [req-rpl-004](#req-rpl-004).
 
 ---
 
@@ -1177,6 +1296,10 @@ This specification defines two lockfile schema versions, `"1"` and
 `"2"`. Both are valid on-disk formats; `"2"` is a strict superset of
 `"1"`. Editorial reconciliation with the companion is consolidated
 in [Appendix E](#appendix-e-editorial-reconciliation-notes).
+
+The separately proposed opt-in source-replacement capability uses `"3"`
+under [req-rpl-003](#req-rpl-003). It is not an adopted expansion of
+the base version set.
 
 <a id="req-lk-002"></a>
 **[req-lk-002]** A conforming **consumer** implementation MUST set
@@ -3508,6 +3631,7 @@ every stored hash, foreclosing algorithm-ambiguity attacks.
 | 20| Source-only or symlinked package content materialization | [req-sc-015](#req-sc-015)                                      | Consumer-default  |
 | 21| Native plugin namespace collision or ownership-ledger loss | [req-tg-013](#req-tg-013)                                      | Consumer-default  |
 | 22| Silent hook passthrough or double-activation via native-format conversion | [req-tg-016](#req-tg-016), [req-tg-017](#req-tg-017) | Consumer-default |
+| 23| Manifest-directed dependency redirection via a root replacement table | [req-rpl-001](#req-rpl-001), [req-rpl-002](#req-rpl-002), [req-rpl-004](#req-rpl-004) | Consumer-default when capability is provided |
 
 For Codex conversion metadata diagnostics, [req-tg-015](#req-tg-015)
 separately constrains field-name display and excludes dropped values.
@@ -3782,6 +3906,11 @@ conformance statement identifying:
 [req-sc-014](#req-sc-014), [req-sc-015](#req-sc-015),
 [req-cf-001](#req-cf-001),
 [req-cf-002](#req-cf-002).
+
+Consumers providing the proposed root-source-replacement capability
+additionally conform to [req-rpl-001](#req-rpl-001),
+[req-rpl-002](#req-rpl-002), [req-rpl-003](#req-rpl-003),
+[req-rpl-004](#req-rpl-004).
 
 #### 11.3.3 Registry
 
@@ -4079,6 +4208,8 @@ The schemas below define this specification's normative structural contract.
 | Manifest (`apm.yml`)  | [`schemas/manifest-v0.1.41.schema.json`](/apm/specs/schemas/manifest-v0.1.41.schema.json) (JSON Schema 2020-12).    |
 | Lockfile (`apm.lock.yaml`) | [`schemas/lockfile-v0.1.46.schema.json`](/apm/specs/schemas/lockfile-v0.1.46.schema.json) (JSON Schema 2020-12). |
 | Policy (`apm-policy.yml`) | [`schemas/policy-v0.1.schema.json`](/apm/specs/schemas/policy-v0.1.schema.json) (JSON Schema 2020-12).   |
+| Proposed replacement manifest | [`schemas/manifest-source-replacements-v1.schema.json`](/apm/specs/schemas/manifest-source-replacements-v1.schema.json), distinct opt-in candidate, not ratified. |
+| Proposed replacement lock version 3 | [`schemas/lockfile-source-replacements-v1.schema.json`](/apm/specs/schemas/lockfile-source-replacements-v1.schema.json), distinct candidate, not ratified. |
 | Claude-Code marketplace (informational, emitted output) | `tests/fixtures/schemas/claude-code-marketplace.schema.json`         |
 | Claude-Code plugin (informational, emitted output)      | `tests/fixtures/schemas/claude-code-plugin.schema.json`              |
 
@@ -4087,6 +4218,14 @@ can use the 0.1.41 resources. The selected 0.1.46 lockfile schema additionally
 checks the `extensions` mapping's key names for [req-ext-003](#req-ext-003);
 its values remain unconstrained. Validation against older structural schemas
 does not waive newer prose or runtime requirements.
+
+The replacement resources stage the structural part of proposal 0.1.54.
+Their semantic constraints (canonical matching, table/evidence agreement,
+source verification and graph safety) are defined in Section 4.8.1 and
+exercised against the consumer; schema validation alone does not establish
+them. No earlier schema URL or bytes are replaced.
+Offline validators load both candidate resources and their referenced
+0.1.41 manifest and 0.1.46 lockfile resources; no network fetch is required.
 
 `src/apm_cli/policy/schema.py` is a **non-normative cross-reference**;
 the policy JSON Schema is authoritative. Manifest and lockfile validation
@@ -4261,8 +4400,12 @@ renumbering of conformance classes.
 | [req-rg-001](#req-rg-001)                | MUST    | 11.3.3  | registry    |
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
+| [req-rpl-001](#req-rpl-001)              | MUST    | 4.8.1   | consumer    |
+| [req-rpl-002](#req-rpl-002)              | MUST    | 4.8.1   | consumer    |
+| [req-rpl-003](#req-rpl-003)              | MUST    | 4.8.1   | consumer    |
+| [req-rpl-004](#req-rpl-004)              | MUST    | 4.8.1   | consumer    |
 
-**Total normative statements: 129** (124 MUST, 5 SHOULD).
+**Total normative statements: 133** (128 MUST, 5 SHOULD).
 
 ---
 
@@ -4319,6 +4462,8 @@ renumbering of conformance classes.
 | 0.1.45 (proposed) | 2026-10-09 | Editorial fold for PR #3106 (closes #3083 Mode-B silent-extension gate; no new normative statement, count remains 128 (123 MUST, 5 SHOULD)). Section 4.2.1 and [req-tg-001] (Section 8.4): the explicit-only target enumeration now names `agent-skills`, `antigravity`, `hermes`, and `grok-bot`, reflecting the already-registered `hermes` target and the new stable explicit-only `grok-bot` target (skills deploy to `agent-data/workflows/`, per the OpenAPM Target Registry v0.1 companion). |
 | 0.1.46 (proposed) | 2026-10-13 | Spec-citation fold for manifest extension keys (closes #3219 Mode-B silent-extension gate). Added [req-ext-003] (Section 4.6.2, consumer MUST): top-level keys matching `x-[a-z][a-z0-9-]*` are vendor extensions preserved on the parsed package in declaration order without validating or interpreting values; a dependency lock entry records them under optional `extensions` and omits that field when empty; any other unrecognised top-level key produces a non-failing warning without failing parse or install solely because it is unknown. Independent validation, policy, and security failures still apply. The warning does not relax [req-mf-006] (writers still preserve unknown top-level keys on rewrite). Additive optional lockfile field under Section 9.2: previously silent unknown keys now warn. `extensions` added to the Section 5.2 field table and selected through the distinct proposed `lockfile-v0.1.46.schema.json`; earlier schema bytes and `lockfile_version` are unchanged. Sections 1.3, 4.9, and 11.3.2, and Appendices A and C updated. Statement count: 128 -> 129 (124 MUST, 5 SHOULD). Section 9.3 reviewer approvals and public comment remain pending; this proposal is not adopted. |
 | 0.1.47 (proposed) | 2026-10-15 | Amendment for accepted issue #3204. Revised [req-mf-022] to require a nonzero install result and preservation of previously deployed skill files and ownership records for an unmatched non-empty persisted selection. This intentionally replaces permitted warning-only success; it is not behavior-neutral errata. Section 9.3 review and public-comment requirements remain pending; issue-scope acceptance is not specification adoption. Statement count remains 129 (124 MUST, 5 SHOULD). |
+
+| 0.1.54 (proposed) | 2026-10-21 | Opt-in root source-replacement proposal for #3180 / PR #3309. Added four conditional consumer requirements [req-rpl-001] through [req-rpl-004] for exact root-owned graph binding, original ownership with selected-source lifecycle/security, proposed lock version 3 evidence, and frozen full-table/content verification. Distinct candidate schema identities preserve earlier published bytes; version 1/2 semantics remain unchanged. This is a new opt-in capability and explicit versioned lock extension, not behavior-neutral errata. Section 9.3 review/public comment and first supporting release remain pending; source staging is not adoption. Statement count: 129 -> 133 (128 MUST, 5 SHOULD). |
 
 Errata (none at publication).
 

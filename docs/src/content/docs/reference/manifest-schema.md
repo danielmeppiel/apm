@@ -371,7 +371,9 @@ released OpenAPM schemas. A feature-capable development build requires the exact
 `$schema` identity
 `https://microsoft.github.io/apm/specs/schemas/manifest-source-replacements-v1.schema.json`
 whenever `replace` is present, including an empty list. This URI is a candidate
-contract selector; its JSON Schema and first supported release are not published.
+contract selector. Its [proposed schema](/apm/specs/schemas/manifest-source-replacements-v1.schema.json)
+is staged with [proposal 0.1.54](../../specs/openapm-v01/#481-root-source-replacements-proposed-capability);
+neither ratification nor a first supported release is claimed.
 Existing manifests without `replace` keep their current contract.
 
 | Field | Shape | Meaning |
