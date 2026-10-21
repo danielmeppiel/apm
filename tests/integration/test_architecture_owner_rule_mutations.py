@@ -834,6 +834,28 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Legacy plugin skill membership loses its normalization owner.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-locked-association",
+        rule_id="marketplace-integrations-locked-evidence",
+        path="src/apm_cli/policy/ci_checks.py",
+        old=(
+            "display = dep_ref.get_display_name() if dep_ref.is_marketplace else key\n"
+            "        locked_dep = lock.get_dependency(key, marketplace_index=marketplace_index)"
+        ),
+        new=(
+            "display = dep_ref.get_display_name() if dep_ref.is_marketplace else key\n"
+            "        locked_dep = next((dep for dep in lock.dependencies if dep.get_unique_key() == key), None)"
+        ),
+        intent="Ref consistency bypasses canonical marketplace declaration-to-lock association.",
+    ),
+    MutationCase(
+        guard_id="marketplace-integrations-locked-evidence",
+        rule_id="marketplace-integrations-locked-evidence",
+        path="src/apm_cli/policy/ci_checks.py",
+        old="marketplace_ref_mismatch(dep_ref, locked_dep)",
+        new="None",
+        intent="Ref consistency accepts marketplace declarations without checking locked ref evidence.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-metadata-enrichment",
         rule_id="marketplace-integrations-metadata-enrichment",
         path="src/apm_cli/marketplace/builder.py",
