@@ -267,7 +267,9 @@ def test_frozen_cold_consumer_tolerates_absent_no_mcp_orphan(
 ) -> None:
     """An unused producer-locked package must not require hydration or MCP evidence."""
     scenario = _scenario(tmp_path, apm_binary_path, plugin_mcp=plugin_mcp, root_mcp=plugin_mcp)
-    orphan = LocalPackageFactory(tmp_path / "orphan-source").create("unused")
+    packages = LocalPackageFactory(tmp_path / "orphan-source")
+    orphan = packages.create("unused")
+    packages.add_instruction(orphan, "unused", "---\napplyTo: '**'\n---\n# Unused instruction\n")
     repository = scenario.repositories.create("unused", source_tree=orphan.root)
     commit = scenario.repositories.commit(repository, message="Unused package without MCP")
     remote = "https://gitlab.example.invalid/frozen/unused.git"
