@@ -752,13 +752,9 @@ def discover_policy(
         if path.exists() and path.is_file():
             return _load_from_file(path, expected_hash=expected_hash)
         if _is_unambiguous_local_policy_path(policy_override):
-            reason = (
-                f"Policy path is not a file: {policy_override}"
-                if path.exists()
-                else f"Policy file not found: {policy_override}"
-            )
+            kind = "path is not a file" if path.exists() else "file not found"
             return PolicyFetchResult(
-                error=reason,
+                error=f"Policy {kind}: {policy_override}",
                 source=f"file:{policy_override}",
                 outcome="absent",
                 not_found=True,
@@ -810,12 +806,7 @@ def _expand_policy_path(ref: str) -> Path:
 
 
 def _is_unambiguous_local_policy_path(ref: str) -> bool:
-    """Return True when *ref* can only be a local file path.
-
-    Such refs are never valid ``owner/repo`` / URL / ``org`` forms, so a
-    missing file must not fall through to a remote repository lookup.
-    ``owner/name.yml`` stays ambiguous and is still tried as a repo.
-    """
+    """True when *ref* can only be a local path (``owner/name.yml`` stays a repo ref)."""
     if ref.startswith(("https://", "http://")):
         return False
     if ref.startswith((".", "/", "~")) or "\\" in ref or Path(ref).is_absolute():
