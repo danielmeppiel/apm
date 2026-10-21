@@ -1037,7 +1037,7 @@ unknown fields on round-trip. Field availability is **monotonic** in
 | `virtual_path`            | Subpath inside repo for virtual packages.                                       |
 | `is_virtual`              | Boolean.                                                                        |
 | `depth`                   | Tree depth (0 = self, 1 = direct, >1 = transitive).                             |
-| `resolved_by`             | Resolution provenance; for a local entry, its declaring-parent anchor. Proposed [req-lk-024](#req-lk-024) repairs a removed parent's anchor to a verified surviving parent during uninstall. Not a complete incoming-edge set. |
+| `resolved_by`             | Resolution provenance; for a local entry, its declaring-parent anchor. See proposed [Section 5.2.2](#522-uninstall-reachability-preservation-proposed) for a pending amendment affecting this field. Not a complete incoming-edge set. |
 | `package_type`            | One of `apm_package`, `skill_bundle`, etc.                                      |
 | `skill_subset`            | Selected skill names for dependencies that expose selectable skills (see [Section 8.1](#81-primitive-types)). |
 | `deployed_files`          | Project-relative paths the consumer wrote for this entry.                       |
@@ -1355,8 +1355,8 @@ unsafe, or ambiguous such that safe removal cannot be established, the
 consumer MUST preserve the uncertain candidate entries and their required
 installed material. It MUST emit an actionable diagnostic identifying the
 failed verification with enough context to inspect or restore the evidence, without
-exposing secrets. It MUST NOT treat an unknown subtree as empty or use a
-partially verified graph to authorize uncertain deletion.
+exposing secrets (see [req-sc-007](#req-sc-007)). It MUST NOT treat an unknown
+subtree as empty or use a partially verified graph to authorize uncertain deletion.
 
 A dry-run preview of this cleanup MUST make the same preserve/remove
 decisions from the same evidence, including uncertainty, without changing
@@ -3834,6 +3834,8 @@ detection MUST scope per-dependency, not globally.
 For supported dependency aliases, [req-mf-025](#req-mf-025) constrains
 destinations and records canonical placement for later cleanup. Containment
 alone does not establish ownership or authorize deletion of existing content.
+Proposed [req-lk-024](#req-lk-024) preserves reachable entries and fails closed
+on uncertain evidence during uninstall-time orphan cleanup.
 
 ### 10.8 Policy bypass via crafted manifest
 
@@ -3898,7 +3900,7 @@ every stored hash, foreclosing algorithm-ambiguity attacks.
 | 4 | Lockfile tampering                          | [req-lk-012](#req-lk-012), [req-lk-013](#req-lk-013), [req-lk-016](#req-lk-016), [req-lk-017](#req-lk-017), [req-sc-001](#req-sc-001) | Consumer-default  |
 | 5 | Registry impersonation                      | [req-lk-013](#req-lk-013), [req-rs-009](#req-rs-009), [req-sc-004](#req-sc-004); v0.2 TLS-only deferred | Consumer-default  |
 | 6 | Malicious package execution at install time | No install-time execution path; [req-pl-006](#req-pl-006) defence  | Consumer-default  |
-| 7 | Unverified content cleanup                  | [req-tg-002](#req-tg-002), [req-lk-020](#req-lk-020), [req-lk-021](#req-lk-021), [req-lk-023](#req-lk-023) when staged replacement is provided; [req-mf-025](#req-mf-025) for supported aliases; self-entry isolation | Consumer-default  |
+| 7 | Unverified content cleanup                  | [req-tg-002](#req-tg-002), [req-lk-020](#req-lk-020), [req-lk-021](#req-lk-021), [req-lk-023](#req-lk-023) when staged replacement is provided; [req-mf-025](#req-mf-025) for supported aliases; self-entry isolation, proposed [req-lk-024](#req-lk-024) | Consumer-default  |
 | 8 | Policy bypass via crafted manifest          | [req-pl-002](#req-pl-002), [req-pl-009](#req-pl-009), [req-pl-010](#req-pl-010), [req-pl-018](#req-pl-018) | Governance-only   |
 | 9 | Archive path-traversal                      | [req-sc-002](#req-sc-002), [req-sc-004](#req-sc-004)               | Consumer-default  |
 | 10| Hash-algorithm downgrade                    | [req-mf-018](#req-mf-018), [req-lk-016](#req-lk-016)               | Consumer-default  |
@@ -4781,7 +4783,7 @@ staged-replacement capability, not every consumer implementation.
 
 | Revision | Date | Changes |
 |----------|------|---------|
-| Revision pending (#2270, proposed) | 2026-10-21 | Adds [req-lk-024](#req-lk-024), Section 5.2.2: preserve reachable transitive entries and installed material in either parent-removal order, repair coherent surviving-parent/local-path anchors, permit final-parent cleanup, preserve uncertain candidates with an actionable diagnostic, and keep cleanup previews read-only. Reconciles resolution provenance with lifecycle anchors without changing traversal or lock formats. This is a new hard conformance obligation, not errata: implementations deleting reachable or uncertain candidates, retaining stale anchors, leaking final orphans, or mutating previews can newly fail. Section 9.2/9.4 classification and revision selection remain pending; a breaking classification requires the minor/migration route, not a patch label. Section 9.3 non-author approvals, subsequent public comment, applicable Section 9.5 migration and publication remain outstanding. The conditional req-rpl-002 proposal, historical waivers, shared-file rules and release commitments are unchanged. Statement count: 136 -> 137 (132 MUST, 5 SHOULD). |
+| Revision pending (#2270, proposed) | 2026-10-21 | Adds [req-lk-024](#req-lk-024), Section 5.2.2: preserve reachable transitive entries and installed material in either parent-removal order, repair coherent surviving-parent/local-path anchors, permit final-parent cleanup, preserve uncertain candidates with an actionable diagnostic, and keep cleanup previews read-only. Reconciles resolution provenance with lifecycle anchors without changing traversal or lock formats. This is a new hard conformance obligation, not errata: implementations deleting reachable or uncertain candidates, retaining stale anchors, leaking final orphans, or mutating previews can newly fail. Section 9.2/9.4 classification and revision selection remain pending; a breaking classification requires the minor/migration route, not a patch label. Section 9.3 non-author approvals, subsequent public comment, applicable Section 9.5 migration and publication remain outstanding. The conditional req-rpl-002 proposal, historical waivers, shared-file rules and release commitments are unchanged. Statement count: 136 -> 137 (132 MUST, 5 SHOULD). Also corrects the Section 7.4 lockfile-fragment worked-example citation from req-rs-010 to req-rs-001 (resolved_by provenance, not conflict diagnostics). |
 
 The independently drafted 0.1.52, 0.1.53 and 0.1.55 proposals each add one MUST;
 0.1.54 adds four. The proposed #2270 amendment adds one. Together,
