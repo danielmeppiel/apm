@@ -154,6 +154,7 @@ def run_phase(root: Path, scratch: Path, name: str) -> dict[str, object]:
     nodes = [NATIVE_NODE]
     if name == "baseline":
         nodes.insert(0, "tests/unit/cache/test_git_symlink_config.py")
+        nodes.insert(0, "tests/integration/test_resolution_failure_lifecycle.py")
     command = [
         sys.executable,
         "-B",
