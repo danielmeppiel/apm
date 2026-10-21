@@ -586,16 +586,14 @@ See the [MCP
 Servers guide](../../../../../docs/src/content/docs/consumer/install-mcp-servers.md#token-injection-github-mcp-server)
 for token selection details.
 
-OpenCode translates `${VAR}`, `${env:VAR}`, and legacy `<VAR>` references to
-`{env:VAR}` in remote headers, local environment values, and command arguments.
-Export referenced variables in the environment that launches OpenCode; APM no
-longer saves install-time values into its config. Explicit static values remain
-literal, and command executables and URLs are unchanged.
+OpenCode requires referenced variables in its launch environment. See the
+[variable reference rules](../../../../../docs/src/content/docs/reference/manifest-schema.md#424-variable-references-in-headers-and-env)
+for supported fields and literal-value handling.
 
 For OpenCode, top-level `enabled` passes the supplied value and JSON type
 unchanged, including `false`, `null`, and non-boolean values. Only omission
 defaults to `true`; OpenCode interprets the value, not APM. Reinstall applies
-changes to this field. OpenCode remains project-only. See the
+changes to this field. See the
 [manifest schema](https://microsoft.github.io/apm/reference/manifest-schema/#422-dependenciesmcp)
 for the dependency contract.
 

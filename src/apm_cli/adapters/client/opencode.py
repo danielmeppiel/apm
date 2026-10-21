@@ -36,6 +36,9 @@ from typing import Any
 from ...models.dependency.mcp import _EXTRA_DENYLIST, opencode_enabled_value
 from .copilot import CopilotClientAdapter
 
+_ENV_REF_TEMPLATE = "{env:%s}"
+_ENV_REF_RE = re.compile(re.escape(_ENV_REF_TEMPLATE) % r"([A-Za-z_][A-Za-z0-9_]*)")
+
 
 class OpenCodeClientAdapter(CopilotClientAdapter):
     """OpenCode MCP client adapter.
@@ -55,7 +58,7 @@ class OpenCodeClientAdapter(CopilotClientAdapter):
 
     def _format_runtime_env_placeholder(self, name: str) -> str:
         """Return OpenCode's native environment reference."""
-        return "{env:" + name + "}"
+        return _ENV_REF_TEMPLATE % name
 
     def _resolve_environment_variables(
         self,
@@ -79,11 +82,10 @@ class OpenCodeClientAdapter(CopilotClientAdapter):
         # Never recover authored values from the shared collected overrides.
         authored = {name: value for name, value in overlay.items() if name in env}
         previous_keys = self._last_env_placeholder_keys - set(env)
+        # Deliberately omit collected overrides: only authored values belong here.
         env.update(self._resolve_explicit_environment_values(authored))
         self._last_env_placeholder_keys = previous_keys | {
-            name
-            for value in env.values()
-            for name in re.findall(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}", value)
+            name for value in env.values() for name in _ENV_REF_RE.findall(value)
         }
         return config
 

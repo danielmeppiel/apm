@@ -1,5 +1,6 @@
 """Installed CLI renders native OpenCode references without persisting values."""
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -97,7 +98,10 @@ def test_installed_cli_registry_authored_environment_overlay(tmp_path: Path, apm
             }
         ],
     }
-    with LocalMcpRegistryFactory(isolated.root / "registries").start(server) as registry:
+    second_server = copy.deepcopy(server)
+    second_server["name"] = "com.example/second-overlay"
+    factory = LocalMcpRegistryFactory(isolated.root / "registries")
+    with factory.start(server) as registry, factory.start(second_server) as second_registry:
         dump_yaml(
             {
                 "name": "registry-runtime-overlay",
@@ -115,7 +119,16 @@ def test_installed_cli_registry_authored_environment_overlay(tmp_path: Path, apm
                                 "TOKEN": "${OTHER_TOKEN}",
                                 "EXTRA": "literal",
                             },
-                        }
+                        },
+                        {
+                            "name": second_server["name"],
+                            "registry": second_registry.url,
+                            "env": {
+                                "SERVER_MODE": "production",
+                                "GITHUB_TOOLSETS": "repos",
+                                "TOKEN": "${SECOND_TOKEN}",
+                            },
+                        },
                     ],
                 },
             },
@@ -126,10 +139,13 @@ def test_installed_cli_registry_authored_environment_overlay(tmp_path: Path, apm
             overrides={
                 "OTHER_TOKEN": "synthetic-other-secret",
                 "TOKEN": "synthetic-wrong-secret",
+                "SECOND_TOKEN": "synthetic-second-secret",
                 "MCP_REGISTRY_ALLOW_HTTP": "1",
             }
         )
-        environment["APM_TEST_LOOPBACK_PORTS"] = str(urlparse(registry.url).port)
+        environment["APM_TEST_LOOPBACK_PORTS"] = ",".join(
+            str(urlparse(endpoint.url).port) for endpoint in (registry, second_registry)
+        )
         result = ApmLifecycleRunner((str(apm_binary_path),)).run(
             ("install", "--no-policy", "--target", "opencode"),
             cwd=project,
@@ -139,15 +155,22 @@ def test_installed_cli_registry_authored_environment_overlay(tmp_path: Path, apm
         assert result.returncode == 0, result.stdout + result.stderr
         written = (project / "opencode.json").read_text(encoding="utf-8")
         config = json.loads(written)["mcp"]
-        assert len(config) == 1
-        assert next(iter(config.values()))["environment"] == {
+        assert len(config) == 2
+        assert config["runtime-overlay"]["environment"] == {
             "SERVER_MODE": "development",
             "GITHUB_TOOLSETS": "issues",
             "TOKEN": "{env:OTHER_TOKEN}",
         }
+        assert config["second-overlay"]["environment"] == {
+            "SERVER_MODE": "production",
+            "GITHUB_TOOLSETS": "repos",
+            "TOKEN": "{env:SECOND_TOKEN}",
+        }
         assert "synthetic-other-secret" not in written
         assert "synthetic-wrong-secret" not in written
+        assert "synthetic-second-secret" not in written
         assert registry.request_paths
+        assert second_registry.request_paths
 
         first_lock = (project / "apm.lock.yaml").read_bytes()
         assert b"_apm_env_overlay" not in first_lock

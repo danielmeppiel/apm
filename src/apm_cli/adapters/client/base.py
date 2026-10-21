@@ -1123,7 +1123,10 @@ class MCPClientAdapter(ABC):
         env_vars: dict[str, object],
         env_overrides: dict[str, str] | None = None,
     ) -> dict[str, str]:
-        """Translate authored references while preserving explicit env literals."""
+        """Translate authored references while preserving explicit env literals.
+
+        Resets placeholder tracking; mid-render callers must preserve prior keys.
+        """
         resolved: dict[str, str] = {}
         self._last_env_placeholder_keys = set()
         for name, value in env_vars.items():

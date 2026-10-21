@@ -526,8 +526,10 @@
       "keyword": "MUST",
       "section": "4.5",
       "status": "active",
-      "test_count": 1,
+      "test_count": 3,
       "tests": [
+        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_renders_opencode_native_environment_references[${EXAMPLE_KEY}]",
+        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_renders_opencode_native_environment_references[${env:EXAMPLE_KEY}]",
         "tests/spec_conformance/test_manifest_reqs.py::test_consumer_supports_local_path_source"
       ]
     },

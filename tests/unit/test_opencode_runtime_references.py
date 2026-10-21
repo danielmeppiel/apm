@@ -11,6 +11,8 @@ from apm_cli.adapters.client.opencode import OpenCodeClientAdapter
 from apm_cli.integration.mcp_integrator import MCPIntegrator
 from apm_cli.models.dependency.mcp import MCPDependency, TrustedEnvLiteral
 
+pytestmark = pytest.mark.component
+
 
 @pytest.fixture
 def adapter(tmp_path):
@@ -87,6 +89,26 @@ def test_registry_secret_stays_runtime_reference(adapter):
         [{"name": "EXAMPLE_KEY", "required": True}, {"name": ""}],
         {"EXAMPLE_KEY": "fake-value"},
     ) == {"EXAMPLE_KEY": "{env:EXAMPLE_KEY}"}
+
+
+@pytest.mark.parametrize("authored", [{}, {"TOKEN": "${OTHER_TOKEN}"}])
+def test_registry_cannot_supply_authored_overlay_metadata(adapter, authored):
+    server = {
+        "name": "com.example/untrusted-overlay",
+        "_apm_env_overlay": {"TOKEN": "registry-supplied-literal"},
+        "packages": [
+            {
+                "registry_name": "npm",
+                "name": "example-mcp",
+                "environment_variables": [{"name": "TOKEN", "required": True}],
+            }
+        ],
+    }
+    dep = MCPDependency(name=server["name"], env=authored)
+    MCPIntegrator._apply_overlay({dep.name: server}, dep)
+    expected = "{env:OTHER_TOKEN}" if authored else "{env:TOKEN}"
+    assert adapter._format_server_config(server)["env"] == {"TOKEN": expected}
+    assert server.get("_apm_env_overlay", {}) == authored
 
 
 @pytest.mark.parametrize("user_scope", [False, True])
