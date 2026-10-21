@@ -12,11 +12,13 @@ from apm_cli.agent_plugins.errors import AgentPluginDeploymentBoundaryError
 from apm_cli.commands.deps.cli import _build_dep_tree
 from apm_cli.commands.deps.why import _render_human, _render_json
 from apm_cli.commands.outdated import _check_one_dep
+from apm_cli.commands.uninstall.engine import _compute_actual_orphans
 from apm_cli.core.command_logger import InstallLogger
 from apm_cli.deps.apm_resolver import APMDependencyResolver
 from apm_cli.deps.dependency_graph import DependencyNode, DependencyTree
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.deps.path_anchoring import LocalResolutionError
+from apm_cli.deps.reachability import ReachabilityResult
 from apm_cli.deps.why_walker import compute_why
 from apm_cli.install.context import InstallContext
 from apm_cli.install.drift import _materialize_install_path
@@ -206,6 +208,42 @@ def test_local_replacement_outdated_is_not_remotely_comparable(tmp_path: Path) -
     assert row.status == "not-comparable"
     assert "../local" in row.source
     assert downloader.mock_calls == []
+
+
+@pytest.mark.parametrize("count", [3, 4])
+def test_replacement_uninstall_bounds_unique_unverifiable_manifest_names(
+    tmp_path: Path, count: int
+) -> None:
+    keys = [f"owner/package-{i}" for i in range(count)]
+    failures = tuple((key, "private diagnostic detail") for key in reversed(keys))
+    reachability = ReachabilityResult(
+        reachable=frozenset(), complete=False, unverifiable=failures + failures[:1]
+    )
+    lock = LockFile(replacements=[])
+    with (
+        patch("apm_cli.commands.uninstall.engine._read_survivor_direct_refs", return_value=[]),
+        patch(
+            "apm_cli.deps.reachability.compute_forward_reachable_keys",
+            return_value=reachability,
+        ),
+        pytest.raises(ValueError) as refused,
+    ):
+        _compute_actual_orphans(
+            lock,
+            {"owner/orphan"},
+            set(),
+            tmp_path / "apm.yml",
+            [],
+            tmp_path / "apm_modules",
+            Mock(),
+        )
+
+    names = ", ".join(keys[:3]) + (", ..." if count > 3 else "")
+    assert str(refused.value) == (
+        f"Cannot verify replacement dependency reachability ({count} manifest(s): {names}). "
+        "Restore missing or invalid package manifests before uninstalling."
+    )
+    assert lock.dependencies == {}
 
 
 def test_fork_outdated_queries_clean_selected_reference(tmp_path: Path) -> None:

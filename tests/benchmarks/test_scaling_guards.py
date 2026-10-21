@@ -48,7 +48,7 @@ def _median_time(fn, *, repeats=5):
 
 
 class TestReplacementIndexScaling:
-    """Index construction plus graph-edge matching must remain O(R+E)."""
+    """Keep O(R+E) matching, with initial 50% headroom over 10x linear growth."""
 
     @staticmethod
     def _inputs(n: int) -> tuple[list[ReplacementRule], list[DependencyReference]]:

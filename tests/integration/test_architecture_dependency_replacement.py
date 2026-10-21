@@ -70,6 +70,11 @@ FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
             "self._resolver.resolve_git_reference(dep.ownership_reference)",
         ),
         (
+            "src/apm_cli/deps/lockfile.py",
+            "isinstance(self.replacement.rule.source, LocalReplacementSource)",
+            'self.source == "local"',
+        ),
+        (
             "src/apm_cli/install/pipeline.py",
             "dep = dep.source_reference",
             "dep = dep.ownership_reference",
@@ -88,11 +93,6 @@ FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
             "src/apm_cli/install/native_plugin_admission.py",
             "if lock_dep.is_local_source:",
             'if lock_dep.source == "local":',
-        ),
-        (
-            "src/apm_cli/deps/lockfile.py",
-            "isinstance(self.replacement.rule.source, LocalReplacementSource)",
-            'self.source == "local"',
         ),
         (
             "src/apm_cli/install/pipeline.py",

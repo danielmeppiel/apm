@@ -842,8 +842,12 @@ def test_replacement_local_audit_and_outdated_are_read_only(
     outdated = fixture.run("outdated", "--parallel-checks", "0")
     assert outdated.returncode == 0, outdated.stdout + outdated.stderr
     assert "not remotely comparable" in outdated.stdout
+    assert "not-comparable" in outdated.stdout
     assert "local-base" in outdated.stdout
-    assert "apm-replacement-fixture/base" in outdated.stdout
+    package_column = "".join(
+        line.split("|")[1].strip() for line in outdated.stdout.splitlines() if line.startswith("|")
+    )
+    assert "apm-replacement-fixture/base" in package_column
     assert "Replacement:" not in outdated.stdout
     verbose = fixture.run("outdated", "--parallel-checks", "0", "--verbose")
     assert verbose.returncode == 0, verbose.stdout + verbose.stderr

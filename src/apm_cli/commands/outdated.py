@@ -598,11 +598,11 @@ def outdated(global_, verbose, parallel_checks):
             box=ASCII,
         )
         table.add_column("Package", style="white", min_width=20)
-        table.add_column("Current", style="white", min_width=10)
+        table.add_column("Current", style="white", min_width=1 if has_replacements else 10)
         if show_wanted:
-            table.add_column("Wanted", style="white", min_width=10)
-        table.add_column("Latest", style="white", min_width=10)
-        table.add_column("Status", min_width=12)
+            table.add_column("Wanted", style="white", min_width=1 if has_replacements else 10)
+        table.add_column("Latest", style="white", min_width=1 if has_replacements else 10)
+        table.add_column("Status", min_width=14 if has_replacements else 12)
         table.add_column("Source", style="dim", min_width=20, overflow="fold")
 
         status_styles = {
