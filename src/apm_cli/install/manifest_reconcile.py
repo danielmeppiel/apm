@@ -314,21 +314,17 @@ def union_preserving(
     )
     manifest_declared = {name for name in declared_by_name or () if _is_manifest_target(name)}
     cleanup_retained_hashes = cleanup_retained_hashes or {}
+    attribution_profiles = _profiles_by_name(
+        [*targets, *(declared_targets or []), *scoped_known_targets.values()]
+    )
+    attribution_governance = [
+        (profile.name, *install_governance([profile])) for profile in attribution_profiles.values()
+    ]
 
     def _target_for(path: str) -> str:
-        ordered = [
-            *targets,
-            *(declared_targets or []),
-            *scoped_known_targets.values(),
-        ]
-        seen_names: set[str] = set()
-        for profile in ordered:
-            if profile.name in seen_names:
-                continue
-            seen_names.add(profile.name)
-            prefixes, schemes = install_governance([profile])
+        for name, prefixes, schemes in attribution_governance:
             if is_governed_by_install(path, prefixes, schemes):
-                return profile.name
+                return name
         return UNATTRIBUTED_TARGET
 
     def _locator(path: str) -> DeploymentLocator:

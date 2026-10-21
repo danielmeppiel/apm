@@ -185,7 +185,7 @@ def run(ctx: InstallContext) -> None:
                 for protected_path in sorted(protected):
                     logger.verbose_detail(
                         f"Kept stale file {protected_path} for {dep_key}; "
-                        "still claimed by another package or target"
+                        "still in use by another package or target"
                     )
 
             if not stale:

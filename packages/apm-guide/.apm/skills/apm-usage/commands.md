@@ -64,15 +64,12 @@ outside-constraint upgrades, see the
 `apm update` remains constraint-respecting and writable; it does not take an
 outside-constraint `Latest`.
 
-Same-named dependency skills share a directory, not ownership of every file
-inside it. Reinstalls keep other packages' unique assets and preserve edited or
-untracked content; only overlapping managed files use last-writer behavior.
-This applies in project and global scope, including external user roots.
-Use ordinary `apm install` to
-reconcile changed sources or targets. `--frozen` preserves the recorded owner
-of overlapping skill files and does not restore relinquished claims.
-Source-directory enumeration failures stop installation; restore readable
-source files before retrying rather than resetting ownership records.
+Same-named skills keep other packages' unique assets and personal files;
+overlapping managed files retain last-writer behavior in project and global
+scope. Use ordinary `apm install` after source or target changes; `--frozen`
+keeps recorded ownership. Overwrite warnings name the previous owner when known.
+Fix unreadable sources before retrying, not by resetting the lockfile. See
+[shared-skill behavior](https://microsoft.github.io/apm/reference/cli/install/#behavior).
 
 For `apm install -g --mcp`, mixed target selections warn and skip
 workspace-only runtimes. If no selected target supports user scope, the command

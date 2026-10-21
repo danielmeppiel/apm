@@ -283,7 +283,11 @@ class BaseIntegrator:
         force: bool = False,
         diagnostics=None,
     ) -> list[Path]:
-        """Copy admitted source members without deleting or inventorying destination siblings."""
+        """Copy admitted members through the shared skill containment boundary.
+
+        Skill copies route here for symlink and destination-containment checks,
+        without deleting or inventorying destination siblings.
+        """
         from apm_cli.utils.content_hash import compute_file_hash
 
         copied: list[Path] = []

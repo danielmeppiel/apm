@@ -379,6 +379,7 @@ class SkillIntegrator(BaseIntegrator):
         self._replay_owners: Mapping[str, str] | None = None
         self._skill_current_owner: str | None = None
         self._skill_source_plan: DeployableSourcePlan | None = None
+        # Any skipped member or unverified rewrite invalidates this call's completion proof.
         self._skill_can_complete = False
         self._skill_completed_roots: dict[Path, set[str]] = {}
         self._skill_completed_files: dict[Path, set[str]] = {}
@@ -959,10 +960,11 @@ class SkillIntegrator(BaseIntegrator):
             if target / "SKILL.md" in copied:
                 deployed.append(target)
                 if warn and target_existed and not is_self_overwrite and not unchanged:
+                    previous = f"'{prev_owner}'" if prev_owner else "another package"
                     detail = (
                         f"Skill '{sub_name}' from '{parent_name}' replaced overlapping files "
-                        "from another package; "
-                        "separately owned assets were preserved"
+                        f"from {previous}; separately owned assets were preserved "
+                        "-- remove one package to avoid this"
                     )
                     if diagnostics is not None:
                         diagnostics.overwrite(path=rel_path, package=parent_name, detail=detail)
