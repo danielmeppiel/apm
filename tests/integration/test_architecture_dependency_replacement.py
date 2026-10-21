@@ -90,6 +90,11 @@ FROZEN_RULE = "install-deployment-frozen-mutation-eligibility"
             'if lock_dep.source == "local":',
         ),
         (
+            "src/apm_cli/deps/lockfile.py",
+            "isinstance(self.replacement.rule.source, LocalReplacementSource)",
+            'self.source == "local"',
+        ),
+        (
             "src/apm_cli/install/pipeline.py",
             "plan = build_resolved_update_plan(ctx, _early_lockfile)",
             "plan = None",

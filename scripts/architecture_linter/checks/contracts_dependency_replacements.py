@@ -92,6 +92,9 @@ def check_source_replacements(provider: FactsProvider) -> tuple[Violation, ...]:
         "src/apm_cli/deps/immutable_requirements.py": (
             "self._resolver.resolve_git_reference(dep.source_reference)",
         ),
+        "src/apm_cli/deps/lockfile.py": (
+            "isinstance(self.replacement.rule.source, LocalReplacementSource)",
+        ),
         "src/apm_cli/install/pipeline.py": (
             "dep = dep.source_reference",
             "from apm_cli.install.helpers.plan_inputs import build_resolved_update_plan",

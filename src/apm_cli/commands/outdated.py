@@ -567,7 +567,7 @@ def outdated(global_, verbose, parallel_checks):
     has_replacements = any(dep.replacement is not None for dep in checkable)
     for dep in checkable:
         if dep.replacement is not None:
-            logger.progress(
+            logger.verbose_detail(
                 f"Replacement: {dep.get_unique_key()} "
                 f"-> {dependency_ref_from_locked(dep).to_display_reference()}"
             )
@@ -609,6 +609,7 @@ def outdated(global_, verbose, parallel_checks):
             "up-to-date": "green",
             "outdated": "yellow",
             "unknown": "dim",
+            "not-comparable": "dim",
         }
 
         for row, source in zip(rows, sources, strict=True):

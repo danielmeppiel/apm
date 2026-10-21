@@ -718,6 +718,9 @@ def test_replacement_uninstall_preserves_shared_sources_until_the_last_parent(
     assert "Cannot verify replacement dependency reachability" in " ".join(
         (refused.stdout + refused.stderr).split()
     )
+    assert "(1 manifest(s): apm-replacement-fixture/base)" in " ".join(
+        (refused.stdout + refused.stderr).split()
+    )
     assert _snapshot(fixture.consumer.root) == before
     assert fixture.consumer.manifest_path.read_bytes() == before_manifest
     preview = fixture.run("uninstall", "../left", "--dry-run")
@@ -840,6 +843,14 @@ def test_replacement_local_audit_and_outdated_are_read_only(
     assert outdated.returncode == 0, outdated.stdout + outdated.stderr
     assert "not remotely comparable" in outdated.stdout
     assert "local-base" in outdated.stdout
+    assert "apm-replacement-fixture/base" in outdated.stdout
+    assert "Replacement:" not in outdated.stdout
+    verbose = fixture.run("outdated", "--parallel-checks", "0", "--verbose")
+    assert verbose.returncode == 0, verbose.stdout + verbose.stderr
+    assert "Replacement:" in verbose.stdout
+    assert "apm-replacement-fixture/base" in verbose.stdout
+    assert "local-base" in verbose.stdout
+    assert _snapshot(fixture.consumer.root) == before
     audit = fixture.run("audit", "--ci", "--no-policy")
     assert audit.returncode == 0, audit.stdout + audit.stderr
     assert _snapshot(fixture.consumer.root) == before

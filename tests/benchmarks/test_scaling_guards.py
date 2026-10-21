@@ -24,6 +24,12 @@ from unittest.mock import patch
 import pytest
 
 from apm_cli.deps.lockfile import LockedDependency, LockFile
+from apm_cli.models.dependency.reference import DependencyReference
+from apm_cli.models.dependency.replacement import (
+    ReplacementIndex,
+    ReplacementRule,
+    parse_replace_block,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,6 +45,46 @@ def _median_time(fn, *, repeats=5):
         t1 = time.perf_counter()
         times.append(t1 - t0)
     return statistics.median(times)
+
+
+class TestReplacementIndexScaling:
+    """Index construction plus graph-edge matching must remain O(R+E)."""
+
+    @staticmethod
+    def _inputs(n: int) -> tuple[list[ReplacementRule], list[DependencyReference]]:
+        rules = parse_replace_block(
+            [
+                {
+                    "for": {"git": f"https://github.com/scaling/package-{i}"},
+                    "with": {"git": f"https://github.com/forks/package-{i}", "ref": "main"},
+                }
+                for i in range(n)
+            ]
+        )
+        edges = [
+            DependencyReference.parse(f"https://github.com/scaling/package-{i}")
+            for i in range(2 * n)
+        ] * 5
+        return rules, edges
+
+    @staticmethod
+    def _match(rules: list[ReplacementRule], edges: list[DependencyReference]) -> int:
+        index = ReplacementIndex(rules)
+        return sum(index.lookup(dep) is not None for dep in edges)
+
+    def test_scaling_ratio(self) -> None:
+        small = self._inputs(50)
+        large = self._inputs(500)
+        assert self._match(*small) == 250
+        assert self._match(*large) == 2500
+        t_small = _median_time(lambda: self._match(*small))
+        t_large = _median_time(lambda: self._match(*large))
+        assert t_small > 0
+        ratio = t_large / t_small
+        assert ratio < 15, (
+            f"Replacement matching ratio {ratio:.1f}x for 10x rules and edges "
+            f"suggests O(R*E) regression (t_small={t_small:.6f}s, t_large={t_large:.6f}s)"
+        )
 
 
 # ---------------------------------------------------------------------------

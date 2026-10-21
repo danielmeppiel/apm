@@ -858,6 +858,10 @@ class LockedDependency:
     def to_dependency_ref(self, *, effective: bool = True) -> DependencyReference:
         """Reconstruct a DependencyReference from this locked dependency.
 
+        Replacement rows return the selected source by default, including
+        its host for transport and provider checks. ``effective=False``
+        returns the original ownership coordinates instead.
+
         Registry-sourced deps come back with ``source="registry"`` so the
         install pipeline routes them to the registry resolver. The exact
         locked version is in ``reference`` (the registry resolver still calls

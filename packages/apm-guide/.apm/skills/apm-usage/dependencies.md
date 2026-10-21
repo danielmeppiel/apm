@@ -282,6 +282,8 @@ replace:
 exactly, at every graph depth. Only consumer-root rules apply. For a fork use
 `with: {git: https://github.com/my-org/catalog-fork.git, path: packages/base, ref: patched-base}`.
 `ref` is required; omitted fork `path` selects its repository root.
+Use an explicit HTTPS/SSH URL or SCP-style locator for the selected Git source,
+not `owner/repo` or scheme-free `host/repo` shorthand.
 Local `with.path` is anchored to the consumer manifest, not a transitive parent.
 The complete source/ref is substituted; original refs remain provenance.
 No chaining, wildcards, single-file selectors or dependency-owned overrides.

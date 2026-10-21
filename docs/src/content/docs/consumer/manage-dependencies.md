@@ -236,7 +236,9 @@ including with `--allow-insecure`.
 
 Ordinary installs replay a matching fork pin. `apm update` refreshes mutable fork
 refs but retains an explicitly selected SHA. `apm outdated` checks the fork;
-local sources are shown as not remotely comparable. `apm deps why` shows source
+local sources are shown as not remotely comparable. Its table shows original
+and selected sources; `--verbose` also prints per-dependency replacement details.
+`apm deps why` shows source
 provenance and original request paths. Missing or invalid selected sources fail
 without falling back upstream.
 
@@ -252,7 +254,9 @@ rule warns but does not read its source.
 
 Delete a matching rule and run `apm install` to return to upstream requirements
 and reconcile owned outputs. Shared replacements remain until their last parent
-is removed. Uninstall retains dormant rules; remove them explicitly if no longer
+is removed. If reachability cannot be verified, uninstall names the affected
+dependencies so you can restore their missing or invalid manifests and retry.
+Uninstall retains dormant rules; remove them explicitly if no longer
 needed. See the [candidate manifest contract](../../reference/manifest-schema/#313-replace-candidate)
 and [lock evidence](../../reference/lockfile-spec/#root-source-replacement-evidence-candidate).
 

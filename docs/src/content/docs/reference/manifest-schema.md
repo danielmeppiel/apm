@@ -379,7 +379,7 @@ Existing manifests without `replace` keep their current contract.
 | `replace` | List of rules | Consumer-root rules; not inherited from dependencies. |
 | `for` | `{git: <explicit-host Git locator>, path?: <package subdirectory>}` | Exact normalized host, endpoint, repository and subpath. No ref, alias, wildcard, single-file primitive, registry or marketplace selector. |
 | `with` (local) | `{path: <local path>}` | Complete source substitution, anchored to the consumer manifest. |
-| `with` (Git) | `{git: <Git locator>, path?: <subdirectory>, ref: <ref>}` | Complete source/ref substitution. `ref` is required; omitted `path` means repository root. HTTPS and SSH are supported; HTTP is rejected. |
+| `with` (Git) | `{git: <explicit HTTPS/SSH URL or SCP-style locator>, path?: <subdirectory>, ref: <ref>}` | Complete source/ref substitution. `ref` is required; omitted `path` means repository root. HTTP, `owner/repo` shorthand and scheme-free `host/repo` shorthand are rejected. |
 
 Unknown rule fields and duplicate normalized selectors fail. Original alias,
 skill/target subset and dev-selection semantics are preserved. Rules bind

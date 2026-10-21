@@ -449,8 +449,13 @@ def _compute_actual_orphans(
     )
     if not reachability.complete:
         if lockfile.replacements is not None:
+            unverifiable = sorted({key for key, _reason in reachability.unverifiable})
+            details = ", ".join(unverifiable[:3])
+            if len(unverifiable) > 3:
+                details += ", ..."
             raise ValueError(
-                "Cannot verify replacement dependency reachability. Restore missing or "
+                "Cannot verify replacement dependency reachability "
+                f"({len(unverifiable)} manifest(s): {details}). Restore missing or "
                 "invalid package manifests before uninstalling."
             )
         if warn_on_incomplete:

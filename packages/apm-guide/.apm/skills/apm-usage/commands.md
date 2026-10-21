@@ -140,11 +140,13 @@ refuse a changed rule table: run a full install/update to apply it.
 refuses missing or changed selected-local content and missing baseline hashes
 before deployment. Use normal install after reviewing an intentional change.
 `apm outdated` checks selected Git sources and marks local sources not remotely
-comparable. `apm deps list`/`why` show selected-source provenance; tree/why retain
+comparable. Its table shows original and selected sources; `--verbose` adds
+per-dependency replacement details. `apm deps list`/`why` show selected-source provenance; tree/why retain
 shared original parents. `apm audit --ci` replays selected sources read-only.
 Uninstall preserves shared dependencies until their last parent is removed,
 repairs incoming requests and retains dormant root rules. Missing source
-evidence that prevents safe reachability verification blocks removal.
+evidence that prevents safe reachability verification blocks removal and names
+the affected dependencies whose manifests must be restored.
 
 ### Install validation chain (virtual subdirectory packages)
 
