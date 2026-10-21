@@ -12,6 +12,7 @@ import pytest
 
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
+from tests.utils.artifact_snapshot import ArtifactSnapshotSet, assert_snapshot_set_unchanged
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 
 pytestmark = [pytest.mark.e2e, pytest.mark.integration, pytest.mark.requires_apm_binary]
@@ -57,6 +58,8 @@ class _Scenario:
         return self.environment.config_root if self.user_scope else self.project
 
     def run(self, command: str, *args: str, expected: int = 0) -> CommandResult:
+        audit_roots = {"project": self.project, "home": self.environment.home}
+        before_audit = ArtifactSnapshotSet.capture(audit_roots) if command == "audit" else None
         result = self.runner.run(
             (
                 command,
@@ -69,6 +72,8 @@ class _Scenario:
             env=self.environment.subprocess_env(),
         )
         assert result.returncode == expected, _evidence(result)
+        if before_audit is not None:
+            assert_snapshot_set_unchanged(before_audit, ArtifactSnapshotSet.capture(audit_roots))
         return result
 
     def install(self, *owners: str, target: str | None = "claude,codex") -> CommandResult:
