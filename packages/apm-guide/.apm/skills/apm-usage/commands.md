@@ -674,6 +674,11 @@ Use `--target agent-skills` to deploy skills to `.agents/skills/` -- the cross-t
 
 By default, Copilot, Cursor, OpenCode, Codex, Gemini, Antigravity, and Windsurf deploy skills to `.agents/skills/` (the agentskills.io standard). Claude, Grok Build, and Kiro retain native per-client routing (`.claude/skills/`, `.grok/skills/`, `.kiro/skills/`). Use `--legacy-skill-paths` (or `APM_LEGACY_SKILL_PATHS=1`) to restore the previous per-client layout (`.github/skills/`, `.cursor/skills/`, `.gemini/skills/`, etc.). Legacy per-client skill paths recorded in `apm.lock.yaml` are auto-migrated to `.agents/skills/` on the next `apm install`; foreign / hand-authored skills outside the lockfile are never touched.
 
+`apm install --target kiro` also delivers Kiro CLI prompts as body-only
+`.kiro/prompts/<name>.md`; add `--global` for `~/.kiro/prompts/<name>.md`.
+This prompt mapping is qualified with Kiro CLI 2.33.0 V3, not the IDE.
+See `package-authoring.md` for native arguments and frontmatter limitations.
+
 Experimental flags MUST NOT gate security-critical behaviour (content scanning, path validation, lockfile integrity, token handling, MCP trust, collision detection). Flags are ergonomic/UX toggles only.
 
 ## Configuration and updates

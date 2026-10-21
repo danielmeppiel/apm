@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 import click
 
+from apm_cli.core.scope import InstallScope, get_deploy_root, get_modules_dir
 from apm_cli.core.target_detection import (
     read_manifest_target as _read_apm_yml_target,  # noqa: F401 -- compatibility re-export
 )
@@ -548,6 +549,10 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
+    replay_scope = InstallScope.USER if config.user_scope else InstallScope.PROJECT
+    deployment_modules_dir = scratch_root / get_modules_dir(replay_scope).relative_to(
+        get_deploy_root(replay_scope)
+    )
     codex_records = None
 
     live_targets = resolve_audit_targets(
@@ -647,9 +652,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     else:
                         package_info = _build_package_info(lock_dep, install_path)
                         package_info.deployment_package_root = (
-                            lock_dep.to_dependency_ref().get_install_path(
-                                scratch_root / "apm_modules"
-                            )
+                            lock_dep.to_dependency_ref().get_install_path(deployment_modules_dir)
                         )
                     dep_key = lock_dep.get_unique_key()
 

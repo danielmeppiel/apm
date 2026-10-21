@@ -1504,10 +1504,12 @@
       "keyword": "MUST",
       "section": "8.5",
       "status": "active",
-      "test_count": 2,
+      "test_count": 4,
       "tests": [
         "tests/spec_conformance/test_claude_cleanup_roots.py::test_claude_cleanup_writes_only_to_selected_registered_root",
-        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_deploys_only_under_registered_roots"
+        "tests/spec_conformance/test_manifest_reqs.py::test_consumer_deploys_only_under_registered_roots",
+        "tests/spec_conformance/test_manifest_reqs.py::test_kiro_prompt_uses_registered_root_and_filename[InstallScope.PROJECT]",
+        "tests/spec_conformance/test_manifest_reqs.py::test_kiro_prompt_uses_registered_root_and_filename[InstallScope.USER]"
       ]
     },
     {
