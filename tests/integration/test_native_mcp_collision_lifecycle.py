@@ -241,10 +241,15 @@ def test_direct_collision_repeat_force_frozen_and_prune(
     assert scenario.servers(other)["notes"]["url"] == requested
     assert scenario.lock().mcp_target_servers == {other: ["notes"]}
     lock_bytes = (scenario.root / "apm.lock.yaml").read_bytes()
+    other_bytes = scenario.path(other).read_bytes()
     for flags in ((), ("--force",), ("--frozen",)):
         repeated = scenario.install(*flags)
-        assert (repeated.returncode == 0) is identical, repeated.stdout + repeated.stderr
+        expected_success = identical and "--frozen" not in flags
+        assert (repeated.returncode == 0) is expected_success, repeated.stdout + repeated.stderr
+        if "--frozen" in flags:
+            assert "ownership is not recorded" in " ".join(repeated.stdout.split())
         assert scenario.path(foreign_target).read_bytes() == before
+        assert scenario.path(other).read_bytes() == other_bytes
         assert scenario.servers(other)["notes"]["url"] == requested
         assert scenario.lock().mcp_target_servers == {other: ["notes"]}
         assert (scenario.root / "apm.lock.yaml").read_bytes() == lock_bytes
