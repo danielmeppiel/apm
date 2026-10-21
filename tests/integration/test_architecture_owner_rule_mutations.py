@@ -56,6 +56,42 @@ OWNERS_DIR = ROOT / ".apm/architecture/owners"
 
 
 @pytest.mark.parametrize(
+    ("path", "original", "replacement"),
+    [
+        pytest.param(
+            "src/apm_cli/install/drift.py",
+            "replay_modules_root(scratch_root, user_scope=config.user_scope)",
+            "private_modules_root(scratch_root, user_scope=config.user_scope)",
+            id="replay-call",
+        ),
+        pytest.param(
+            "src/apm_cli/install/audit_target_roots.py",
+            "InstallScope.USER if user_scope else InstallScope.PROJECT",
+            "InstallScope.PROJECT",
+            id="user-scope",
+        ),
+        pytest.param(
+            "src/apm_cli/install/audit_target_roots.py",
+            "get_modules_dir(scope).relative_to(get_deploy_root(scope))",
+            'Path("apm_modules")',
+            id="canonical-layout",
+        ),
+    ],
+)
+def test_audit_replay_scope_projection_cannot_bypass_owner(
+    path: str, original: str, replacement: str
+) -> None:
+    source = (ROOT / path).read_text(encoding="utf-8")
+    assert source.count(original) == 1
+    rule = "install-deployment-audit-replay"
+    report = run_selected_rules(
+        ROOT, (rule,), source_overrides={path: source.replace(original, replacement)}
+    )
+    assert report.failures == ()
+    assert any(item.rule_id == rule for item in report.violations)
+
+
+@pytest.mark.parametrize(
     ("path", "original", "replacement", "refused"),
     [
         (
@@ -693,9 +729,9 @@ MUTATIONS: tuple[MutationCase, ...] = (
         guard_id="install-deployment-mcp-ownership-migration",
         rule_id="install-deployment-mcp-ownership-migration",
         path="src/apm_cli/install/mcp/ownership.py",
-        old="def resolve_mcp_target_servers(",
-        new="def resolve_mcp_target_servers_disabled(",
-        intent="Legacy MCP target ownership adoption loses its canonical resolver.",
+        old="def compare_native_mcp_connection(",
+        new="def compare_native_mcp_connection_disabled(",
+        intent="Native MCP connection ownership loses its canonical baseline comparator.",
     ),
     MutationCase(
         guard_id="install-deployment-mcp-registry-resolution",
@@ -1797,6 +1833,80 @@ def test_global_mcp_consumer_guards(path: str, rule_id: str, old: str, new: str)
     report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
     assert report.failures == ()
     assert any(violation.rule_id == rule_id for violation in report.violations)
+
+
+@pytest.mark.parametrize(
+    ("path", "old", "new"),
+    [
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "def resolve_mcp_target_servers(",
+            "def bypass_resolve_mcp_target_servers(",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator_install.py",
+            "state = compare_native_mcp_connection(",
+            "state = noncanonical_comparison(",
+        ),
+        (
+            "src/apm_cli/integration/mcp_integrator.py",
+            "require_removable_mcp_connections(codex_client, stale_names, stored_configs or {})",
+            "None",
+        ),
+        (
+            "src/apm_cli/commands/uninstall/engine.py",
+            "                stored_configs=lockfile.mcp_configs,\n",
+            "",
+        ),
+        (
+            "src/apm_cli/core/conflict_detector.py",
+            "class MCPConflictDetector:",
+            "def compare_native_mcp_connection(*args, **kwargs):\n"
+            "    return True\n\n\nclass MCPConflictDetector:",
+        ),
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            "comparison = client.project_managed_server_config(",
+            "comparison = client.bypass_managed_server_config(",
+        ),
+        (
+            "src/apm_cli/core/conflict_detector.py",
+            "class MCPConflictDetector:",
+            "def bypass_owner(client):\n"
+            "    return client.project_managed_server_config({}, baseline={}, requested={})\n"
+            "\n\nclass MCPConflictDetector:",
+        ),
+        (
+            "src/apm_cli/install/mcp/ownership.py",
+            '    """Refuse removal when recorded names do not prove unchanged native content."""',
+            '    """Refuse removal when recorded names do not prove unchanged native content."""\n'
+            "    client.project_managed_server_config({}, baseline={}, requested={})",
+        ),
+    ],
+    ids=[
+        "legacy-resolver",
+        "install-routing",
+        "removal-routing",
+        "removal-baseline",
+        "second-owner",
+        "projection-bypass",
+        "projection-external",
+        "projection-cleanup",
+    ],
+)
+def test_native_mcp_ownership_boundary_mutations(path: str, old: str, new: str) -> None:
+    """Native collision and cleanup callers cannot bypass or duplicate the baseline owner."""
+    rule_id = "install-deployment-mcp-ownership-migration"
+    baseline = run_selected_rules(ROOT, (rule_id,))
+    assert baseline.failures == ()
+    assert baseline.violations == ()
+    source = _source(path)
+    assert source.count(old) == 1
+    mutated = source.replace(old, new, 1)
+    ast.parse(mutated, filename=path)
+    report = run_selected_rules(ROOT, (rule_id,), source_overrides={path: mutated})
+    assert report.failures == ()
+    assert any(item.rule_id == rule_id for item in report.violations)
 
 
 @pytest.mark.parametrize(

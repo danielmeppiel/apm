@@ -35,7 +35,7 @@
     },
     {
       "id": "legacy-mcp-ownership-key-migration",
-      "decision": "Legacy MCP target ownership migration and adoption",
+      "decision": "MCP native connection baseline comparison and safe removal, plus legacy target ownership migration and adoption",
       "owner": "install/mcp/ownership.py",
       "selectors": ["src/apm_cli/install/mcp/ownership.py"],
       "guards": ["install-deployment-mcp-ownership-migration"]
@@ -182,9 +182,10 @@
     {
       "id": "ci-audit-scratch-materialization",
       "decision": "CI audit scratch materialization",
-      "owner": "install/audit_replay.py (prepare_ci_audit_replay)",
+      "owner": "install/audit_replay.py (prepare_ci_audit_replay) + install/audit_target_roots.py (scratch deployment projections)",
       "selectors": [
         "src/apm_cli/install/audit_replay.py",
+        "src/apm_cli/install/audit_target_roots.py",
         "src/apm_cli/install/project_package.py"
       ],
       "guards": ["install-deployment-audit-replay"]

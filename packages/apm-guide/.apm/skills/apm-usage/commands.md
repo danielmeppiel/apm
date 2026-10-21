@@ -89,6 +89,23 @@ For Cursor credential repair, edit `.cursor/mcp.json` at project scope or
 `~/.cursor/mcp.json` with `--global`; replace only the affected values with
 native `${env:NAME}` references and preserve other fields and servers.
 
+For self-defined Claude/Codex MCP connections, a same-name native entry must
+match the requested config or an unchanged APM-managed baseline. Otherwise
+install preserves it, identifies the conflicting target, and exits nonzero;
+successful writes to other targets remain managed. An identical foreign
+connection is left unowned. `--force` does not authorize takeover, and
+`--frozen` does not certify a conflicting connection. Rename or remove only
+the conflicting native entry you intend to replace, then rerun the original
+command with the same scope and targets. Cleanup also preserves modified or
+unverifiable historical entries and asks for manual reconciliation; do not
+delete the lockfile or unrelated native settings to bypass it. This concerns
+connection settings, not data held by the MCP service.
+
+An already managed Claude stdio connection may retain a valid native-only `cwd`
+when both old and requested declarations omit it. This comparison exception
+allows managed updates, not foreign adoption or removal. Native edits to a
+declared `cwd` remain conflicts; switching to HTTP removes the incompatible stdio fields.
+
 `apm install --dry-run` includes required indirect APM dependencies in its
 counts using local source metadata and unchanged installed remote metadata.
 The dependency graph pass is read-only and offline: unavailable metadata or
@@ -221,13 +238,16 @@ lock state may skip the write, so repeating that install is not a migration.
 
 Codex keeps APM registry identity in TOML comments instead of an unsupported
 native `id` setting. After upgrading, `apm install --only mcp --target codex`
-reports and repairs recorded APM-owned entries; add `--global` for user scope.
-Unchanged self-defined entries matching an older lockfile's saved configuration
-can also be repaired. Unowned or edited legacy entries stay untouched. For an
-entry you maintain yourself, back up the Codex config and remove only its
+repairs entries matching a trustworthy saved configuration, including historical
+empty `id = ""` self-defined entries; add `--global` for user scope. A recorded
+owner name alone does not verify nonempty IDs, old header spelling, or native
+edits. Unverifiable entries stay untouched; unresolved self-defined conflicts
+return nonzero. For an entry you have verified, back up the Codex config and remove only its
 unsupported `id = ...` setting. Keep comments such as
 `# apm-registry-id: "registry-uuid"` for duplicate detection. Inline containers
 being written may expand while preserving values and comments.
+When replacing a declaration with `--mcp NAME`, `--force` permits changing
+`apm.yml`, not taking over a conflicting native connection.
 
 ### Registry MCP runtime variables
 
@@ -678,6 +698,11 @@ Use `--target agent-skills` to deploy skills to `.agents/skills/` -- the cross-t
 ### Skill routing convergence
 
 By default, Copilot, Cursor, OpenCode, Codex, Gemini, Antigravity, and Windsurf deploy skills to `.agents/skills/` (the agentskills.io standard). Claude, Grok Build, and Kiro retain native per-client routing (`.claude/skills/`, `.grok/skills/`, `.kiro/skills/`). Use `--legacy-skill-paths` (or `APM_LEGACY_SKILL_PATHS=1`) to restore the previous per-client layout (`.github/skills/`, `.cursor/skills/`, `.gemini/skills/`, etc.). Legacy per-client skill paths recorded in `apm.lock.yaml` are auto-migrated to `.agents/skills/` on the next `apm install`; foreign / hand-authored skills outside the lockfile are never touched.
+
+`apm install --target kiro` also delivers Kiro CLI prompts as body-only
+`.kiro/prompts/<name>.md`; add `--global` for `~/.kiro/prompts/<name>.md`.
+This prompt mapping is qualified with Kiro CLI 2.33.0 V3, not the IDE.
+See `package-authoring.md` for native arguments and frontmatter limitations.
 
 Experimental flags MUST NOT gate security-critical behaviour (content scanning, path validation, lockfile integrity, token handling, MCP trust, collision detection). Flags are ergonomic/UX toggles only.
 

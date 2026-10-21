@@ -520,7 +520,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         Surfaced verbatim when a locked dep cannot be materialized.
     """
     from apm_cli.deps.lockfile import _SELF_KEY, LockFile
-    from apm_cli.install.audit_target_roots import replay_target
+    from apm_cli.install.audit_target_roots import replay_modules_root, replay_target
     from apm_cli.install.native_plugin_admission import verify_native_plugin_cache
     from apm_cli.install.project_package import build_project_local_package_info
     from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
@@ -550,6 +550,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         else project_root / "apm_modules"
     )
     live_modules_dir = project_root / "apm_modules"
+    deployment_modules_dir = replay_modules_root(scratch_root, user_scope=config.user_scope)
     codex_records = None
 
     live_targets = resolve_audit_targets(
@@ -649,9 +650,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     else:
                         package_info = _build_package_info(lock_dep, install_path)
                         package_info.deployment_package_root = (
-                            lock_dep.to_dependency_ref().get_install_path(
-                                scratch_root / "apm_modules"
-                            )
+                            lock_dep.to_dependency_ref().get_install_path(deployment_modules_dir)
                         )
                     dep_key = lock_dep.get_unique_key()
 
