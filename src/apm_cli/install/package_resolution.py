@@ -12,6 +12,7 @@ import builtins
 from collections.abc import Callable
 from typing import Any
 
+from apm_cli.install import registry_wiring
 from apm_cli.install.gitlab_resolver import _GITLAB_DIRECT_SHORTHAND_UNRESOLVED
 from apm_cli.utils.github_host import build_ssh_url
 
@@ -351,11 +352,33 @@ def update_existing_dependency_entry_if_needed(
     dep_ref: Any,
     identity: str,
     dependency_reference_cls: Any,
+    default_registry: str | None = None,
     logger: Any = None,
 ) -> bool:
-    """Rewrite an existing manifest dep when the requested ref changed."""
+    """Apply explicit reference, selection or HTTPS-upgrade intent."""
+    requested_entry = apm_yml_entries.get(canonical, dep_ref.to_apm_yml_entry())
+    https_upgrade = False
+    if already_in_deps and getattr(dep_ref, "explicit_scheme", None) == "https":
+        existing_ref = get_existing_dep_ref_for_identity(
+            current_deps, identity, dependency_reference_cls=dependency_reference_cls
+        )
+        if existing_ref is not None and getattr(existing_ref, "is_insecure", False) is True:
+            https_upgrade = True
+            if canonical not in apm_yml_entries:
+                requested_entry = existing_ref.to_apm_yml_entry()
+                requested_entry.update(dependency_reference_to_yaml_entry(existing_ref))
+                if dep_ref.reference:
+                    requested_entry["ref"] = dep_ref.reference
+            elif isinstance(requested_entry, str):
+                requested_entry = dependency_reference_to_yaml_entry(dep_ref)
+            else:
+                requested_entry = dict(requested_entry)
+            requested_entry["git"] = dep_ref.to_github_url()
+            requested_entry.pop("allow_insecure", None)
+
     should_update = already_in_deps and (
-        canonical in apm_yml_entries
+        https_upgrade
+        or canonical in apm_yml_entries
         or (
             dep_ref.reference
             and manifest_has_different_entry_for_identity(
@@ -369,10 +392,11 @@ def update_existing_dependency_entry_if_needed(
     if should_update:
         return merge_structured_entry_into_current_deps(
             current_deps,
-            apm_yml_entries.get(canonical, dep_ref.to_apm_yml_entry()),
+            requested_entry,
             identity,
             canonical,
             dependency_reference_cls=dependency_reference_cls,
+            default_registry=default_registry,
             logger=logger,
         )
     return False
@@ -387,6 +411,7 @@ def try_update_existing_dependency_entry(
     dep_ref: Any,
     identity: str,
     dependency_reference_cls: Any,
+    default_registry: str | None = None,
     logger: Any = None,
 ) -> tuple[bool, str | None]:
     """Like update_existing_dependency_entry_if_needed, but returns
@@ -401,6 +426,7 @@ def try_update_existing_dependency_entry(
             dep_ref=dep_ref,
             identity=identity,
             dependency_reference_cls=dependency_reference_cls,
+            default_registry=default_registry,
             logger=logger,
         )
     except ValueError as e:
@@ -415,6 +441,7 @@ def merge_structured_entry_into_current_deps(
     canonical: str,
     *,
     dependency_reference_cls: Any,
+    default_registry: str | None = None,
     logger: Any = None,
 ) -> bool:
     """Replace by identity only when effective manifest intent changes."""
@@ -459,6 +486,8 @@ def merge_structured_entry_into_current_deps(
                 and existing_ref.repo_url == requested_ref.repo_url
                 and existing_ref.virtual_path == requested_ref.virtual_path
                 and existing_ref.alias == requested_ref.alias
+                and registry_wiring.should_skip_github_probe_for_dep(existing_ref, default_registry)
+                == registry_wiring.should_skip_github_probe_for_dep(requested_ref, default_registry)
                 and (not requires_explicit_path or has_explicit_path)
             ):
                 return False

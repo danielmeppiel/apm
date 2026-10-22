@@ -490,6 +490,7 @@ def _resolve_package_references(
                 dep_ref=dep_ref,
                 identity=identity,
                 dependency_reference_cls=DependencyReference,
+                default_registry=default_registry,
                 logger=logger,
             )
             if update_error:
