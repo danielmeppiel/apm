@@ -1282,6 +1282,9 @@ def _materialization_evidence_findings(provider: FactsProvider, rule_id: str) ->
             "self._bindings.get(key) != [record.active_owner, self._claim_signature(value)]",
             'DeploymentLedgerCodec.from_rows(data["records"])',
             "DeploymentLedgerCodec.rows(DeploymentLedger(records))",
+            'atomic_write_text(ignore, "*\\n", new_file_mode=0o600, create_only=True)',
+            'self.identity_path, installation + "\\n", new_file_mode=0o600, create_only=True',
+            "create_only=not self._state_present",
         ),
         _SKILL_INTEGRATOR: (
             "on_member_written=written.append",

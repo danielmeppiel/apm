@@ -103,18 +103,25 @@ class DeploymentMaterializationSession:
             DeploymentLedgerCodec.valid_owner_keys(lockfile) if lockfile else frozenset({"."})
         )
         self._installation: str | None = None
+        self._state_present = False
         self._load()
 
     def _validate_paths(self) -> None:
         for base, path in (
             (Path.home(), self.state_path),
             (self.root, self.identity_path),
+            (self.root, self.identity_path.parent / ".gitignore"),
         ):
             ensure_path_within(path, base)
             if has_symlink_component(base, path, raise_on_error=True):
                 raise PathTraversalError(
                     f"Refusing symlinked materialization evidence at {path}. "
                     "Restore a regular local state path before installing."
+                )
+            if path.exists() and not path.is_file():
+                raise ValueError(
+                    f"Refusing non-regular materialization evidence at {path}. "
+                    "Preserve this path and move it aside before retrying."
                 )
 
     def _root_identity(self) -> list[int]:
@@ -123,6 +130,7 @@ class DeploymentMaterializationSession:
 
     def _load(self) -> None:
         self._validate_paths()
+        self._state_present = self.state_path.exists()
         if not self.identity_path.exists():
             return
         try:
@@ -298,8 +306,7 @@ class DeploymentMaterializationSession:
         if self._installation is None:
             self.identity_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             ignore = self.identity_path.parent / ".gitignore"
-            if has_symlink_component(self.root, ignore, raise_on_error=True):
-                raise PathTraversalError(f"Refusing symlinked installation identity: {ignore}")
+            self._validate_paths()
             if ignore.exists():
                 if ignore.read_bytes() != b"*\n":
                     raise ValueError(
@@ -307,9 +314,12 @@ class DeploymentMaterializationSession:
                         "Preserve this directory's contents and move it aside before retrying."
                     )
             else:
-                atomic_write_text(ignore, "*\n", new_file_mode=0o600)
-            self._installation = uuid.uuid4().hex
-            atomic_write_text(self.identity_path, self._installation + "\n", new_file_mode=0o600)
+                atomic_write_text(ignore, "*\n", new_file_mode=0o600, create_only=True)
+            installation = uuid.uuid4().hex
+            atomic_write_text(
+                self.identity_path, installation + "\n", new_file_mode=0o600, create_only=True
+            )
+            self._installation = installation
         self.state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._validate_paths()
         data = {
@@ -323,8 +333,12 @@ class DeploymentMaterializationSession:
             "bindings": {key: self._bindings[key] for key in records},
         }
         atomic_write_text(
-            self.state_path, json.dumps(data, sort_keys=True, indent=2) + "\n", new_file_mode=0o600
+            self.state_path,
+            json.dumps(data, sort_keys=True, indent=2) + "\n",
+            new_file_mode=0o600,
+            create_only=not self._state_present,
         )
+        self._state_present = True
 
     def retire(self, deleted: Sequence[Path]) -> None:
         """Forget successfully removed physical outputs without granting cleanup authority."""

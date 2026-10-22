@@ -275,7 +275,7 @@ def test_changed_canonical_claims_cannot_rebind_without_actual_writes(
     assert _session(root, lock).baseline(path, [TARGET]) is None
 
 
-@pytest.mark.parametrize("binding", ["identity", "state"])
+@pytest.mark.parametrize("binding", ["identity", "state", "ignore"])
 @pytest.mark.parametrize("outside", [False, True], ids=["contained", "escaping"])
 def test_symlinked_evidence_is_rejected_without_touching_referent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, binding: str, outside: bool
@@ -286,7 +286,11 @@ def test_symlinked_evidence_is_rejected_without_touching_referent(
     session = _session(root, lock)
     session.record({path: compute_file_hash(path)}, [TARGET], "pkg")
     session.flush()
-    selected = session.identity_path if binding == "identity" else session.state_path
+    selected = {
+        "identity": session.identity_path,
+        "state": session.state_path,
+        "ignore": session.identity_path.parent / ".gitignore",
+    }[binding]
     referent = (tmp_path if outside else selected.parent) / f"saved-{binding}"
     selected.rename(referent)
     original = referent.read_bytes()
@@ -295,6 +299,55 @@ def test_symlinked_evidence_is_rejected_without_touching_referent(
     with pytest.raises(PathTraversalError, match=expected):
         _session(root, lock)
     assert referent.read_bytes() == original
+
+
+@pytest.mark.parametrize("binding", ["identity", "state", "ignore"])
+def test_nonregular_control_path_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, binding: str
+) -> None:
+    root, _, lock = _fixture(tmp_path, monkeypatch)
+    session = _session(root, lock)
+    path = {
+        "identity": session.identity_path,
+        "state": session.state_path,
+        "ignore": session.identity_path.parent / ".gitignore",
+    }[binding]
+    path.mkdir(parents=True)
+    sentinel = path / "foreign.txt"
+    sentinel.write_bytes(b"foreign directory contents\n")
+    with pytest.raises(ValueError, match="non-regular materialization evidence"):
+        _session(root, lock)
+    assert sentinel.read_bytes() == b"foreign directory contents\n"
+
+
+@pytest.mark.parametrize("binding", ["identity", "state", "ignore"])
+def test_control_file_appearing_during_creation_is_never_clobbered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, binding: str
+) -> None:
+    from apm_cli.utils import atomic_io
+
+    root, path, lock = _fixture(tmp_path, monkeypatch)
+    session = _session(root, lock)
+    selected = {
+        "identity": session.identity_path,
+        "state": session.state_path,
+        "ignore": session.identity_path.parent / ".gitignore",
+    }[binding]
+    link = atomic_io.os.link
+
+    def competing_write(source: str, destination: Path) -> None:
+        if destination == selected:
+            destination.write_bytes(b"foreign control bytes\n")
+        link(source, destination)
+
+    monkeypatch.setattr(atomic_io.os, "link", competing_write)
+    session.record({path: compute_file_hash(path)}, [TARGET], "pkg")
+    with pytest.raises(FileExistsError):
+        session.flush()
+    assert selected.read_bytes() == b"foreign control bytes\n"
+    if binding != "state":
+        assert not session.state_path.exists()
+    assert list(selected.parent.glob("apm-atomic-*")) == []
 
 
 @pytest.mark.parametrize("stage", ["copy", "rewrite", "hash", "persist"])

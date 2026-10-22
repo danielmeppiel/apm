@@ -19,6 +19,11 @@ RULE = "install-deployment-provenance-state"
     [
         (
             "core/deployment_ledger.py",
+            "create_only=not self._state_present",
+            "create_only=False",
+        ),
+        (
+            "core/deployment_ledger.py",
             "self._bindings.get(key) != [record.active_owner, self._claim_signature(value)]",
             "False",
         ),

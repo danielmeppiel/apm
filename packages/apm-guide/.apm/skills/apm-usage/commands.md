@@ -79,6 +79,8 @@ but edited files and legacy files without receipts stay protected. Preserve
 edits and move conflicting files aside before reinstalling. Audit and dry-run
 do not create receipts; frozen install can record local writes without changing
 the manifest or lockfile.
+Creating this state requires filesystem hard-link support; unsupported or
+unwritable state paths fail instead of disabling preservation.
 
 For `apm install -g --mcp`, mixed target selections warn and skip
 workspace-only runtimes. If no selected target supports user scope, the command
