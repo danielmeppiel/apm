@@ -31,6 +31,9 @@ RATCHET_TEST_SCOPE = "repository"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RATCHET_JOB = "test-architecture"
 RATCHET_CHECK = "Test Architecture Ratchets"
+RATCHET_CONTRACT_JOB = "test-architecture-contracts"
+RATCHET_SCALING_JOB = "test-architecture-scaling"
+RATCHET_EXECUTION_JOBS = (RATCHET_CONTRACT_JOB, RATCHET_SCALING_JOB)
 ARCHITECTURE_SCALING_TARGET = (
     "tests/perf/test_architecture_linter_scaling.py::"
     "test_ci_real_catalog_work_scales_below_fifteen_x_after_fixed_cost_subtraction"
@@ -102,6 +105,28 @@ def _run_steps(job: WorkflowNode) -> list[WorkflowNode]:
     if not isinstance(steps, list):
         return []
     return [step for step in steps if isinstance(step, dict)]
+
+
+def _assert_success_results(step: WorkflowNode, result_names: tuple[str, str]) -> None:
+    """Execute the real aggregate with failed, skipped and absent results."""
+    for first in ("success", "failure", "cancelled", "skipped", "", None):
+        for second in ("success", "failure", "cancelled", "skipped", "", None):
+            results = {
+                name: value
+                for name, value in zip(result_names, (first, second), strict=True)
+                if value is not None
+            }
+            result = subprocess.run(
+                ["bash", "-e", "-c", step["run"]],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                env={"PATH": os.environ["PATH"], **results},
+            )
+            assert (result.returncode == 0) == (first == second == "success"), (
+                f"aggregate accepted invalid results: {first!r}, {second!r}"
+            )
 
 
 def _workflow_uv_environment_commands(
@@ -206,7 +231,7 @@ def _assert_ci_provisional_guard(
 
     expected = [
         (
-            RATCHET_JOB,
+            RATCHET_CONTRACT_JOB,
             "Run ratchet contract tests",
             DRAFT_PROVISIONAL_GUARD,
         )
@@ -220,15 +245,68 @@ def _assert_ci_test_targets(
 ) -> None:
     repository_modules = {path for path, scope in inventory.items() if scope == REPOSITORY_SCOPE}
     fixture_modules = {path for path, scope in inventory.items() if scope == FIXTURE_SCOPE}
-    ratchet = workflow_job(ci, RATCHET_JOB)
-    expected_ratchet_targets = Counter(
-        {path: 1 for path in repository_modules | fixture_modules}
-        | {ARCHITECTURE_SCALING_TARGET: 1}
-    )
+    _assert_ratchet_split(ci)
+    ratchet = workflow_job(ci, RATCHET_CONTRACT_JOB)
+    expected_ratchet_targets = Counter({path: 1 for path in repository_modules | fixture_modules})
     assert Counter(_pytest_targets(ratchet)) == expected_ratchet_targets
+    assert _pytest_targets(workflow_job(ci, RATCHET_SCALING_JOB)) == (ARCHITECTURE_SCALING_TARGET,)
 
     required_shard = workflow_job(ci, "build-and-test-shard")
     assert _pytest_targets(required_shard) == REQUIRED_SHARD_ROOTS
+
+
+def _assert_ratchet_execution(ci: WorkflowNode, job_id: str) -> None:
+    """Keep each execution's source, environment, selection and deadline."""
+    job = workflow_job(ci, job_id)
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["timeout-minutes"] == 5
+    assert job["permissions"] == {"contents": "read"}
+    assert job.get("env", {}) == {}
+    assert all(key not in job for key in ("if", "needs", "continue-on-error", "strategy"))
+    steps = _run_steps(job)
+    assert len(steps) == 5
+    assert all("if" not in step and "continue-on-error" not in step for step in steps)
+    assert steps[0]["uses"].startswith("actions/checkout@")
+    assert steps[0].get("with", {}) == {}, "execute the current checked-out source"
+    assert steps[1]["uses"].startswith("actions/setup-python@")
+    assert steps[1]["with"] == {"python-version": "${{ env.PYTHON_VERSION }}"}
+    assert ci["env"]["PYTHON_VERSION"] == "3.12"
+    assert steps[2]["uses"].startswith("astral-sh/setup-uv@")
+    assert steps[2]["with"] == {"enable-cache": True}
+    assert list(shell_commands(steps[3])) == [["uv", "sync", "--frozen", "--extra", "dev"]]
+    assert all(step.get("env", {}) == {} for step in steps[:4])
+    prefix = ["uv", "run", "--frozen", "--extra", "dev", "pytest", "-p", "no:cacheprovider", "-q"]
+    if job_id == RATCHET_CONTRACT_JOB:
+        expected_command = [*prefix, *_pytest_targets(job)]
+        expected_env = {ALLOW_PROVISIONAL_KEY: DRAFT_PROVISIONAL_GUARD}
+    else:
+        assert job_id == RATCHET_SCALING_JOB
+        expected_command = [*prefix, "-m", "benchmark", ARCHITECTURE_SCALING_TARGET]
+        expected_env = {"PYTEST_PERF": "1"}
+    assert list(shell_commands(steps[4])) == [expected_command]
+    assert steps[4].get("env", {}) == expected_env
+
+
+def _assert_ratchet_split(ci: WorkflowNode) -> None:
+    """Preserve the original signal while independently bounding both jobs."""
+    aggregate = workflow_job(ci, RATCHET_JOB)
+    assert aggregate.get("needs") == list(RATCHET_EXECUTION_JOBS), (
+        "ratchet contracts and scaling must execute in separate jobs"
+    )
+    assert aggregate["name"] == RATCHET_CHECK
+    assert aggregate["if"] == "always()"
+    assert aggregate["permissions"] == {}
+    assert "continue-on-error" not in aggregate
+    assert len(aggregate["steps"]) == 1
+    step = workflow_step(aggregate, "Require both architecture executions")
+    assert "if" not in step and "continue-on-error" not in step
+    assert step["env"] == {
+        "CONTRACT_RESULT": "${{ needs.test-architecture-contracts.result }}",
+        "SCALING_RESULT": "${{ needs.test-architecture-scaling.result }}",
+    }
+    _assert_success_results(step, ("CONTRACT_RESULT", "SCALING_RESULT"))
+    for job_id in RATCHET_EXECUTION_JOBS:
+        _assert_ratchet_execution(ci, job_id)
 
 
 def _assert_topology(root: Path, inventory: dict[str, str]) -> None:
@@ -276,7 +354,7 @@ def _assert_topology(root: Path, inventory: dict[str, str]) -> None:
                 continue
             if repository_modules.intersection(_pytest_targets(job)):
                 ratchet_callers.append((workflow_path.name, job_name))
-    assert ratchet_callers == [("ci.yml", RATCHET_JOB)]
+    assert ratchet_callers == [("ci.yml", RATCHET_CONTRACT_JOB)]
 
 
 @pytest.fixture(scope="module")
@@ -302,6 +380,11 @@ def test_repository_ratchet_inventory_is_collected_once(
 def test_provisional_ci_opt_in_is_draft_guarded() -> None:
     ci = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
     _assert_ci_provisional_guard(ci)
+
+
+def test_ratchet_executions_are_separate_and_bounded() -> None:
+    """Both original workloads retain independent five-minute execution caps."""
+    _assert_ratchet_split(load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml"))
 
 
 def test_first_party_workflow_uv_environments_are_frozen() -> None:
@@ -400,7 +483,7 @@ def provisional_ci() -> WorkflowNode:
 
 def _ratchet_step(ci: WorkflowNode) -> WorkflowNode:
     return workflow_step(
-        workflow_job(ci, RATCHET_JOB),
+        workflow_job(ci, RATCHET_CONTRACT_JOB),
         "Run ratchet contract tests",
     )
 
@@ -460,6 +543,97 @@ def test_duplicate_ratchet_target_fails(
             provisional_ci,
             repository_inventory,
         )
+
+
+@pytest.mark.parametrize("job_id", RATCHET_EXECUTION_JOBS)
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("timeout-minutes", 4),
+        ("timeout-minutes", 6),
+        ("runs-on", "ubuntu-latest"),
+        ("permissions", {"contents": "write"}),
+        ("if", "false"),
+        ("continue-on-error", True),
+    ],
+)
+def test_ratchet_execution_job_drift_fails(
+    provisional_ci: WorkflowNode, job_id: str, field: str, value: object
+) -> None:
+    workflow_job(provisional_ci, job_id)[field] = value
+    with pytest.raises(AssertionError):
+        _assert_ratchet_split(provisional_ci)
+
+
+@pytest.mark.parametrize("job_id", RATCHET_EXECUTION_JOBS)
+@pytest.mark.parametrize(
+    "mutation", ["source", "python", "dependencies", "environment", "selection"]
+)
+def test_ratchet_execution_step_drift_fails(
+    provisional_ci: WorkflowNode, job_id: str, mutation: str
+) -> None:
+    steps = _run_steps(workflow_job(provisional_ci, job_id))
+    if mutation == "source":
+        steps[0]["with"] = {"ref": "main"}
+    elif mutation == "python":
+        steps[1]["with"]["python-version"] = "3.11"
+    elif mutation == "dependencies":
+        steps[3]["run"] = "uv sync --extra dev"
+    elif mutation == "environment":
+        steps[4]["env"] = {}
+    else:
+        steps[4]["run"] += " -k false"
+    with pytest.raises(AssertionError):
+        _assert_ratchet_split(provisional_ci)
+
+
+@pytest.mark.parametrize("job_id", RATCHET_EXECUTION_JOBS)
+@pytest.mark.parametrize("field", ["if", "continue-on-error"])
+def test_ratchet_execution_step_cannot_skip_or_suppress(
+    provisional_ci: WorkflowNode, job_id: str, field: str
+) -> None:
+    _run_steps(workflow_job(provisional_ci, job_id))[-1][field] = "false" if field == "if" else True
+    with pytest.raises(AssertionError):
+        _assert_ratchet_split(provisional_ci)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("needs", [RATCHET_CONTRACT_JOB]),
+        ("needs", [RATCHET_SCALING_JOB]),
+        ("if", "success()"),
+        ("name", "Renamed ratchet signal"),
+        ("continue-on-error", True),
+    ],
+)
+def test_ratchet_aggregate_topology_drift_fails(
+    provisional_ci: WorkflowNode, field: str, value: object
+) -> None:
+    workflow_job(provisional_ci, RATCHET_JOB)[field] = value
+    with pytest.raises(AssertionError):
+        _assert_ratchet_split(provisional_ci)
+
+
+@pytest.mark.parametrize("result_name", ["CONTRACT_RESULT", "SCALING_RESULT"])
+def test_ratchet_aggregate_cannot_ignore_either_execution(
+    provisional_ci: WorkflowNode, result_name: str
+) -> None:
+    step = workflow_step(
+        workflow_job(provisional_ci, RATCHET_JOB), "Require both architecture executions"
+    )
+    step["run"] = step["run"].replace(f'[ "${result_name}" != success ]', "false")
+    with pytest.raises(AssertionError, match="invalid results"):
+        _assert_ratchet_split(provisional_ci)
+
+
+def test_ratchet_aggregate_cannot_suppress_failure(provisional_ci: WorkflowNode) -> None:
+    step = workflow_step(
+        workflow_job(provisional_ci, RATCHET_JOB), "Require both architecture executions"
+    )
+    step["run"] = step["run"].replace("exit 1", ":")
+    with pytest.raises(AssertionError, match="invalid results"):
+        _assert_ratchet_split(provisional_ci)
 
 
 def _assert_lifecycle_smoke_marker_registered(markers: list[str]) -> None:
@@ -740,23 +914,7 @@ def _assert_lifecycle_smoke_aggregate(ci: WorkflowNode) -> None:
         f"SHARD_{index}_RESULT": "${{ needs." + job_id + ".result }}"
         for index, job_id in enumerate(LIFECYCLE_SMOKE_SHARD_JOBS, 1)
     }
-    for first in ("success", "failure", "cancelled", "skipped", ""):
-        for second in ("success", "failure", "cancelled", "skipped", ""):
-            result = subprocess.run(
-                ["bash", "-e", "-c", step["run"]],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-                env={
-                    "PATH": os.environ["PATH"],
-                    "SHARD_1_RESULT": first,
-                    "SHARD_2_RESULT": second,
-                },
-            )
-            assert (result.returncode == 0) == (first == second == "success"), (
-                f"lifecycle aggregate accepted invalid results: {first!r}, {second!r}"
-            )
+    _assert_success_results(step, ("SHARD_1_RESULT", "SHARD_2_RESULT"))
 
 
 def _assert_lifecycle_shard_partition(
