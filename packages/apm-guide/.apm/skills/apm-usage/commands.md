@@ -17,6 +17,13 @@ Standalone `apm --version` does not require Git to be installed.
 
 ## Dependency management
 
+Repeating an existing positional package without a requested change reports
+`already in apm.yml` and preserves its declaration. An otherwise unchanged
+manifest is not rewritten; changed refs and explicit skill additions or resets
+still update it.
+Explicit HTTPS upgrades and Git-qualified marketplace requests are not no-ops
+when they change the stored transport or default-registry routing.
+
 During install or uninstall, `Cleaned N stale deployed files for DEPENDENCY`
 names the affected dependency, not a deletion location. A local source path in
 that message identifies the package; cleanup removes deployed files, not source
