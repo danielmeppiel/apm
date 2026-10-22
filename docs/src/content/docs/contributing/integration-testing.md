@@ -433,6 +433,14 @@ environment end-to-end; for local iteration prefer the direct
 **On PR and merge queue:**
 1. PR-time unit checks and the hermetic Lifecycle Smoke gate run first; merge queue adds Linux smoke, integration, and release-validation gates.
 
+Architecture ratchet contracts and the real architecture-scaling test run in
+separate Linux jobs, each with the same five-minute setup-to-cleanup limit.
+Their test selections, scaling threshold and environment opt-ins are unchanged.
+The `Test Architecture Ratchets` aggregate succeeds only when both jobs succeed;
+failure, cancellation, skipping or a missing result fails it. This remains a
+diagnostic check outside `merge-gate.yml`'s `EXPECTED_CHECKS`, not a new required
+merge gate. A passing test summary does not override a cancelled job.
+
 The required Windows compatibility gate selects `windows_compat` tests within
 `tests/unit` and `tests/integration`, with `APM_E2E_TESTS=1` for marked real-CLI
 contracts. It runs only that marker subset, not the full integration suite.
