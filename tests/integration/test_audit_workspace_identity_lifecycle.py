@@ -126,7 +126,11 @@ def _seed(tmp_path: Path, apm_binary_path: Path, *, dependency_kind: str = "loca
                 timeout=30,
                 check=False,
             )
-            assert auth.returncode == 1 and not auth.stdout
+            assert auth.returncode == 1 and not auth.stdout, (
+                auth.returncode,
+                auth.stdout,
+                auth.stderr,
+            )
     consumer = packages.create(
         "consumer-source",
         dependencies=(dependency,),
@@ -168,6 +172,7 @@ def _audit(workspace: _Workspace, root: Path, phase: str) -> tuple[CommandResult
         cwd=root,
         env=workspace.env,
     )
+    print(f"{phase}: returncode={result.returncode}\n{result.stdout}\n{result.stderr}")
     assert_unchanged(before, ArtifactSnapshot.capture(workspace.isolated.root))
     payload = json.loads(result.stdout)
     return result, payload
