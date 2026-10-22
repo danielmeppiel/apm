@@ -288,6 +288,10 @@ The reviewed survivor allowlist lives in
 [`tests/mutation/baseline.json`](https://github.com/microsoft/apm/blob/main/tests/mutation/baseline.json).
 Do not update it to make a run green. Review every surviving diff with
 `mutmut show` and add behavioral tests for real contract gaps.
+Mutant numbers can shift when a function changes. Compare the old and new
+diffs before replacing an accepted ID; a renamed survivor is not a newly
+killed behavior. Add missing coverage to the owner's configured test seam,
+not only to tests outside the pilot.
 Use `--update-baseline` only when the baseline change itself has been reviewed:
 
 ```bash
