@@ -386,9 +386,39 @@ def _package_manifest_path(
             )
             package_dir = Path(stage) / "package"
             materialize_virtual_file_package(dep_ref, package_dir, source.path.name, source.content)
+        elif (
+            dependency.package_type == PackageType.MARKETPLACE_PLUGIN.value
+            and not (package_dir / "apm.yml").exists()
+        ):
+            package_dir = _local_claude_mcp_snapshot(package_dir, scratch)
     else:
         package_dir = dependency.to_dependency_ref().get_install_path(modules_root)
     return (package_dir / "apm.yml").resolve()
+
+
+def _local_claude_mcp_snapshot(package_dir: Path, scratch: ExitStack) -> Path:
+    """Read raw local Claude declarations through the parser without source writes."""
+    from tempfile import TemporaryDirectory
+
+    from apm_cli.config import get_apm_temp_dir
+    from apm_cli.install.phases.local_content import _copy_tree_dereferencing_validated
+    from apm_cli.models.validation import validate_legacy_marketplace_plugin
+
+    package_type, manifest = detect_package_type(package_dir)
+    if (
+        package_type is not PackageType.MARKETPLACE_PLUGIN
+        or manifest != package_dir / ".claude-plugin/plugin.json"
+    ):
+        return package_dir
+    stage = scratch.enter_context(
+        TemporaryDirectory(prefix="apm-local-claude-mcp-", dir=get_apm_temp_dir())
+    )
+    staged = Path(stage) / package_dir.name
+    _copy_tree_dereferencing_validated(package_dir, staged, package_dir)
+    validated = validate_legacy_marketplace_plugin(staged, staged / ".claude-plugin/plugin.json")
+    if not validated.is_valid:
+        raise ValueError("; ".join(validated.errors))
+    return staged
 
 
 def _allows_missing_manifest(
