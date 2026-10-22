@@ -169,6 +169,23 @@ def test_atomic_failure_cannot_publish_new_receipt(
     assert session.state_path.read_bytes() == before
 
 
+def test_identity_creation_preserves_existing_foreign_ignore_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, path, lock = _fixture(tmp_path, monkeypatch)
+    session = _session(root, lock)
+    session.identity_path.parent.mkdir()
+    ignore = session.identity_path.parent / ".gitignore"
+    original = b"# Existing local tooling\n/private-state/\n"
+    ignore.write_bytes(original)
+    session.record({path: compute_file_hash(path)}, [TARGET], "pkg")
+    with pytest.raises(ValueError, match="Refusing to replace existing installation identity"):
+        session.flush()
+    assert ignore.read_bytes() == original
+    assert not session.identity_path.exists()
+    assert not session.state_path.exists()
+
+
 def test_unclaimed_or_other_target_receipt_cannot_authorize(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -300,7 +300,14 @@ class DeploymentMaterializationSession:
             ignore = self.identity_path.parent / ".gitignore"
             if has_symlink_component(self.root, ignore, raise_on_error=True):
                 raise PathTraversalError(f"Refusing symlinked installation identity: {ignore}")
-            atomic_write_text(ignore, "*\n", new_file_mode=0o600)
+            if ignore.exists():
+                if ignore.read_bytes() != b"*\n":
+                    raise ValueError(
+                        f"Refusing to replace existing installation identity ignore rules: {ignore}. "
+                        "Preserve this directory's contents and move it aside before retrying."
+                    )
+            else:
+                atomic_write_text(ignore, "*\n", new_file_mode=0o600)
             self._installation = uuid.uuid4().hex
             atomic_write_text(self.identity_path, self._installation + "\n", new_file_mode=0o600)
         self.state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
