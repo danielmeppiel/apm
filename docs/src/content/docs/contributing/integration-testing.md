@@ -38,11 +38,12 @@ APM uses a tiered approach to integration testing:
 - **Purpose**: Promote a stable, hermetic slice of Consume/Produce/Govern lifecycle contracts onto the PR-time critical path, so regressions in install, lock, deployment ownership, compile, pack, prune, uninstall, audit, and repair fail the PR.
 - **Scope**: the family contains a static authority guard plus content-hash, policy, hook, virtual-package, audit, auth, and installed-console rows. Real subprocess cases use the uv-installed `apm` command and local Git. This is not frozen PyInstaller coverage.
 - **Prerequisites**: the pytest step sets `APM_E2E_TESTS=1` so subprocess rows execute. `APM_RUN_INTEGRATION_TESTS` remains unset, the socket guard denies network sockets, and the job binds no credentials.
-- **Duration**: the complete job has a hard 10-minute timeout, including setup and cleanup. Healthy hosted runs took 8:10 and 8:29 overall; the budget retains 91 seconds of headroom above the slower run. Hosted duration is authoritative.
-- **Trigger**: every pull request and merge queue run (`ci.yml`'s `lifecycle-smoke` job, required via `merge-gate.yml`)
+- **Duration**: two shards each retain a hard 10-minute timeout, including setup and cleanup, with four `loadgroup` workers. Hosted job results are authoritative; a printed pytest summary does not override a job timeout.
+- **Trigger**: every pull request and merge queue run. The required `Lifecycle Smoke (Linux)` aggregate checks both shard results independently and fails if either is missing, skipped, cancelled, or failed.
 - **Selection mechanism**: `pytest --strict-markers -m 'lifecycle_smoke and not lifecycle_merge_group' tests/integration` -- declarative, not a file/node-id list. No central count or membership list is maintained.
+- **Sharding**: `scripts.lifecycle_smoke_sharding` delegates balancing to pytest-split while keeping each composite `xdist_group` intact. Member counts are scheduling weights, not measured durations. The two shards are disjoint and their union is the unchanged required selection.
 - **Full-coverage path**: merge-group workflow `ci-integration.yml`, job `integration-tests-shard`, step `Run integration tests (sharded + parallelized)`, calls `uv run ./scripts/test-integration.sh`; that script runs unfiltered `pytest tests/integration/`, so the complete lifecycle family remains exercised.
-- **Drift guard**: `tests/quality/test_ci_topology.py` independently collects the full, merge-group-only, and required selections; verifies their set partition; and preserves the required expression, full-integration execution path, step-level `APM_E2E_TESTS: "1"` binding, network/credential prohibitions, and required-check membership.
+- **Drift guard**: `tests/quality/test_ci_topology.py` independently collects the full, merge-group-only, required, and two sharded selections. It verifies their set relationships, both shards' timeout and worker bounds, the aggregate's failure behavior, the full-integration execution path, step-level `APM_E2E_TESTS: "1"` binding, network/credential prohibitions, and required-check membership.
 - **Fixture controls**: lifecycle helpers set `APM_TEST_LOOPBACK_PORTS` for a port-scoped local registry and `APM_TEST_FAIL_LOCK_REPLACE=1` for atomic-write fault injection. These are internal test controls, not user-facing APM settings.
 - **Source and ownership fixtures**: downloader stubs must return real `PackageInfo` and `ResolvedReference` values and materialize each package at the requested path, including staging directories. Native MCP cleanup tests must generate managed baselines through the real writer, then prove both authorized removal and unchanged bytes on unverifiable or foreign entries. Keep successful transitive-service, frozen replay, and exact-byte assertions; a mock-error exit is not success.
 - **Learning ledger**: `tests/fixtures/lifecycle_bug_ledger.json` maps representative escaped defects to generalized laws, oracle tiers, phases, and executable regression node IDs, including coverage of already-correct behavior. Use same-workspace transitions to prove survivor ownership and scoped cleanup. It is not a bug-count census; `tests/quality/test_lifecycle_bug_ledger.py` validates its taxonomy and links.
@@ -50,9 +51,10 @@ APM uses a tiered approach to integration testing:
 - **Frozen under-recording**: the required smoke scenario and the generated model's mandatory project replay add a local skill without refreshing the lockfile, require frozen refusal with unchanged lockfile bytes, repair with ordinary install, and verify two byte-stable frozen replays. The scenario uses `ApmLifecycleRunner` in an isolated environment. It does not promise filesystem rollback: the new skill is deployed before refusal.
 - **Frozen local dependencies**: `test_frozen_local_path_lifecycle.py` uses the selected installed CLI to check direct and transitive source changes before deployment, including portable identities for packages inside the consumer project. It covers a fresh consumer with a separate empty cache, unchanged lock and managed bytes on refusal, preserved unrelated cache content, and recovery by restoring the source or explicitly accepting it with a normal install. This is separate from the root project's under-recording scenario above.
 - **Known gap**: a late lockfile replacement failure can leave target files on the newly declared target while retaining the prior lockfile. The required lifecycle suite bounds that blast radius and proves the next install converges; expanding the install transaction is a separate design decision recorded in the ledger.
-- **Run it locally** (the exact command CI runs):
+- **Run it locally** (repeat with shard `2` to cover the full required selection):
   ```bash
-  APM_E2E_TESTS=1 uv run --extra dev pytest -p no:cacheprovider -q --strict-markers \
+  APM_E2E_TESTS=1 uv run --extra dev python -m pytest -p no:cacheprovider -q --strict-markers \
+    -p scripts.lifecycle_smoke_sharding --lifecycle-shard 1 \
     -n 4 --dist loadgroup --durations=20 \
     -m 'lifecycle_smoke and not lifecycle_merge_group' tests/integration
   ```
@@ -153,8 +155,9 @@ Pytest markers compose across independent axes:
 prerequisite. Behavioral markers do not replace prerequisite markers.
 `lifecycle_smoke` is orthogonal to all three: it does not describe a
 test's boundary, scheduling, or precondition, only that
-`ci.yml`'s required `lifecycle-smoke` job selects it via
-`-m lifecycle_smoke` (see Tier 3 above for the full rationale).
+`ci.yml` selects it for lifecycle coverage. The required smoke shards use
+`-m 'lifecycle_smoke and not lifecycle_merge_group'`; the full integration
+path also retains the merge-group-only cases (see Tier 3 above).
 
 The behavioral definitions are:
 
