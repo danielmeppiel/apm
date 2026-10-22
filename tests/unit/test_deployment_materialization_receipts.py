@@ -70,6 +70,63 @@ def test_receipt_outlives_checked_out_hash_without_adopting_disk(
     assert compute_file_hash(path) != old_hash
 
 
+@pytest.mark.parametrize("target_name", ["claude", "hermes"])
+@pytest.mark.parametrize("prior_claims", [False, True])
+def test_external_user_receipt_uses_the_deployed_compatibility_claim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_name: str,
+    prior_claims: bool,
+) -> None:
+    from dataclasses import replace
+
+    from apm_cli.install.deployed_paths import deployed_path_entry
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    scoped_target = KNOWN_TARGETS[target_name].for_scope(user_scope=True)
+    assert scoped_target is not None
+    target = replace(scoped_target, root_dir=(tmp_path / "external-target").as_posix())
+    path = target.skills_deploy_path(home) / "demo/SKILL.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("rendered old\n", encoding="utf-8")
+    content_hash = compute_file_hash(path)
+    value = deployed_path_entry(path, home, [target])
+    assert value == path.as_posix()
+    lock = LockFile()
+    lock.dependencies["pkg"] = LockedDependency(
+        repo_url="pkg", deployed_files=[value], deployed_file_hashes={value: content_hash}
+    )
+    session = DeploymentMaterializationSession(
+        home, InstallScope.USER, lock if prior_claims else None
+    )
+    session.record({path: content_hash}, [target], "pkg")
+    session.flush()
+    if prior_claims:
+        assert (
+            DeploymentMaterializationSession(home, InstallScope.USER, lock).baseline(path, [target])
+            == content_hash
+        )
+    session.bind_committed_claims(lock)
+    assert (
+        DeploymentMaterializationSession(home, InstallScope.USER, lock).baseline(path, [target])
+        == content_hash
+    )
+    moved_target = replace(target, root_dir=(tmp_path / "other-external-target").as_posix())
+    reloaded = DeploymentMaterializationSession(home, InstallScope.USER, lock)
+    assert reloaded.baseline(path, [moved_target]) is None
+    assert (
+        reloaded.baseline(moved_target.skills_deploy_path(home) / "demo/SKILL.md", [moved_target])
+        is None
+    )
+    lock.dependencies["foreign"] = lock.dependencies.pop("pkg")
+    assert (
+        DeploymentMaterializationSession(home, InstallScope.USER, lock).baseline(path, [target])
+        is None
+    )
+
+
 @pytest.mark.parametrize(
     "damage",
     [

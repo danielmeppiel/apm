@@ -19,6 +19,21 @@ RULE = "install-deployment-provenance-state"
     [
         (
             "core/deployment_ledger.py",
+            "value = deployed_path_entry(path, self.root, targets)",
+            "value = DeploymentLedgerCodec.legacy_value(locator)",
+        ),
+        (
+            "core/deployment_ledger.py",
+            "deployed_path_entry(path, self.root, targets),",
+            "DeploymentLedgerCodec.legacy_value(locator),",
+        ),
+        (
+            "core/deployment_ledger.py",
+            "self._written[key] = value",
+            "self._written[key] = DeploymentLedgerCodec.legacy_value(record.locator)",
+        ),
+        (
+            "core/deployment_ledger.py",
             "create_only=not self._state_present",
             "create_only=False",
         ),

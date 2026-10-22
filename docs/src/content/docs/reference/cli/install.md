@@ -236,6 +236,8 @@ still cleans up its managed files, subject to the usual user-edit protections.
   files remain protected, including edits matching an older package version.
   The ignored `.apm-local/` installation identity and
   `~/.apm/deployment-receipts/` are local state, not files to commit or share.
+  The identity lives in the project root, or your home directory for `--global`.
+  Configured external skill roots use the same ownership and receipt checks.
   Missing evidence, including installations predating these receipts, does not
   authorize overwriting existing files. Preserve your edits and move the
   conflicting file aside before reinstalling. Invalid evidence fails explicitly.

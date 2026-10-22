@@ -90,7 +90,7 @@ class DeploymentMaterializationSession:
         self._records: dict[str, DeploymentRecord] = {}
         self._destinations: dict[str, str] = {}
         self._bindings: dict[str, list[str]] = {}
-        self._written: set[str] = set()
+        self._written: dict[str, str] = {}
         self._dirty = False
         self._claims: dict[str, list[DeploymentRecord]] = {}
         if lockfile is not None:
@@ -197,6 +197,8 @@ class DeploymentMaterializationSession:
 
     def baseline(self, path: Path, targets: Sequence[TargetProfile]) -> str | None:
         """Return a prior rendered hash only for a currently authorized physical member."""
+        from apm_cli.install.deployed_paths import deployed_path_entry
+
         locator = self._locator(path, targets)
         if locator is None:
             return None
@@ -218,7 +220,7 @@ class DeploymentMaterializationSession:
             return None
         if key in self._written:
             return record.content_hash
-        value = DeploymentLedgerCodec.legacy_value(locator)
+        value = deployed_path_entry(path, self.root, targets)
         if (
             not self._claims.get(value)
             or record.active_owner not in self._valid_owners
@@ -244,9 +246,11 @@ class DeploymentMaterializationSession:
         owner: str,
     ) -> None:
         """Accumulate successful rendered writes for one atomic end-of-batch flush."""
+        from apm_cli.install.deployed_paths import deployed_path_entry
+
         if not written:
             return
-        prepared: list[tuple[DeploymentRecord, str]] = []
+        prepared: list[tuple[DeploymentRecord, str, str]] = []
         for path, content_hash in written.items():
             locator = self._locator(path, targets)
             if locator is None or not _is_canonical_bundle_hash(content_hash):
@@ -255,9 +259,10 @@ class DeploymentMaterializationSession:
                 (
                     DeploymentRecord(locator, (owner,), owner, content_hash),
                     path.resolve().as_posix(),
+                    deployed_path_entry(path, self.root, targets),
                 )
             )
-        for record, physical in prepared:
+        for record, physical, value in prepared:
             key = record.locator.key
             previous = self._physical_keys.get(physical)
             if previous is not None:
@@ -269,9 +274,9 @@ class DeploymentMaterializationSession:
             self._physical_keys[physical] = key
             self._bindings[key] = [
                 record.active_owner,
-                self._claim_signature(DeploymentLedgerCodec.legacy_value(record.locator)),
+                self._claim_signature(value),
             ]
-            self._written.add(key)
+            self._written[key] = value
         self._dirty = True
 
     def flush(self) -> None:
@@ -290,11 +295,10 @@ class DeploymentMaterializationSession:
         if not self._written:
             return
         committed = type(self)(self.root, self.scope, lockfile)
-        for key in self._written:
+        for key, value in self._written.items():
             record = committed._records.get(key)
             if record is None or record != self._records.get(key):
                 continue
-            value = DeploymentLedgerCodec.legacy_value(record.locator)
             committed._bindings[key] = [record.active_owner, committed._claim_signature(value)]
             committed._dirty = True
         committed.flush()

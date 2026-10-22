@@ -74,7 +74,9 @@ Fix unreadable sources before retrying, not by resetting the lockfile. See
 Loose-skill updates use local receipts of successful final rendered writes, not
 the checked-out lock as proof of the previous local deployment. Keep the ignored
 `.apm-local/` identity and `~/.apm/deployment-receipts/` local; do not commit or
-share them. Branch switches and cold-cache replay can update unchanged files,
+share them. The identity lives in the project root, or your home for `--global`;
+configured external skill roots retain the same ownership and receipt checks.
+Branch switches and cold-cache replay can update unchanged files,
 but edited files and legacy files without receipts stay protected. Preserve
 edits and move conflicting files aside before reinstalling. Audit and dry-run
 do not create receipts; frozen install can record local writes without changing
