@@ -545,8 +545,8 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
         assert_snapshot_changes_within(
             before,
             self._capture(),
-            exact_paths=_INSTALL_EXACT_PATHS,
-            tree_prefixes=_INSTALL_TREE_PREFIXES,
+            exact_paths=self.fixture.exact_paths,
+            tree_prefixes=self.fixture.tree_prefixes,
         )
         self.materialized = False
         self.retained_user_file = retained_bytes is not None
