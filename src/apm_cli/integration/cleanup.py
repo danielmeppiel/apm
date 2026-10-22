@@ -334,6 +334,7 @@ def remove_stale_deployed_files(
     # either empty (safe rmdir) or contains only verified APM-tracked
     # files (safe rmtree).
     _deferred_dirs: list[tuple[str, Path]] = []
+    absent_targets: list[Path] = []
 
     # Lazy-resolve cowork root at most once per invocation (same
     # pattern as sync_remove_files in base_integrator.py -- PR #926 P4).
@@ -403,6 +404,7 @@ def remove_stale_deployed_files(
 
         if not stale_target.exists() and not (allow_final_symlink and stale_target.is_symlink()):
             # File already gone -- treat as cleaned (no-op success).
+            absent_targets.append(stale_target)
             continue
 
         # Gate 2: directory handling. APM-managed primitives are
@@ -548,4 +550,9 @@ def remove_stale_deployed_files(
             package=dep_key,
         )
 
+    from apm_cli.core.deployment_ledger import DeploymentMaterializationSession
+
+    DeploymentMaterializationSession.retire_removed(
+        project_root, [*result.deleted_targets, *absent_targets], user_scope=user_scope
+    )
     return result

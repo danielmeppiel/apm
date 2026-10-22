@@ -71,6 +71,15 @@ keeps recorded ownership. Overwrite warnings name the previous owner when known.
 Fix unreadable sources before retrying, not by resetting the lockfile. See
 [shared-skill behavior](https://microsoft.github.io/apm/reference/cli/install/#behavior).
 
+Loose-skill updates use local receipts of successful final rendered writes, not
+the checked-out lock as proof of the previous local deployment. Keep the ignored
+`.apm-local/` identity and `~/.apm/deployment-receipts/` local; do not commit or
+share them. Branch switches and cold-cache replay can update unchanged files,
+but edited files and legacy files without receipts stay protected. Preserve
+edits and move conflicting files aside before reinstalling. Audit and dry-run
+do not create receipts; frozen install can record local writes without changing
+the manifest or lockfile.
+
 For `apm install -g --mcp`, mixed target selections warn and skip
 workspace-only runtimes. If no selected target supports user scope, the command
 exits `2` before creating or changing the user manifest, lockfile, or runtime
