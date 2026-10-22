@@ -367,7 +367,7 @@ def update_existing_dependency_entry_if_needed(
         )
     )
     if should_update:
-        merge_structured_entry_into_current_deps(
+        return merge_structured_entry_into_current_deps(
             current_deps,
             apm_yml_entries.get(canonical, dep_ref.to_apm_yml_entry()),
             identity,
@@ -375,7 +375,7 @@ def update_existing_dependency_entry_if_needed(
             dependency_reference_cls=dependency_reference_cls,
             logger=logger,
         )
-    return should_update
+    return False
 
 
 def try_update_existing_dependency_entry(
@@ -410,15 +410,14 @@ def try_update_existing_dependency_entry(
 
 def merge_structured_entry_into_current_deps(
     current_deps: builtins.list,
-    structured_entry: dict,
+    structured_entry: str | dict,
     identity: str,
     canonical: str,
     *,
     dependency_reference_cls: Any,
     logger: Any = None,
-) -> None:
-    """Replace or append *structured_entry* in *current_deps* by *identity*."""
-    replaced = False
+) -> bool:
+    """Replace by identity only when effective manifest intent changes."""
     for idx, dep_entry in enumerate(current_deps):
         try:
             if isinstance(dep_entry, builtins.str):
@@ -441,15 +440,36 @@ def merge_structured_entry_into_current_deps(
                     f"version, or an explicit '- git:' entry to intentionally "
                     f"switch resolvers."
                 )
+            requested_ref = (
+                dependency_reference_cls.parse(structured_entry)
+                if isinstance(structured_entry, str)
+                else dependency_reference_cls.parse_from_dict(structured_entry)
+            )
+            requires_explicit_path = (
+                isinstance(structured_entry, dict)
+                and "git" in structured_entry
+                and "path" in structured_entry
+            )
+            has_explicit_path = (
+                isinstance(dep_entry, dict) and "git" in dep_entry and "path" in dep_entry
+            )
+            # Flattened references cannot preserve a probed repository boundary.
+            if (
+                existing_ref.to_apm_yml_entry() == requested_ref.to_apm_yml_entry()
+                and existing_ref.repo_url == requested_ref.repo_url
+                and existing_ref.virtual_path == requested_ref.virtual_path
+                and existing_ref.alias == requested_ref.alias
+                and (not requires_explicit_path or has_explicit_path)
+            ):
+                return False
             current_deps[idx] = structured_entry
-            replaced = True
             if logger:
                 logger.verbose_detail(
                     f"Updated existing dependency entry to structured form: {canonical}"
                 )
-            break
-    if not replaced:
-        current_deps.append(structured_entry)
+            return True
+    current_deps.append(structured_entry)
+    return True
 
 
 def persist_dependency_list_if_changed(

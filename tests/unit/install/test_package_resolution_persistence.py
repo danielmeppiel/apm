@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,6 +12,7 @@ from apm_cli.install.package_resolution import (
     get_existing_dep_ref_for_identity,
     merge_structured_entry_into_current_deps,
     persist_dependency_list_if_changed,
+    update_existing_dependency_entry_if_needed,
 )
 from apm_cli.models.dependency.reference import DependencyReference
 
@@ -106,3 +109,158 @@ def test_merge_structured_entry_allows_git_dep_conversion():
         dependency_reference_cls=DependencyReference,
     )
     assert current_deps == [{"git": "owner/repo", "ref": "main", "skills": ["skill-gamma"]}]
+
+
+@pytest.mark.parametrize(
+    ("existing", "requested"),
+    [
+        ("owner/repo#main", {"git": "owner/repo", "ref": "main"}),
+        (
+            {"git": "owner/repo", "skills": ["beta", "alpha"], "targets": ["copilot"]},
+            {"git": "owner/repo", "targets": ["copilot"], "skills": ["alpha", "beta"]},
+        ),
+        (
+            {"id": "testorg/demo-pkg", "version": "1.0.0", "registry": "internal"},
+            {"registry": "internal", "id": "testorg/demo-pkg", "version": "1.0.0"},
+        ),
+        (
+            {"git": "git.epam.com/group/repo", "path": "plugins/tool"},
+            {"path": "plugins/tool", "git": "git.epam.com/group/repo"},
+        ),
+        pytest.param(
+            {"git": "owner/repo", "alias": "old"},
+            {"alias": "old", "git": "owner/repo"},
+            id="same-alias",
+        ),
+    ],
+)
+def test_serialization_entry_is_not_manifest_mutation_intent(existing, requested) -> None:
+    """Equivalent forms preserve the original entry and report no update."""
+    dep_ref = (
+        DependencyReference.parse(requested)
+        if isinstance(requested, str)
+        else DependencyReference.parse_from_dict(requested)
+    )
+    current_deps = [existing]
+    original = deepcopy(current_deps)
+    logger = Mock()
+
+    changed = update_existing_dependency_entry_if_needed(
+        current_deps,
+        already_in_deps=True,
+        apm_yml_entries={dep_ref.to_canonical(): requested},
+        canonical=dep_ref.to_canonical(),
+        dep_ref=dep_ref,
+        identity=dep_ref.get_identity(),
+        dependency_reference_cls=DependencyReference,
+        logger=logger,
+    )
+
+    assert changed is False
+    assert current_deps == original
+    assert current_deps[0] is existing
+    logger.verbose_detail.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("existing", "requested"),
+    [
+        ("owner/repo", "owner/repo#v2"),
+        (
+            {"git": "owner/repo", "skills": ["alpha"]},
+            {"git": "owner/repo", "skills": ["alpha", "beta"]},
+        ),
+        ({"git": "owner/repo", "skills": ["alpha"]}, "owner/repo"),
+        (
+            {"git": "owner/repo", "targets": ["copilot"], "skills": ["alpha"]},
+            {"git": "owner/repo", "targets": ["codex"], "skills": ["alpha"]},
+        ),
+        (
+            {"id": "testorg/demo-pkg", "version": "1.0.0", "registry": "internal"},
+            {"id": "testorg/demo-pkg", "version": "2.0.0", "registry": "internal"},
+        ),
+        (
+            "git.epam.com/group/repo/plugins/tool",
+            {"git": "git.epam.com/group/repo", "path": "plugins/tool"},
+        ),
+        (
+            {"git": "git.epam.com/group/repo", "path": "plugins/tool"},
+            {"git": "git.epam.com/group/repo/plugins", "path": "tool"},
+        ),
+        pytest.param(
+            {"git": "owner/repo", "alias": "old"},
+            {"git": "owner/repo", "alias": "new"},
+            id="changed-alias",
+        ),
+    ],
+)
+def test_effective_manifest_changes_are_still_applied(existing, requested) -> None:
+    """Reference, skills, explicit reset, targets and registry version remain meaningful."""
+    dep_ref = (
+        DependencyReference.parse(requested)
+        if isinstance(requested, str)
+        else DependencyReference.parse_from_dict(requested)
+    )
+    current_deps = [existing]
+
+    changed = update_existing_dependency_entry_if_needed(
+        current_deps,
+        already_in_deps=True,
+        apm_yml_entries={dep_ref.to_canonical(): requested},
+        canonical=dep_ref.to_canonical(),
+        dep_ref=dep_ref,
+        identity=dep_ref.get_identity(),
+        dependency_reference_cls=DependencyReference,
+    )
+
+    assert changed is True
+    assert current_deps == [requested]
+
+
+def test_unchanged_install_preserves_manifest_bytes_and_skips_writer(tmp_path: Path) -> None:
+    """A repeated positional install is not an update or a YAML rewrite."""
+    from apm_cli.commands.install import _resolve_package_references
+    from apm_cli.utils.yaml_io import load_yaml
+
+    manifest = tmp_path / "apm.yml"
+    original = (
+        b"# Keep this comment and quoting.\nname: test\nversion: '1.0.0'\n"
+        b"dependencies:\n  apm:\n    - 'owner/repo' # existing dependency\n"
+    )
+    manifest.write_bytes(original)
+    data = load_yaml(manifest)
+    logger = Mock(verbose=False)
+    updated = []
+
+    with (
+        patch("apm_cli.commands.install._validate_package_exists", return_value=True),
+        patch("apm_cli.utils.yaml_io.dump_yaml_roundtrip") as write,
+    ):
+        valid, invalid, added, _, entries, changed = _resolve_package_references(
+            ["owner/repo"],
+            data["dependencies"]["apm"],
+            {"owner/repo"},
+            logger=logger,
+            updated_packages_out=updated,
+        )
+        persist_dependency_list_if_changed(
+            dependencies_changed=changed,
+            data=data,
+            dep_section="dependencies",
+            current_deps=data["dependencies"]["apm"],
+            apm_yml_path=manifest,
+            apm_yml_filename="apm.yml",
+            logger=logger,
+            rich_error=Mock(),
+            sys_exit=Mock(),
+        )
+
+    assert valid == [("owner/repo", True)]
+    assert invalid == []
+    assert added == updated == []
+    assert entries == {"owner/repo": "owner/repo"}
+    assert changed is False
+    logger.validation_pass.assert_called_once_with("owner/repo", True, False, False)
+    logger.success.assert_not_called()
+    write.assert_not_called()
+    assert manifest.read_bytes() == original
