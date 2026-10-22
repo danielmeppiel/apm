@@ -10,6 +10,7 @@ import shutil
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -24,6 +25,8 @@ from hypothesis.stateful import (
     run_state_machine_as_test,
 )
 
+from apm_cli.core.deployment_ledger import DeploymentMaterializationSession
+from apm_cli.core.scope import InstallScope
 from apm_cli.deps.lockfile import LockedDependency, LockFile
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
 from tests.integration.test_frozen_no_rewrite_e2e import (
@@ -247,7 +250,19 @@ class _ModelFixture:
     @property
     def exact_paths(self) -> dict[str, frozenset[str]]:
         if not self.global_scope:
-            return _INSTALL_EXACT_PATHS
+            home = self.scenario.isolated.home
+            with patch("apm_cli.core.deployment_ledger.Path.home", return_value=home):
+                receipt = DeploymentMaterializationSession(
+                    self.project.root, InstallScope.PROJECT, None
+                ).state_path
+            return {
+                **_INSTALL_EXACT_PATHS,
+                "user": _USER_WRITE_PATHS
+                | {
+                    receipt.parent.relative_to(home).as_posix(),
+                    receipt.relative_to(home).as_posix(),
+                },
+            }
         return {
             "user": _USER_WRITE_PATHS | _IDENTITY_WRITE_PATHS,
             "target": frozenset({"skills", "rules", "rules/revision.md", "CLAUDE.md"}),
@@ -899,12 +914,17 @@ def test_generated_lifecycle_mandatory_replay(
     _mandatory_replay(model)
 
 
-@pytest.mark.parametrize("variant", _VARIANTS)
-@pytest.mark.parametrize("extra_write", ["identity-sibling", "wrong-root"])
+@pytest.mark.parametrize(
+    ("extra_write", "variant"),
+    [
+        *itertools.product(("identity-sibling", "wrong-root"), _VARIANTS),
+        ("receipt-sibling", "project"),
+    ],
+)
 def test_generated_identity_write_scope_is_exact(
     tmp_path: Path, apm_binary_path: Path, variant: str, extra_write: str
 ) -> None:
-    """Admit the real identity, but reject sibling files and cross-scope writes."""
+    """Admit local evidence, but reject sibling files and cross-scope writes."""
     model = _LifecycleReferenceModel(
         _ModelFixture.create(tmp_path / "identity-scope", apm_binary_path, variant)
     )
@@ -925,6 +945,8 @@ def test_generated_identity_write_scope_is_exact(
     before = model._capture()
     if extra_write == "identity-sibling":
         unexpected = identity.parent / "unrelated.txt"
+    elif extra_write == "receipt-sibling":
+        unexpected = home / ".apm/deployment-receipts/unrelated.json"
     else:
         wrong_root = project if model.fixture.global_scope else home
         unexpected = wrong_root / ".apm-local/installation"

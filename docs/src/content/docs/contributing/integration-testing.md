@@ -233,7 +233,9 @@ parallel materialization and content assertions in cache regression tests.
 Installation snapshots must allow only the three local identity paths
 (`.apm-local`, `.apm-local/.gitignore`, `.apm-local/installation`) at the
 appropriate project or user root, not the whole subtree. Changing ownership
-metadata in a fixture invalidates its bound local receipt; pair conservative
+metadata in a fixture invalidates its bound local receipt. For project installs,
+derive the exact user-state receipt path through `DeploymentMaterializationSession`
+under the fixture home; do not allow arbitrary sibling receipts. Pair conservative
 preservation checks with an unchanged, trusted-receipt recovery control.
 
 When adding a registered architecture-owner guard, add its surgical mutation
