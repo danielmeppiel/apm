@@ -225,6 +225,11 @@ serialized dependency paths with `Path.as_posix()`. For `deployed_file_hashes`,
 use `compute_file_hash`, which canonicalizes text CRLF; package-tree integrity
 continues to hash raw bytes.
 
+Concurrent fixtures must await every worker before inspecting shared results or
+cleaning up resources. Submit both consumers before collecting their futures;
+`Thread.join(timeout=...)` can return while a worker is still running. Keep real
+parallel materialization and content assertions in cache regression tests.
+
 When adding a registered architecture-owner guard, add its surgical mutation
 to `test_architecture_owner_rule_mutations.py` in the same change. The matrix
 requires exactly one mutation for every registered guard.
