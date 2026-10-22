@@ -61,6 +61,7 @@ REQUIRED_SHARD_ROOTS = (
 # The full marker family stays merge-group covered while the required release
 # expression excludes explicitly merge-group-only contracts to remain bounded.
 LIFECYCLE_SMOKE_JOB = "lifecycle-smoke"
+LIFECYCLE_SMOKE_SHARD_JOBS = ("lifecycle-smoke-shard-1", "lifecycle-smoke-shard-2")
 LIFECYCLE_SMOKE_CHECK = "Lifecycle Smoke (Linux)"
 LIFECYCLE_SMOKE_RUN_STEP = "Run required lifecycle smoke subset"
 LIFECYCLE_SMOKE_TIMEOUT_MINUTES = 10
@@ -480,11 +481,18 @@ def _assert_lifecycle_smoke_marker_registered(markers: list[str]) -> None:
 def _assert_lifecycle_smoke_command(job: WorkflowNode) -> None:
     """The run step must select the complete lifecycle marker family."""
     step = workflow_step(job, LIFECYCLE_SMOKE_RUN_STEP)
+    assert "if" not in step, "lifecycle-smoke test execution must be unconditional"
+    assert "continue-on-error" not in step, "lifecycle-smoke test failures must fail the shard"
     pytest_commands = [tokens for tokens in shell_commands(step) if "pytest" in tokens]
     assert len(pytest_commands) == 1, (
         "lifecycle-smoke run step must contain exactly one pytest invocation"
     )
-    tokens = pytest_commands[0]
+    command = pytest_commands[0]
+    pytest_index = command.index("pytest")
+    assert command[:pytest_index] == ["uv", "run", "--extra", "dev", "python", "-m"], (
+        "lifecycle-smoke must use python -m pytest to load its repository plugin"
+    )
+    tokens = command[pytest_index + 1 :]
     assert "--strict-markers" in tokens, (
         "lifecycle-smoke must pass --strict-markers so an unregistered "
         "or typo'd marker name fails loudly instead of silently "
@@ -503,6 +511,18 @@ def _assert_lifecycle_smoke_command(job: WorkflowNode) -> None:
     assert tokens[scheduler_index : scheduler_index + 2] == ["--dist", "loadgroup"], (
         "lifecycle-smoke must use loadgroup to preserve xdist_group serialization"
     )
+    assert "--lifecycle-shard" in tokens, "lifecycle-smoke must select one affinity-aware shard"
+    shard_index = tokens.index("--lifecycle-shard")
+    assert tokens[shard_index + 1] == "$LIFECYCLE_SHARD"
+    assert tokens.count("--lifecycle-shard") == 1
+    assert ["-p", "scripts.lifecycle_smoke_sharding"] in [
+        tokens[index : index + 2] for index in range(len(tokens) - 1)
+    ]
+    assert not any(token.startswith(("--splits", "--group")) for token in tokens)
+    assert not any(
+        token.startswith(("--deselect", "--ignore", "--maxfail")) or token == "-k"
+        for token in tokens
+    ), "lifecycle-smoke must not narrow the required selection"
     assert "-m" in tokens
     marker_index = tokens.index("-m")
     assert tokens[marker_index + 1] == LIFECYCLE_SMOKE_REQUIRED_EXPRESSION
@@ -610,7 +630,7 @@ def _assert_marker_collection_non_empty(marker: str) -> None:
     assert "collected" in result.stdout, f"expected a collection summary, got: {result.stdout}"
 
 
-def _collect_lifecycle_nodes(expression: str) -> tuple[str, ...]:
+def _collect_lifecycle_nodes(expression: str, shard: int | None = None) -> tuple[str, ...]:
     """Collect one lifecycle marker expression under the required environment."""
     result = subprocess.run(
         [
@@ -622,6 +642,11 @@ def _collect_lifecycle_nodes(expression: str) -> tuple[str, ...]:
             "-q",
             "--collect-only",
             "--strict-markers",
+            *(
+                ["-p", "scripts.lifecycle_smoke_sharding", "--lifecycle-shard", str(shard)]
+                if shard is not None
+                else []
+            ),
             "-m",
             expression,
             LIFECYCLE_SMOKE_ROOT,
@@ -631,7 +656,10 @@ def _collect_lifecycle_nodes(expression: str) -> tuple[str, ...]:
         text=True,
         timeout=60,
         check=False,
-        env={**os.environ, LIFECYCLE_SMOKE_E2E_ENV: LIFECYCLE_SMOKE_E2E_VALUE},
+        env={
+            **{key: value for key, value in os.environ.items() if key != "PYTHONPATH"},
+            LIFECYCLE_SMOKE_E2E_ENV: LIFECYCLE_SMOKE_E2E_VALUE,
+        },
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return tuple(line for line in result.stdout.splitlines() if line.startswith("tests/"))
@@ -696,6 +724,172 @@ def _assert_lifecycle_smoke_timeout(job: WorkflowNode) -> None:
     )
 
 
+def _assert_lifecycle_smoke_aggregate(ci: WorkflowNode) -> None:
+    """Require both explicit shard results, including fail-closed absent results."""
+    job = workflow_job(ci, LIFECYCLE_SMOKE_JOB)
+    assert job["name"] == LIFECYCLE_SMOKE_CHECK
+    assert job["needs"] == list(LIFECYCLE_SMOKE_SHARD_JOBS)
+    assert job["if"] == "always()"
+    assert job["permissions"] == {}
+    assert "continue-on-error" not in job
+    step = workflow_step(job, "Require both lifecycle shards")
+    assert len(job["steps"]) == 1
+    assert "if" not in step
+    assert "continue-on-error" not in step
+    assert step["env"] == {
+        f"SHARD_{index}_RESULT": "${{ needs." + job_id + ".result }}"
+        for index, job_id in enumerate(LIFECYCLE_SMOKE_SHARD_JOBS, 1)
+    }
+    for first in ("success", "failure", "cancelled", "skipped", ""):
+        for second in ("success", "failure", "cancelled", "skipped", ""):
+            result = subprocess.run(
+                ["bash", "-e", "-c", step["run"]],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                env={
+                    "PATH": os.environ["PATH"],
+                    "SHARD_1_RESULT": first,
+                    "SHARD_2_RESULT": second,
+                },
+            )
+            assert (result.returncode == 0) == (first == second == "success"), (
+                f"lifecycle aggregate accepted invalid results: {first!r}, {second!r}"
+            )
+
+
+def _assert_lifecycle_shard_partition(
+    required_nodes: Sequence[str],
+    first_nodes: Sequence[str],
+    second_nodes: Sequence[str],
+) -> None:
+    required = _validated_lifecycle_node_set(required_nodes, "required")
+    first = _validated_lifecycle_node_set(first_nodes, "first shard")
+    second = _validated_lifecycle_node_set(second_nodes, "second shard")
+    assert first.isdisjoint(second), "lifecycle shards must not overlap"
+    assert first | second == required, "lifecycle shard union must retain the required selection"
+
+
+def test_lifecycle_shards_collect_exact_required_union() -> None:
+    expression = LIFECYCLE_SMOKE_REQUIRED_EXPRESSION
+    _assert_lifecycle_shard_partition(
+        _collect_lifecycle_nodes(expression),
+        _collect_lifecycle_nodes(expression, 1),
+        _collect_lifecycle_nodes(expression, 2),
+    )
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ([], ["a", "b"]),
+        (["a"], ["a", "b"]),
+        (["a", "a"], ["b"]),
+        (["a"], ["c"]),
+    ],
+)
+def test_lifecycle_shard_partition_drift_fails(first: list[str], second: list[str]) -> None:
+    with pytest.raises(AssertionError):
+        _assert_lifecycle_shard_partition(["a", "b"], first, second)
+
+
+@pytest.mark.parametrize("missing_job", LIFECYCLE_SMOKE_SHARD_JOBS)
+def test_lifecycle_aggregate_missing_dependency_fails(
+    provisional_ci: WorkflowNode, missing_job: str
+) -> None:
+    job = workflow_job(provisional_ci, LIFECYCLE_SMOKE_JOB)
+    job["needs"].remove(missing_job)
+    with pytest.raises(AssertionError):
+        _assert_lifecycle_smoke_aggregate(provisional_ci)
+
+
+def test_lifecycle_aggregate_without_always_fails(provisional_ci: WorkflowNode) -> None:
+    job = workflow_job(provisional_ci, LIFECYCLE_SMOKE_JOB)
+    job["if"] = "success()"
+    with pytest.raises(AssertionError):
+        _assert_lifecycle_smoke_aggregate(provisional_ci)
+
+
+def test_lifecycle_aggregate_ignored_result_fails(provisional_ci: WorkflowNode) -> None:
+    job = workflow_job(provisional_ci, LIFECYCLE_SMOKE_JOB)
+    step = workflow_step(job, "Require both lifecycle shards")
+    step["run"] = step["run"].replace("exit 1", ":")
+    with pytest.raises(AssertionError, match="invalid results"):
+        _assert_lifecycle_smoke_aggregate(provisional_ci)
+
+
+@pytest.mark.parametrize("shard", [1, 2])
+def test_lifecycle_aggregate_cannot_ignore_either_shard(
+    provisional_ci: WorkflowNode, shard: int
+) -> None:
+    job = workflow_job(provisional_ci, LIFECYCLE_SMOKE_JOB)
+    step = workflow_step(job, "Require both lifecycle shards")
+    step["run"] = step["run"].replace(f'[ "$SHARD_{shard}_RESULT" != success ]', "false")
+    with pytest.raises(AssertionError, match="invalid results"):
+        _assert_lifecycle_smoke_aggregate(provisional_ci)
+
+
+def _assert_lifecycle_smoke_shard(ci: WorkflowNode, shard: int) -> None:
+    job = workflow_job(ci, LIFECYCLE_SMOKE_SHARD_JOBS[shard - 1])
+    assert job["name"] == f"Lifecycle Smoke Shard {shard} (Linux)"
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["permissions"] == {"contents": "read"}
+    assert job["env"] == {"LIFECYCLE_SHARD": str(shard)}
+    assert "if" not in job
+    assert "continue-on-error" not in job
+    _assert_lifecycle_smoke_timeout(job)
+    _assert_lifecycle_smoke_command(job)
+    _assert_lifecycle_smoke_e2e_mode(job)
+    _assert_lifecycle_smoke_hermetic(job)
+
+
+@pytest.mark.parametrize("shard", [1, 2])
+@pytest.mark.parametrize("field", ["selector", "conditional", "ignore-failure"])
+def test_lifecycle_shard_binding_drift_fails(
+    provisional_ci: WorkflowNode, shard: int, field: str
+) -> None:
+    job = workflow_job(provisional_ci, LIFECYCLE_SMOKE_SHARD_JOBS[shard - 1])
+    if field == "selector":
+        job["env"]["LIFECYCLE_SHARD"] = str(3 - shard)
+    elif field == "conditional":
+        job["if"] = "false"
+    else:
+        job["continue-on-error"] = True
+    with pytest.raises(AssertionError):
+        _assert_lifecycle_smoke_shard(provisional_ci, shard)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("python -m pytest", "pytest"),
+        ('--lifecycle-shard "$LIFECYCLE_SHARD"', ""),
+        ("-p scripts.lifecycle_smoke_sharding", ""),
+        ('--lifecycle-shard "$LIFECYCLE_SHARD"', "--lifecycle-shard 1"),
+        ("--durations=20", "--durations=20 --splits 2 --group 1"),
+        ("--durations=20", "--durations=20 -k partial"),
+    ],
+)
+def test_lifecycle_shard_command_drift_fails(
+    provisional_lifecycle_job: WorkflowNode, before: str, after: str
+) -> None:
+    step = workflow_step(provisional_lifecycle_job, LIFECYCLE_SMOKE_RUN_STEP)
+    step["run"] = step["run"].replace(before, after)
+    with pytest.raises(AssertionError):
+        _assert_lifecycle_smoke_command(provisional_lifecycle_job)
+
+
+@pytest.mark.parametrize("field", ["if", "continue-on-error"])
+def test_lifecycle_shard_step_cannot_suppress_execution_or_failure(
+    provisional_lifecycle_job: WorkflowNode, field: str
+) -> None:
+    step = workflow_step(provisional_lifecycle_job, LIFECYCLE_SMOKE_RUN_STEP)
+    step[field] = True
+    with pytest.raises(AssertionError):
+        _assert_lifecycle_smoke_command(provisional_lifecycle_job)
+
+
 def test_lifecycle_smoke_is_required_and_hermetic() -> None:
     """Pins the new PR-time gate as a semantic contract, not an exact
     target list: the marker is registered, the command selects
@@ -705,26 +899,23 @@ def test_lifecycle_smoke_is_required_and_hermetic() -> None:
     tests below prove it actually catches drift rather than trivially
     passing."""
     ci = load_workflow(REPO_ROOT / ".github" / "workflows" / "ci.yml")
-    job = workflow_job(ci, LIFECYCLE_SMOKE_JOB)
-    assert job["name"] == LIFECYCLE_SMOKE_CHECK
-    assert job["runs-on"] == "ubuntu-24.04"
-
-    _assert_lifecycle_smoke_timeout(job)
+    for shard in (1, 2):
+        _assert_lifecycle_smoke_shard(ci, shard)
 
     _assert_lifecycle_smoke_marker_registered(_pytest_ini_markers())
-    _assert_lifecycle_smoke_command(job)
-    _assert_lifecycle_smoke_e2e_mode(job)
-    _assert_lifecycle_smoke_hermetic(job)
     _assert_lifecycle_marker_partition()
     _assert_merge_group_full_lifecycle_path()
+    _assert_lifecycle_smoke_aggregate(ci)
 
     merge_gate = load_workflow(REPO_ROOT / ".github" / "workflows" / "merge-gate.yml")
     _assert_lifecycle_smoke_required(merge_gate)
 
 
-@pytest.fixture
-def provisional_lifecycle_job(provisional_ci: WorkflowNode) -> WorkflowNode:
-    return workflow_job(provisional_ci, LIFECYCLE_SMOKE_JOB)
+@pytest.fixture(params=LIFECYCLE_SMOKE_SHARD_JOBS)
+def provisional_lifecycle_job(
+    provisional_ci: WorkflowNode, request: pytest.FixtureRequest
+) -> WorkflowNode:
+    return workflow_job(provisional_ci, request.param)
 
 
 @pytest.mark.parametrize("timeout", [None, 0, 8, 11])
