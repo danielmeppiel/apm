@@ -126,10 +126,13 @@ def _seed(tmp_path: Path, apm_binary_path: Path, *, dependency_kind: str = "loca
                 timeout=30,
                 check=False,
             )
-            assert auth.returncode == 1 and not auth.stdout, (
-                auth.returncode,
-                auth.stdout,
-                auth.stderr,
+            auth_summary = {
+                "returncode": auth.returncode,
+                "stdout_length": len(auth.stdout),
+                "stderr_length": len(auth.stderr),
+            }
+            assert auth_summary["returncode"] == 1 and auth_summary["stdout_length"] == 0, (
+                auth_summary
             )
     consumer = packages.create(
         "consumer-source",
