@@ -502,7 +502,9 @@ jobs:
         run: |
           chmod +x scripts/test-integration.sh
           uv run ./scripts/test-integration.sh
-        timeout-minutes: 60
+        # Linux x64 reached only 78% in 60 minutes in run 39819494530.
+        # Keep the proven ARM bound; allow x64 setup and full-corpus tail headroom.
+        timeout-minutes: ${{ matrix.arch == 'x86_64' && 120 || 60 }}
 
       - name: Run integration tests (Windows)
         if: matrix.platform == 'windows' && (github.event_name != 'schedule' || steps.artifact.outputs.available == 'true')

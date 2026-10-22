@@ -517,11 +517,20 @@ ledger, and failure/retry contracts when changing those behaviors.
 4. Create GitHub Release
 5. Publish to PyPI 
 
-The macOS Apple Silicon full integration step has a 120-minute limit and keeps
-`not live` selection with `-n 4 --dist loadgroup` for HOME-mutating test grouping.
-The previous 60-minute limit stopped progressing workers at 77%; the new budget
-allows setup and tail headroom without excluding tests. Failures and timeouts
-still block release publication. Linux and Intel integration budgets are unchanged.
+The Linux x64 and macOS Apple Silicon full integration steps have 120-minute
+limits and keep `not live` selection with `-n 4 --dist loadgroup` for HOME-mutating
+test grouping. Previous 60-minute limits stopped progressing workers at 78% and
+77%, respectively; the budgets allow setup and tail headroom without excluding
+tests. Linux ARM keeps 60 minutes, Windows 20, and the focused Intel step 30.
+Failures and timeouts still block release publication; a larger budget is not
+evidence that a failed assertion is fixed.
+
+The existing unprivileged `PR Binary Smoke (Linux)` job also runs
+`tests/integration/test_audit_workspace_identity_lifecycle.py` against its built
+binary with a five-minute limit. The fixture isolates HOME, credentials, cache,
+and local Git repositories; captured audit output and full failure tracebacks
+remain visible in the job log. This focused witness does not replace the full
+release qualification or change required checks.
 
 **Daily scheduled release smoke:**
 - Runs the same promotion validation path once per day.

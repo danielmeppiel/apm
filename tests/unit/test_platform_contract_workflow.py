@@ -49,7 +49,10 @@ NON_LIVE_UNIX_INTEGRATION_STEPS = (
     ("build-and-validate-macos-arm", "Run integration tests"),
 )
 NON_LIVE_UNIX_TIMEOUT_MINUTES = {
-    ("integration-tests", "Run integration tests (Unix)"): 60,
+    (
+        "integration-tests",
+        "Run integration tests (Unix)",
+    ): "${{ matrix.arch == 'x86_64' && 120 || 60 }}",
     ("build-and-validate-macos-arm", "Run integration tests"): 120,
 }
 NON_LIVE_UNIX_PYTEST_ARGS = "-n 4 --dist loadgroup"
@@ -133,7 +136,10 @@ def _assert_standalone_integration_timeouts(workflow: dict) -> None:
     job = workflow_job(workflow, "integration-tests")
     unix_step = workflow_step(job, "Run integration tests (Unix)")
     windows_step = workflow_step(job, "Run integration tests (Windows)")
-    assert unix_step.get("timeout-minutes") == 60
+    assert (
+        unix_step.get("timeout-minutes")
+        == NON_LIVE_UNIX_TIMEOUT_MINUTES[("integration-tests", "Run integration tests (Unix)")]
+    )
     assert windows_step.get("timeout-minutes") == 20
 
 
@@ -239,14 +245,16 @@ def test_non_live_unix_parallelism_mutation_is_rejected(
         _assert_non_live_unix_integration_parallelism(workflow)
 
 
+@pytest.mark.parametrize(("job_id", "step_name"), NON_LIVE_UNIX_INTEGRATION_STEPS)
 @pytest.mark.parametrize("timeout_minutes", (None, 60))
-def test_arm_missing_or_old_timeout_mutation_is_rejected(timeout_minutes: int | None) -> None:
-    """ARM must not lose its explicit budget or regress to the exhausted limit."""
+def test_missing_or_old_timeout_mutation_is_rejected(
+    job_id: str,
+    step_name: str,
+    timeout_minutes: int | None,
+) -> None:
+    """Full-corpus nodes cannot lose their budgets or regress to exhausted limits."""
     workflow = deepcopy(_workflow())
-    step = workflow_step(
-        workflow_job(workflow, "build-and-validate-macos-arm"),
-        "Run integration tests",
-    )
+    step = workflow_step(workflow_job(workflow, job_id), step_name)
     del step["timeout-minutes"]
     if timeout_minutes is not None:
         step["timeout-minutes"] = timeout_minutes
@@ -266,7 +274,7 @@ def test_non_live_unix_timeout_mutation_is_rejected(
     """Every non-live Unix release node retains its measured timeout bound."""
     workflow = deepcopy(_workflow())
     step = workflow_step(workflow_job(workflow, job_id), step_name)
-    step["timeout-minutes"] = NON_LIVE_UNIX_TIMEOUT_MINUTES[(job_id, step_name)] + 1
+    step["timeout-minutes"] = 121
 
     with pytest.raises(AssertionError):
         _assert_non_live_unix_integration_parallelism(workflow)
@@ -396,3 +404,59 @@ def test_macos_echo_replacement_mutation_is_rejected(job_id: str) -> None:
 
     with pytest.raises(AssertionError):
         _assert_macos_startup_steps(workflow)
+
+
+def _assert_linux_audit_witness(workflow: dict) -> None:
+    """The existing public binary job must execute the complete isolated family."""
+    job = workflow_job(workflow, "pr-binary-smoke")
+    step_name = "Test packaged audit workspace identity"
+    step = workflow_step(job, step_name)
+    assert job["runs-on"] == "ubuntu-24.04"
+    assert job["permissions"] == {"contents": "read"}
+    assert_unconditional(step, label=step_name)
+    assert not step.get("continue-on-error", False)
+    assert step["timeout-minutes"] == 5
+    assert effective_env(workflow, job, step) == {
+        "PYTHON_VERSION": "3.12",
+        "APM_BINARY_PATH": "${{ github.workspace }}/dist/apm-linux-x86_64/apm",
+    }
+    assert workflow_step_index(job, "Build binary") < workflow_step_index(job, step_name)
+    assert_exact_command(
+        shell_commands(step),
+        [
+            "uv",
+            "run",
+            "--frozen",
+            "--extra",
+            "dev",
+            "pytest",
+            "tests/integration/test_audit_workspace_identity_lifecycle.py",
+            "-vv",
+            "-ra",
+            "--tb=long",
+            "--show-capture=all",
+            "--no-showlocals",
+        ],
+        label=step_name,
+    )
+
+
+def test_linux_binary_job_runs_isolated_audit_witness() -> None:
+    """Packaged audit evidence needs no secret-bearing release run."""
+    _assert_linux_audit_witness(load_workflow(ROOT / ".github" / "workflows" / "ci.yml"))
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    (("if", False), ("continue-on-error", True), ("timeout-minutes", 60), ("run", "echo passed")),
+)
+def test_linux_audit_witness_bypass_mutation_is_rejected(key: str, value: object) -> None:
+    """Disabled, unbounded or fabricated audit evidence must fail the contract."""
+    workflow = load_workflow(ROOT / ".github" / "workflows" / "ci.yml")
+    step = workflow_step(
+        workflow_job(workflow, "pr-binary-smoke"),
+        "Test packaged audit workspace identity",
+    )
+    step[key] = value
+    with pytest.raises(AssertionError):
+        _assert_linux_audit_witness(workflow)
