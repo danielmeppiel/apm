@@ -45,7 +45,7 @@ APM implements the proposed staged-replacement recovery capability (req-lk-023).
 
 | Req ID | Keyword | Sec | Class | Status | Tests | Oracle |
 |--------|---------|----:|-------|--------|------:|--------|
-| [req-cf-001](docs/src/content/docs/specs/openapm-v0.1.md#req-cf-001) | MUST | 12.5 | consumer | active | 6 | - |
+| [req-cf-001](docs/src/content/docs/specs/openapm-v0.1.md#req-cf-001) | MUST | 12.5 | consumer | active | 10 | - |
 | [req-cf-002](docs/src/content/docs/specs/openapm-v0.1.md#req-cf-002) | MUST | 12.3 | consumer | active | 1 | - |
 | [req-ext-001](docs/src/content/docs/specs/openapm-v0.1.md#req-ext-001) | MUST | 4.1 | consumer | active | 1 | - |
 | [req-ext-002](docs/src/content/docs/specs/openapm-v0.1.md#req-ext-002) | MUST | 4.1 | producer | active | 1 | - |
