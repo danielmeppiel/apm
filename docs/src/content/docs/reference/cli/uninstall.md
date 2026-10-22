@@ -121,6 +121,28 @@ What gets removed, in order:
    entries.
 7. Lockfile entries. If no dependencies remain, `apm.lock.yaml` is deleted.
 
+### Shared transitive dependencies
+
+If `security-kit` and `release-kit` both need `company-standards`, removing
+either parent keeps the shared lock entry, installed package and required
+deployed content. APM updates a removed parent's anchor to a verified surviving
+parent, including the relative source path for local dependencies. Removing
+the final parent can then clean up the shared dependency normally.
+
+Missing, malformed, unreadable, unsafe or ambiguous evidence is not proof that
+a dependency is unused. APM preserves uncertain candidates and reports the
+verification failure; restore the affected manifests or permissions, or correct
+the path/anchor evidence before retrying. A permission refusal can stop the
+command rather than complete cleanup. `--dry-run` makes the same orphan decision
+without repairing anchors or writing package state; the lifecycle-script caveat
+below still applies.
+
+The [proposed OpenAPM obligation](../../../specs/openapm-v01/#req-lk-024)
+formalizes these outcomes. Its review, version decision and publication are
+pending; it is not an adopted specification amendment or a new release claim.
+
+### Cleanup failures and ownership
+
 `Cleaned N stale deployed files for DEPENDENCY` identifies the affected
 dependency, not the deletion location. An absolute local path in that message
 names the source package; cleanup removes its deployed files, not source files.
