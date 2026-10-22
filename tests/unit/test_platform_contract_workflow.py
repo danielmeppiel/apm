@@ -50,7 +50,7 @@ NON_LIVE_UNIX_INTEGRATION_STEPS = (
 )
 NON_LIVE_UNIX_TIMEOUT_MINUTES = {
     ("integration-tests", "Run integration tests (Unix)"): 60,
-    ("build-and-validate-macos-arm", "Run integration tests"): 60,
+    ("build-and-validate-macos-arm", "Run integration tests"): 120,
 }
 NON_LIVE_UNIX_PYTEST_ARGS = "-n 4 --dist loadgroup"
 NON_LIVE_MARK_EXPRESSION = "not live"
@@ -222,14 +222,34 @@ def test_release_validation_keeps_live_inference_decoupled() -> None:
     ("job_id", "step_name"),
     NON_LIVE_UNIX_INTEGRATION_STEPS,
 )
-def test_non_live_unix_serial_integration_mutation_is_rejected(
+@pytest.mark.parametrize("pytest_args", (None, "-n 4 --dist load", "-n 8 --dist loadgroup"))
+def test_non_live_unix_parallelism_mutation_is_rejected(
     job_id: str,
     step_name: str,
+    pytest_args: str | None,
 ) -> None:
-    """No non-live release node can silently regress to the serial path."""
+    """Non-live release nodes retain four workers and HOME group scheduling."""
     workflow = deepcopy(_workflow())
     step = workflow_step(workflow_job(workflow, job_id), step_name)
     del step["env"]["PYTEST_EXTRA_ARGS"]
+    if pytest_args is not None:
+        step["env"]["PYTEST_EXTRA_ARGS"] = pytest_args
+
+    with pytest.raises(AssertionError):
+        _assert_non_live_unix_integration_parallelism(workflow)
+
+
+@pytest.mark.parametrize("timeout_minutes", (None, 60))
+def test_arm_missing_or_old_timeout_mutation_is_rejected(timeout_minutes: int | None) -> None:
+    """ARM must not lose its explicit budget or regress to the exhausted limit."""
+    workflow = deepcopy(_workflow())
+    step = workflow_step(
+        workflow_job(workflow, "build-and-validate-macos-arm"),
+        "Run integration tests",
+    )
+    del step["timeout-minutes"]
+    if timeout_minutes is not None:
+        step["timeout-minutes"] = timeout_minutes
 
     with pytest.raises(AssertionError):
         _assert_non_live_unix_integration_parallelism(workflow)

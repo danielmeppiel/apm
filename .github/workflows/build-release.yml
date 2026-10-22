@@ -376,7 +376,9 @@ jobs:
         run: |
           chmod +x scripts/test-integration.sh
           uv run ./scripts/test-integration.sh
-        timeout-minutes: 60
+        # Run 39784442659 reached 77% at 60 minutes with all workers progressing.
+        # Allow setup/tail headroom beyond the roughly 78-minute linear estimate.
+        timeout-minutes: 120
 
       # PHASE 3: RELEASE VALIDATION
       - name: Prepare isolated release-validation environment

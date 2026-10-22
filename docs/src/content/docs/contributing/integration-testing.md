@@ -517,6 +517,12 @@ ledger, and failure/retry contracts when changing those behaviors.
 4. Create GitHub Release
 5. Publish to PyPI 
 
+The macOS Apple Silicon full integration step has a 120-minute limit and keeps
+`not live` selection with `-n 4 --dist loadgroup` for HOME-mutating test grouping.
+The previous 60-minute limit stopped progressing workers at 77%; the new budget
+allows setup and tail headroom without excluding tests. Failures and timeouts
+still block release publication. Linux and Intel integration budgets are unchanged.
+
 **Daily scheduled release smoke:**
 - Runs the same promotion validation path once per day.
 - If a build matrix leg fails, downstream Linux/Windows integration and release-validation jobs still run for any platform artifact that was produced.
