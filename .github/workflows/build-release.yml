@@ -253,7 +253,10 @@ jobs:
         run: |
           chmod +x scripts/test-integration.sh
           uv run ./scripts/test-integration.sh
-        timeout-minutes: 30
+        # Run 39834866538 timed out at 30m with workers still passing at 91%.
+        # 30 / 0.91 projects roughly 33m; 60m adds setup/tail headroom,
+        # not a completion guarantee. Keep selection and failure gates intact.
+        timeout-minutes: 60
 
       # PHASE 3: RELEASE VALIDATION (tag/schedule/dispatch only)
       - name: Prepare isolated release-validation environment

@@ -521,9 +521,13 @@ The Linux x64 and macOS Apple Silicon full integration steps have 120-minute
 limits and keep `not live` selection with `-n 4 --dist loadgroup` for HOME-mutating
 test grouping. Previous 60-minute limits stopped progressing workers at 78% and
 77%, respectively; the budgets allow setup and tail headroom without excluding
-tests. Linux ARM keeps 60 minutes, Windows 20, and the focused Intel step 30.
-Failures and timeouts still block release publication; a larger budget is not
-evidence that a failed assertion is fixed.
+tests. Linux ARM keeps 60 minutes and Windows 20. The focused Intel step has
+60 minutes: its prior 30-minute limit stopped passing workers at 91%.
+The rough `30 / 0.91` projection is 33 minutes; 60 adds setup/tail headroom,
+not a completion guarantee.
+Its `lifecycle_smoke and not live` selection and four `loadgroup` workers are
+unchanged. Failures and timeouts still block release publication; a larger
+budget is not evidence that a failed assertion is fixed.
 
 The existing unprivileged `PR Binary Smoke (Linux)` job also runs
 `tests/integration/test_audit_workspace_identity_lifecycle.py` against its built

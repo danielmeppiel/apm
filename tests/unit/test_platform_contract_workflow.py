@@ -160,7 +160,7 @@ def _assert_intel_focused_integration(workflow: dict) -> None:
     )
     assert step["env"].get("PYTEST_MARK_EXPR") == INTEL_FOCUSED_MARK_EXPRESSION
     assert step["env"].get("PYTEST_EXTRA_ARGS") == NON_LIVE_UNIX_PYTEST_ARGS
-    assert step.get("timeout-minutes") == 30
+    assert step.get("timeout-minutes") == 60
     assert_exact_command(
         shell_commands(step),
         ["uv", "run", "./scripts/test-integration.sh"],
@@ -288,6 +288,24 @@ def test_intel_non_live_corpus_mutation_is_rejected() -> None:
         INTEL_FOCUSED_INTEGRATION_STEP,
     )
     step["env"]["PYTEST_MARK_EXPR"] = NON_LIVE_MARK_EXPRESSION
+
+    with pytest.raises(AssertionError):
+        _assert_intel_focused_integration(workflow)
+
+
+@pytest.mark.parametrize("timeout_minutes", (None, 30, 61))
+def test_intel_missing_old_or_oversized_timeout_mutation_is_rejected(
+    timeout_minutes: int | None,
+) -> None:
+    """Intel cannot lose its bound or regress to the exhausted 30-minute limit."""
+    workflow = deepcopy(_workflow())
+    step = workflow_step(
+        workflow_job(workflow, "build-and-validate-macos-intel"),
+        INTEL_FOCUSED_INTEGRATION_STEP,
+    )
+    del step["timeout-minutes"]
+    if timeout_minutes is not None:
+        step["timeout-minutes"] = timeout_minutes
 
     with pytest.raises(AssertionError):
         _assert_intel_focused_integration(workflow)
