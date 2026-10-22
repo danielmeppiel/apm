@@ -11,7 +11,7 @@ from apm_cli.core.deployment_ledger import DeploymentLedgerCodec, DeploymentMate
 from apm_cli.core.deployment_state import DeploymentLedger, DeploymentRecord
 from apm_cli.core.scope import InstallScope
 from apm_cli.deps.lockfile import LockedDependency, LockFile
-from apm_cli.integration.targets import KNOWN_TARGETS
+from apm_cli.integration.targets import KNOWN_TARGETS, TargetProfile
 from apm_cli.utils.content_hash import compute_file_hash
 
 pytestmark = pytest.mark.component
@@ -19,16 +19,18 @@ pytestmark = pytest.mark.component
 TARGET = KNOWN_TARGETS["claude"]
 
 
-def _fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, LockFile]:
+def _fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, target: TargetProfile = TARGET
+) -> tuple[Path, Path, LockFile]:
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     root = tmp_path / "consumer"
-    path = root / ".claude/skills/demo/SKILL.md"
+    path = target.skills_deploy_path(root) / "demo/SKILL.md"
     path.parent.mkdir(parents=True)
     path.write_text("rendered old\n", encoding="utf-8")
     locator = DeploymentLedgerCodec.locator_for_path(
-        path, project_root=root, target=TARGET, scope=InstallScope.PROJECT
+        path, project_root=root, target=target, scope=InstallScope.PROJECT
     )
     record = DeploymentRecord(locator, ("pkg",), "pkg", compute_file_hash(path))
     lock = LockFile()
@@ -70,7 +72,7 @@ def test_receipt_outlives_checked_out_hash_without_adopting_disk(
     assert compute_file_hash(path) != old_hash
 
 
-@pytest.mark.parametrize("target_name", ["claude", "hermes"])
+@pytest.mark.parametrize("target_name", ["claude", "hermes", "copilot-cowork"])
 @pytest.mark.parametrize("prior_claims", [False, True])
 def test_external_user_receipt_uses_the_deployed_compatibility_claim(
     tmp_path: Path,
@@ -79,21 +81,34 @@ def test_external_user_receipt_uses_the_deployed_compatibility_claim(
     prior_claims: bool,
 ) -> None:
     from dataclasses import replace
+    from urllib.parse import urlparse
 
     from apm_cli.install.deployed_paths import deployed_path_entry
 
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
-    scoped_target = KNOWN_TARGETS[target_name].for_scope(user_scope=True)
-    assert scoped_target is not None
-    target = replace(scoped_target, root_dir=(tmp_path / "external-target").as_posix())
+    external_root = tmp_path / "external-target"
+    if target_name == "copilot-cowork":
+        target = replace(KNOWN_TARGETS[target_name], resolved_deploy_root=external_root)
+    else:
+        scoped_target = KNOWN_TARGETS[target_name].for_scope(user_scope=True)
+        assert scoped_target is not None
+        target = replace(scoped_target, root_dir=external_root.as_posix())
     path = target.skills_deploy_path(home) / "demo/SKILL.md"
     path.parent.mkdir(parents=True)
     path.write_text("rendered old\n", encoding="utf-8")
     content_hash = compute_file_hash(path)
     value = deployed_path_entry(path, home, [target])
-    assert value == path.as_posix()
+    if target_name == "copilot-cowork":
+        parsed = urlparse(value)
+        assert (parsed.scheme, parsed.netloc, parsed.path) == (
+            "cowork",
+            "skills",
+            "/demo/SKILL.md",
+        )
+    else:
+        assert value == path.as_posix()
     lock = LockFile()
     lock.dependencies["pkg"] = LockedDependency(
         repo_url="pkg", deployed_files=[value], deployed_file_hashes={value: content_hash}
@@ -113,7 +128,12 @@ def test_external_user_receipt_uses_the_deployed_compatibility_claim(
         DeploymentMaterializationSession(home, InstallScope.USER, lock).baseline(path, [target])
         == content_hash
     )
-    moved_target = replace(target, root_dir=(tmp_path / "other-external-target").as_posix())
+    moved_root = tmp_path / "other-external-target"
+    moved_target = (
+        replace(target, resolved_deploy_root=moved_root)
+        if target.resolved_deploy_root is not None
+        else replace(target, root_dir=moved_root.as_posix())
+    )
     reloaded = DeploymentMaterializationSession(home, InstallScope.USER, lock)
     assert reloaded.baseline(path, [moved_target]) is None
     assert (
@@ -125,6 +145,38 @@ def test_external_user_receipt_uses_the_deployed_compatibility_claim(
         DeploymentMaterializationSession(home, InstallScope.USER, lock).baseline(path, [target])
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "condition", ["valid", "foreign-writer", "unbound", "mismatched-root", "changed-claims"]
+)
+def test_target_handoff_requires_authenticated_same_writer_without_promoting_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, condition: str
+) -> None:
+    from dataclasses import replace
+
+    previous = KNOWN_TARGETS["copilot"]
+    selected = KNOWN_TARGETS["codex"]
+    root, path, lock = _fixture(tmp_path, monkeypatch, target=previous)
+    session = _session(root, LockFile() if condition == "unbound" else lock)
+    owner = "foreign" if condition == "foreign-writer" else "pkg"
+    session.record({path: compute_file_hash(path)}, [previous], owner)
+    session.flush()
+    before = session.state_path.read_bytes()
+    if condition == "mismatched-root":
+        selected = replace(selected, resolved_deploy_root=tmp_path / "other-root")
+    elif condition == "changed-claims":
+        row = next(iter(lock.deployment_ledger.records.values()))
+        changed = DeploymentRecord(row.locator, ("foreign",), "foreign", row.content_hash)
+        lock.dependencies["foreign"] = LockedDependency(repo_url="foreign")
+        DeploymentLedgerCodec.apply_to_lockfile(
+            DeploymentLedger({row.locator.key: changed}), lock, write_legacy_views=False
+        )
+    reloaded = _session(root, lock)
+    assert reloaded.requires_target_write(path, [previous], "pkg") is False
+    assert reloaded.requires_target_write(path, [selected], "pkg") is (condition == "valid")
+    reloaded.bind_committed_claims(lock)
+    assert reloaded.state_path.read_bytes() == before
 
 
 @pytest.mark.parametrize(
@@ -290,6 +342,141 @@ def test_cleanup_retires_only_successfully_removed_members(
     path.write_text("rendered old\n", encoding="utf-8")
     session.bind_committed_claims(lock)
     assert _session(root, lock).baseline(path, [TARGET]) is None
+
+
+@pytest.mark.parametrize("managed", [True, False], ids=["recorded", "legacy"])
+def test_sync_reports_only_successful_removals_for_receipt_retirement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, managed: bool
+) -> None:
+    import shutil
+    from types import SimpleNamespace
+
+    from apm_cli.integration.skill_integrator import SkillIntegrator
+
+    root, path, lock = _fixture(tmp_path, monkeypatch)
+    blocked = path.parent.parent / "blocked/SKILL.md"
+    blocked.parent.mkdir()
+    blocked.write_bytes(path.read_bytes())
+    locator = DeploymentLedgerCodec.locator_for_path(
+        blocked, project_root=root, target=TARGET, scope=InstallScope.PROJECT
+    )
+    records = dict(lock.deployment_ledger.records)
+    records[locator.key] = DeploymentRecord(locator, ("pkg",), "pkg", compute_file_hash(blocked))
+    DeploymentLedgerCodec.apply_to_lockfile(
+        DeploymentLedger(records), lock, write_legacy_views=False
+    )
+    session = _session(root, lock)
+    session.record(
+        {member: compute_file_hash(member) for member in (path, blocked)}, [TARGET], "pkg"
+    )
+    session.flush()
+    rmtree = shutil.rmtree
+
+    def remove(directory: Path, *args, **kwargs) -> None:
+        if directory == blocked.parent:
+            raise PermissionError("injected failed skill removal")
+        rmtree(directory, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", remove)
+    removed: list[Path] = []
+    result = SkillIntegrator().sync_integration(
+        SimpleNamespace(get_apm_dependencies=lambda: []),
+        root,
+        managed_files=(
+            {member.parent.relative_to(root).as_posix() for member in (path, blocked)}
+            if managed
+            else None
+        ),
+        targets=[TARGET],
+        removed_paths=removed,
+    )
+    assert result == {"files_removed": 1, "errors": 1}
+    assert removed == [path.parent]
+    DeploymentMaterializationSession.retire_removed(root, removed, user_scope=False)
+    path.parent.mkdir()
+    path.write_bytes(blocked.read_bytes())
+    reloaded = _session(root, lock)
+    assert reloaded.baseline(path, [TARGET]) is None
+    assert reloaded.baseline(blocked, [TARGET]) == compute_file_hash(blocked)
+
+
+def test_uninstall_retires_before_recreating_and_binding_survivor_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import MagicMock
+
+    from apm_cli.commands.uninstall.cli import _persist_uninstall_lockfile
+    from apm_cli.commands.uninstall.engine import _sync_integrations_after_uninstall
+    from apm_cli.commands.uninstall.lockfile_state import reconcile_uninstall_deployment_state
+    from apm_cli.models.apm_package import APMPackage, DependencyReference, PackageInfo
+
+    root, path, lock = _fixture(tmp_path, monkeypatch)
+    owner = "acme/keeper"
+    row = next(iter(lock.deployment_ledger.records.values()))
+    lock.dependencies = {owner: LockedDependency(repo_url=owner)}
+    DeploymentLedgerCodec.apply_to_lockfile(
+        DeploymentLedger(
+            {row.locator.key: DeploymentRecord(row.locator, (owner,), owner, row.content_hash)}
+        ),
+        lock,
+    )
+    session = _session(root, lock)
+    session.record({path: compute_file_hash(path)}, [TARGET], owner)
+    session.flush()
+    package = root / "apm_modules/acme/keeper"
+    source = package / ".apm/skills/demo/SKILL.md"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "---\nname: demo\ndescription: survivor\n---\nNew survivor bytes.\n", encoding="utf-8"
+    )
+    (package / "apm.yml").write_text("name: keeper\nversion: 1.0.0\n", encoding="utf-8")
+    (root / "apm.yml").write_text(
+        f"name: consumer\nversion: 1.0.0\ntargets: [claude]\ndependencies:\n  apm: [{owner}]\n",
+        encoding="utf-8",
+    )
+    dep = DependencyReference.parse(owner)
+    info = PackageInfo(APMPackage.from_apm_yml(package / "apm.yml"), package, dependency_ref=dep)
+    entry = path.relative_to(root).as_posix()
+    retire = DeploymentMaterializationSession.retire_removed
+    observed = []
+
+    def retire_before_copy(
+        project_root: Path, paths: list[Path], *, user_scope: bool = False
+    ) -> None:
+        if paths:
+            assert paths == [path]
+            assert not path.exists()
+        retire(project_root, paths, user_scope=user_scope)
+        if paths:
+            assert (
+                path.as_posix()
+                not in json.loads(session.state_path.read_text())["destinations"].values()
+            )
+            observed.append("retired")
+
+    monkeypatch.setattr(DeploymentMaterializationSession, "retire_removed", retire_before_copy)
+    outcome = _sync_integrations_after_uninstall(
+        APMPackage.from_apm_yml(root / "apm.yml"),
+        root,
+        {entry},
+        MagicMock(),
+        lockfile=lock,
+        modules_dir=root / "apm_modules",
+        survivor_plan=[(dep, info)],
+    )
+    assert observed == ["retired"]
+    assert outcome.counts["skills"] == 1
+    assert path.read_bytes() == source.read_bytes()
+    reconcile_uninstall_deployment_state(
+        lock,
+        deploy_root=root,
+        all_deployed_files={entry},
+        surviving_deployed_files=outcome.deployed_files,
+    )
+    lock_path = root / "apm.lock.yaml"
+    _persist_uninstall_lockfile(lock, lock_path, MagicMock(), outcome)
+    final = _session(root, LockFile.read(lock_path))
+    assert final.baseline(path, [TARGET]) == compute_file_hash(source)
 
 
 @pytest.mark.windows_compat

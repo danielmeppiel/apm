@@ -76,6 +76,10 @@ the checked-out lock as proof of the previous local deployment. Keep the ignored
 `.apm-local/` identity and `~/.apm/deployment-receipts/` local; do not commit or
 share them. The identity lives in the project root, or your home for `--global`;
 configured external skill roots retain the same ownership and receipt checks.
+Switching targets that share a skill path refreshes valid same-writer evidence
+through a guarded copy, not by adopting existing files.
+Uninstall records actual surviving-skill rebuilds and binds those receipts only
+after final lock persistence, so the surviving package can update normally.
 Branch switches and cold-cache replay can update unchanged files,
 but edited files and legacy files without receipts stay protected. Preserve
 edits and move conflicting files aside before reinstalling. Audit and dry-run

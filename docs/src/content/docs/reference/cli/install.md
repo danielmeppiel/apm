@@ -238,6 +238,8 @@ still cleans up its managed files, subject to the usual user-edit protections.
   `~/.apm/deployment-receipts/` are local state, not files to commit or share.
   The identity lives in the project root, or your home directory for `--global`.
   Configured external skill roots use the same ownership and receipt checks.
+  Switching targets that share a skill path refreshes valid same-writer evidence
+  through a guarded copy, even when the source bytes are unchanged.
   Missing evidence, including installations predating these receipts, does not
   authorize overwriting existing files. Preserve your edits and move the
   conflicting file aside before reinstalling. Invalid evidence fails explicitly.

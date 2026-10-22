@@ -504,6 +504,11 @@ class SkillIntegrator(BaseIntegrator):
                 (lambda path: session.baseline(path, targets)) if session is not None else None
             ),
             on_member_written=written.append,
+            requires_write=(
+                (lambda path: session.requires_target_write(path, targets, owner))
+                if session is not None
+                else None
+            ),
             on_member_skipped=self._skill_member_skipped,
             unchanged=unchanged,
             write_allowed=lambda path: (
@@ -1908,6 +1913,7 @@ class SkillIntegrator(BaseIntegrator):
         project_root: Path,
         managed_files: set = None,  # noqa: RUF013
         targets=None,
+        removed_paths: list[Path] | None = None,
     ) -> dict[str, int]:
         """Sync recorded skill paths, or use legacy package-name orphan detection.
 
@@ -1987,6 +1993,8 @@ class SkillIntegrator(BaseIntegrator):
                     else:
                         target.unlink()
                     stats["files_removed"] += 1
+                    if removed_paths is not None:
+                        removed_paths.append(target)
                 except Exception:
                     stats["errors"] += 1
 
@@ -2007,8 +2015,6 @@ class SkillIntegrator(BaseIntegrator):
 
             return stats
 
-        # Legacy fallback: npm-style orphan detection
-        # Build set of expected skill directory names from installed packages
         installed_skill_names = set()
         for dep in apm_package.get_apm_dependencies():
             raw_name = dep.repo_url.split("/")[-1]
@@ -2058,7 +2064,10 @@ class SkillIntegrator(BaseIntegrator):
 
             if skills_dir.exists():
                 result = self._clean_orphaned_skills(
-                    skills_dir, installed_skill_names, project_root=project_root
+                    skills_dir,
+                    installed_skill_names,
+                    project_root=project_root,
+                    removed_paths=removed_paths,
                 )
                 stats["files_removed"] += result["files_removed"]
                 stats["errors"] += result["errors"]
@@ -2071,6 +2080,7 @@ class SkillIntegrator(BaseIntegrator):
         installed_skill_names: set,
         *,
         project_root: Path | None = None,
+        removed_paths: list[Path] | None = None,
     ) -> dict[str, int]:
         """Clean legacy-orphan skill directories without touching foreign agents."""
         return clean_orphaned_skills(
@@ -2078,6 +2088,7 @@ class SkillIntegrator(BaseIntegrator):
             installed_skill_names,
             project_root=project_root,
             get_lockfile_owned_agent_skills=self._get_lockfile_owned_agent_skills,
+            removed_paths=removed_paths,
         )
 
     @staticmethod

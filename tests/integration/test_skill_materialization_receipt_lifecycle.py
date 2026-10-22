@@ -155,3 +155,54 @@ def test_receipts_capture_rendered_links_and_preserve_repeat_bytes(
     scenario.install(target=None)
     assert lock.read_bytes() == before
     assert receipts[0].read_bytes() == proof
+
+
+@pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
+def test_unchanged_shared_target_handoff_retains_update_authority(
+    tmp_path: Path, apm_binary_path: Path, user_scope: bool
+) -> None:
+    from tests.integration.test_shared_skill_preservation_lifecycle import _scenario, _skill
+
+    scenario = _scenario(tmp_path, apm_binary_path, user_scope)
+    scenario.install("a", target="copilot")
+    deployed = scenario.deploy_root / ".agents/skills/s/SKILL.md"
+    before = deployed.read_bytes()
+    scenario.manifest(targets=["codex"])
+    scenario.install(target=None)
+    assert deployed.read_bytes() == before
+    replacement = _skill("updated a")
+    (scenario.packages["a"] / "skills/s/SKILL.md").write_bytes(replacement)
+    result = scenario.install(target=None)
+    assert deployed.is_file(), result.stdout + result.stderr
+    assert deployed.read_bytes() == replacement, result.stdout + result.stderr
+    scenario.run("audit", "--ci")
+
+
+@pytest.mark.parametrize("user_scope", [False, True], ids=["project", "user"])
+def test_uninstall_last_writer_records_actual_survivor_materialization(
+    tmp_path: Path, apm_binary_path: Path, user_scope: bool
+) -> None:
+    from tests.integration.test_shared_skill_preservation_lifecycle import _scenario, _skill
+
+    scenario = _scenario(tmp_path, apm_binary_path, user_scope)
+    for owner, package in scenario.packages.items():
+        (package / f"skills/s/{owner}.md").unlink()
+    scenario.install("a", "b")
+    result = scenario.runner.run(
+        ("uninstall", *(("-g",) if user_scope else ()), str(scenario.packages["b"])),
+        scenario_id="receipt-survivor-uninstall",
+        cwd=scenario.project,
+        env=scenario.environment.subprocess_env(),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    deployed = [
+        scenario.deploy_root / root / "SKILL.md"
+        for root in (".claude/skills/s", ".agents/skills/s")
+    ]
+    assert [path.read_bytes() for path in deployed] == [_skill("a")] * 2
+    replacement = _skill("updated a")
+    (scenario.packages["a"] / "skills/s/SKILL.md").write_bytes(replacement)
+    result = scenario.install(target=None)
+    assert all(path.is_file() for path in deployed), result.stdout + result.stderr
+    assert [path.read_bytes() for path in deployed] == [replacement] * 2
+    scenario.run("audit", "--ci")

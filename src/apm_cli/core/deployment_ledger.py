@@ -75,7 +75,7 @@ class DeploymentCleanupSnapshot:
 class DeploymentMaterializationSession:
     """Installation-local rendered-write evidence, subordinate to current ownership.
 
-    Only the live install boundary creates a writing session. The checkout holds
+    Only live install and uninstall survivor boundaries create writing sessions. The checkout holds
     an ignored random identity, not overwrite evidence; the OS-user state holds
     canonical records. Neither a checked-out lock nor copied source bytes can
     create a prior-local baseline.
@@ -237,6 +237,21 @@ class DeploymentMaterializationSession:
                 for record in self._claims.get(value, ())
             ),
             separators=(",", ":"),
+        )
+
+    def requires_target_write(
+        self, path: Path, targets: Sequence[TargetProfile], owner: str
+    ) -> bool:
+        """Require a real guarded write when a valid same-writer receipt changes target."""
+        locator = self._locator(path, targets)
+        key = self._physical_keys.get(path.resolve().as_posix())
+        record = self._records.get(key)
+        return (
+            locator is not None
+            and record is not None
+            and record.active_owner == owner
+            and record.locator.target != locator.target
+            and self.baseline(path, targets) is not None
         )
 
     def record(

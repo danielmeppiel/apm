@@ -281,6 +281,7 @@ class BaseIntegrator:
         on_member_skipped: Callable[[Path], None] | None = None,
         baseline_hash: Callable[[Path], str | None] | None = None,
         on_member_written: Callable[[Path], None] | None = None,
+        requires_write: Callable[[Path], bool] | None = None,
         unchanged: bool = False,
         force: bool = False,
         diagnostics=None,
@@ -317,7 +318,11 @@ class BaseIntegrator:
                         f"Cannot deploy {entry}: destination is not a regular file. "
                         "Move the blocking directory before reinstalling."
                     )
-                if unchanged and self.is_content_identical_to_source(target_file, source_file):
+                if (
+                    unchanged
+                    and self.is_content_identical_to_source(target_file, source_file)
+                    and not (requires_write is not None and requires_write(target_file))
+                ):
                     copied.append(target_file)
                     continue
                 if self.check_collision(

@@ -14,9 +14,75 @@ ROOT = Path(__file__).resolve().parents[2]
 RULE = "install-deployment-provenance-state"
 
 
+def test_receipt_guard_accepts_current_owner_routing() -> None:
+    report = run_selected_rules(ROOT, {RULE})
+    assert report.failures == ()
+    assert report.violations == ()
+
+
 @pytest.mark.parametrize(
     ("path", "before", "after"),
     [
+        (
+            "commands/uninstall/cli.py",
+            "else:\n        if integration_cleanup.materialization_session is not None:",
+            "finally:\n        if integration_cleanup.materialization_session is not None:",
+        ),
+        (
+            "commands/uninstall/engine.py",
+            "materialization_session=materialization_session",
+            "materialization_session=None",
+        ),
+        (
+            "commands/uninstall/engine.py",
+            "materialization_session=materialization_session,",
+            "materialization_session=None,",
+        ),
+        (
+            "commands/uninstall/engine.py",
+            "removed_paths=removed_skill_paths",
+            "removed_paths=None",
+        ),
+        (
+            "integration/skill_integrator.py",
+            "removed_paths.append(target)",
+            "pass",
+        ),
+        (
+            "integration/skill_support.py",
+            "removed_paths.append(skill_subdir)",
+            "pass",
+        ),
+        (
+            "install/phases/cleanup.py",
+            "DeploymentMaterializationSession.retire_removed(",
+            "parallel_retirement(",
+        ),
+        (
+            "integration/cleanup.py",
+            "receipt_retirements.extend(retired)",
+            "pass",
+        ),
+        (
+            "core/deployment_ledger.py",
+            "and self.baseline(path, targets) is not None",
+            "and True",
+        ),
+        (
+            "core/deployment_ledger.py",
+            "and record.active_owner == owner",
+            "and True",
+        ),
+        (
+            "integration/base_integrator.py",
+            "and not (requires_write is not None and requires_write(target_file))",
+            "and True",
+        ),
+        (
+            "integration/skill_integrator.py",
+            "session.requires_target_write(path, targets, owner)",
+            "False",
+        ),
         (
             "core/deployment_ledger.py",
             "value = deployed_path_entry(path, self.root, targets)",

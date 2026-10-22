@@ -20,6 +20,7 @@ from scripts.architecture_linter.checks.install_deployment_shared import (
     _body_has,
     _facts_for,
     _line_findings,
+    _lines,
     _name_calls_in,
     _present,
     _present_re,
@@ -1284,6 +1285,9 @@ def _materialization_evidence_findings(provider: FactsProvider, rule_id: str) ->
             "deployed_path_entry(path, self.root, targets),",
             "self._written[key] = value",
             "for key, value in self._written.items():",
+            "record.active_owner == owner",
+            "record.locator.target != locator.target",
+            "and self.baseline(path, targets) is not None",
             'DeploymentLedgerCodec.from_rows(data["records"])',
             "DeploymentLedgerCodec.rows(DeploymentLedger(records))",
             'atomic_write_text(ignore, "*\\n", new_file_mode=0o600, create_only=True)',
@@ -1293,14 +1297,18 @@ def _materialization_evidence_findings(provider: FactsProvider, rule_id: str) ->
         _SKILL_INTEGRATOR: (
             "on_member_written=written.append",
             "session.baseline(path, targets)",
+            "session.requires_target_write(path, targets, owner)",
             "session.record({path: written_hashes[entry(path)] for path in written}",
             "materialization_session.flush()",
             "self._materialization_session = None",
+            "removed_paths.append(target)",
+            "removed_paths=removed_paths",
         ),
         _BASE_INTEGRATOR_OWNER: (
             "baseline_hash(target_file)",
             "(baseline_hash is not None and expected is None)",
             "on_member_written(target_file)",
+            "and not (requires_write is not None and requires_write(target_file))",
         ),
         "src/apm_cli/install/pipeline.py": (
             "materialization_session=session",
@@ -1311,12 +1319,35 @@ def _materialization_evidence_findings(provider: FactsProvider, rule_id: str) ->
         "src/apm_cli/integration/cleanup.py": (
             "DeploymentMaterializationSession.retire_removed(",
             "[*result.deleted_targets, *absent_targets]",
+            "if receipt_retirements is None:",
+            "receipt_retirements.extend(retired)",
+        ),
+        "src/apm_cli/install/phases/cleanup.py": (
+            "_run_cleanup(ctx, receipt_retirements)",
+            "finally:",
+            "DeploymentMaterializationSession.retire_removed(",
+            "receipt_retirements=receipt_retirements",
+        ),
+        "src/apm_cli/integration/skill_support.py": ("removed_paths.append(skill_subdir)",),
+        "src/apm_cli/commands/uninstall/engine.py": (
+            "DeploymentMaterializationSession(project_root, _rebuild_scope, lockfile)",
+            'with _integrators["skills"].ownership_snapshot(materialization_session=materialization_session):',
+            "materialization_session=materialization_session,",
+            "removed_paths=removed_skill_paths",
+            "finally:",
+            "project_root, removed_skill_paths, user_scope=user_scope",
+        ),
+        "src/apm_cli/commands/uninstall/cli.py": (
+            "_persist_uninstall_lockfile(lockfile, lockfile_path, logger, integration_cleanup)",
+            "else:\n        if integration_cleanup.materialization_session is not None:",
+            "integration_cleanup.materialization_session.bind_committed_claims(lockfile)",
         ),
     }
     for path, snippets in requirements.items():
         facts, failures = _facts_for(provider, path, rule_id)
         findings.extend(failures)
-        if not failures and not all(_present(facts, snippet) for snippet in snippets):
+        text = "\n".join(_lines(facts))
+        if not failures and not all(snippet in text for snippet in snippets):
             findings.append(
                 _summary(rule_id, path, "Local materialization evidence must use the guarded owner")
             )
@@ -1341,7 +1372,7 @@ def _materialization_evidence_findings(provider: FactsProvider, rule_id: str) ->
                     path,
                     rule_id,
                     re.compile(r"\bDeploymentMaterializationSession\b|materialization_session="),
-                    "Only live install may promote local materialization evidence",
+                    "Only live install or uninstall survivor writes may promote materialization evidence",
                     respect_exempt=False,
                 )
             )

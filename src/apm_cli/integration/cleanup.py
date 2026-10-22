@@ -277,6 +277,7 @@ def remove_stale_deployed_files(
     failed_path_retained: bool = True,
     user_scope: bool = False,
     allow_final_symlink: bool = False,
+    receipt_retirements: list[Path] | None = None,
 ) -> CleanupResult:
     """Remove APM-deployed files that are no longer produced by *dep_key*.
 
@@ -307,6 +308,9 @@ def remove_stale_deployed_files(
             the user to remove the file manually instead.
         user_scope: Include registered user-root prefixes such as
             ``.copilot/`` when validating legacy deployed-file paths.
+        receipt_retirements: Optional batch accumulator for confirmed physical
+            removals or absence. The caller must retire it through the receipt
+            owner in a finally block; omitted callers retire immediately.
 
     Returns:
         :class:`CleanupResult` describing what happened. The caller is
@@ -552,7 +556,11 @@ def remove_stale_deployed_files(
 
     from apm_cli.core.deployment_ledger import DeploymentMaterializationSession
 
-    DeploymentMaterializationSession.retire_removed(
-        project_root, [*result.deleted_targets, *absent_targets], user_scope=user_scope
-    )
+    retired = [*result.deleted_targets, *absent_targets]
+    if receipt_retirements is None:
+        DeploymentMaterializationSession.retire_removed(
+            project_root, retired, user_scope=user_scope
+        )
+    else:
+        receipt_retirements.extend(retired)
     return result
