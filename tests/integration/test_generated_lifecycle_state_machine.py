@@ -10,6 +10,7 @@ import shutil
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from uuid import UUID
 
 import pytest
 import yaml
@@ -65,8 +66,12 @@ _SKILL_NAME = "model-skill"
 _PACKAGE_NAME = "model-kit"
 _SKILL_BYTES = _skill(_SKILL_NAME).encode()
 _TAMPER_BYTES = b"# user tamper\n"
+_IDENTITY_WRITE_PATHS = frozenset(
+    {".apm-local", ".apm-local/.gitignore", ".apm-local/installation"}
+)
 _PROJECT_WRITE_PATHS = frozenset(
     {
+        *_IDENTITY_WRITE_PATHS,
         ".agents",
         ".agents/skills",
         f".agents/skills/{_SKILL_NAME}",
@@ -244,7 +249,7 @@ class _ModelFixture:
         if not self.global_scope:
             return _INSTALL_EXACT_PATHS
         return {
-            "user": _USER_WRITE_PATHS,
+            "user": _USER_WRITE_PATHS | _IDENTITY_WRITE_PATHS,
             "target": frozenset({"skills", "rules", "rules/revision.md", "CLAUDE.md"}),
         }
 
@@ -892,6 +897,46 @@ def test_generated_lifecycle_mandatory_replay(
         _ModelFixture.create(tmp_path / "mandatory", apm_binary_path, variant)
     )
     _mandatory_replay(model)
+
+
+@pytest.mark.parametrize("variant", _VARIANTS)
+@pytest.mark.parametrize("extra_write", ["identity-sibling", "wrong-root"])
+def test_generated_identity_write_scope_is_exact(
+    tmp_path: Path, apm_binary_path: Path, variant: str, extra_write: str
+) -> None:
+    """Admit the real identity, but reject sibling files and cross-scope writes."""
+    model = _LifecycleReferenceModel(
+        _ModelFixture.create(tmp_path / "identity-scope", apm_binary_path, variant)
+    )
+    model.install()
+    home = model.scenario.isolated.home
+    project = model.fixture.invoke_cwd
+    identity_root = home if model.fixture.global_scope else project
+    identity = identity_root / ".apm-local/installation"
+    assert identity.is_file() and not identity.is_symlink()
+    identity_bytes = identity.read_bytes()
+    assert identity_bytes == (UUID(hex=identity_bytes.decode("ascii").strip()).hex + "\n").encode(
+        "ascii"
+    )
+    ignore = identity.parent / ".gitignore"
+    assert ignore.is_file() and not ignore.is_symlink()
+    assert ignore.read_bytes() == b"*\n"
+
+    before = model._capture()
+    if extra_write == "identity-sibling":
+        unexpected = identity.parent / "unrelated.txt"
+    else:
+        wrong_root = project if model.fixture.global_scope else home
+        unexpected = wrong_root / ".apm-local/installation"
+    unexpected.parent.mkdir(parents=True, exist_ok=True)
+    unexpected.write_bytes(identity_bytes)
+    with pytest.raises(AssertionError, match="outside its declared write set"):
+        assert_snapshot_changes_within(
+            before,
+            model._capture(),
+            exact_paths=model.fixture.exact_paths,
+            tree_prefixes=model.fixture.tree_prefixes,
+        )
 
 
 def _mandatory_replay(model: _LifecycleReferenceModel) -> None:

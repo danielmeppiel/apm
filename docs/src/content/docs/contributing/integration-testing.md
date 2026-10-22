@@ -230,6 +230,12 @@ cleaning up resources. Submit both consumers before collecting their futures;
 `Thread.join(timeout=...)` can return while a worker is still running. Keep real
 parallel materialization and content assertions in cache regression tests.
 
+Installation snapshots must allow only the three local identity paths
+(`.apm-local`, `.apm-local/.gitignore`, `.apm-local/installation`) at the
+appropriate project or user root, not the whole subtree. Changing ownership
+metadata in a fixture invalidates its bound local receipt; pair conservative
+preservation checks with an unchanged, trusted-receipt recovery control.
+
 When adding a registered architecture-owner guard, add its surgical mutation
 to `test_architecture_owner_rule_mutations.py` in the same change. The matrix
 requires exactly one mutation for every registered guard.
