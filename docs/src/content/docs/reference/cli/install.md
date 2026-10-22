@@ -17,6 +17,14 @@ apm install [PACKAGE_REF...] [OPTIONS]
 
 With no arguments it installs everything from `apm.yml`. With one or more `PACKAGE_REF` arguments it adds those packages to `apm.yml` (creating one if needed) and installs only what was added. `apm install --mcp NAME` is the dedicated path for adding an MCP server entry.
 
+Repeating an existing positional package without requesting a change reports
+`already in apm.yml`, not `updated ref in apm.yml`. It preserves the existing
+declaration and does not rewrite an otherwise unchanged manifest. Changed refs
+and explicit skill additions or resets still update the declaration.
+Explicit transport or resolver changes are not no-ops: an HTTPS request can
+replace an HTTP declaration, and a Git-qualified marketplace source can replace
+a shorthand routed through the default registry.
+
 `PACKAGE_REF` accepts: shorthand (`owner/repo`), HTTPS or SSH Git URLs, FQDN shorthand (`host/owner/repo`), local paths (`./path`, `/abs/path`, `~/path`), packed bundles (`./bundle.zip`, `./bundle.tar.gz`), and marketplace refs (`NAME@MARKETPLACE[#ref]`).
 
 Local paths may select a directory package or one `.agent.md`,
