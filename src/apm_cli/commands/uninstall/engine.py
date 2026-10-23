@@ -663,6 +663,7 @@ def _validate_uninstall_packages(
         )
 
     packages_to_remove = []
+    seen_entry_ids: set[int] = set()
     packages_not_found = []
 
     for package in packages:
@@ -702,7 +703,10 @@ def _validate_uninstall_packages(
         selection = select_manifest_dependency(canonical_for_match, current_deps, lockfile)
         if selection.status is DependencySelectionStatus.MATCHED:
             matched_dep = selection.manifest_entry
-            if matched_dep not in packages_to_remove:
+            # Selection returns the original manifest object, including unhashable mappings.
+            entry_id = id(matched_dep)
+            if entry_id not in seen_entry_ids:
+                seen_entry_ids.add(entry_id)
                 packages_to_remove.append(matched_dep)
             if not log_matches:
                 continue
